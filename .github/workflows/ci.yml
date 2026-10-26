@@ -1,0 +1,28 @@
+name: Userscript regression tests
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Torn-Company-Helper.user.js"
+      - "tests/**"
+      - "package.json"
+      - ".github/workflows/ci.yml"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check userscript syntax
+        run: node --check Torn-Company-Helper.user.js
+      - name: Run unit tests
+        run: npm test

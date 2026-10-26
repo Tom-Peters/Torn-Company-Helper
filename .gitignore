@@ -1,0 +1,12 @@
+# Never commit personal Torn API keys or private company data
+.env
+.env.*
+*.secret
+*.secrets
+private/
+data/
+backups/
+*backup*.json
+*.log
+node_modules/
+.DS_Store
