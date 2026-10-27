@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — 2026-10-27
+
+- Phase 1: prioritised decision guardrails on Today.
+- Old financial or staffing observations trigger a refresh recommendation before discretionary spending advice.
+- Training and payment reconciliation remain visible as review tasks, not automatically confirmed purchases.
+- A conditional budget headroom recommendation is displayed only when input data is complete, recently refreshed and within the stated loss limit.
+- No gameplay automation, new API permissions or ledger migration.
+
+
 ## 0.9.0 — 2026-10-26
 
 - Introduced data-quality assessment and linked daily decisions on Today, with explicit confidence and refresh age.
