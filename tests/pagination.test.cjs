@@ -106,6 +106,25 @@ test("An invalid continuation is reported and the previous cursor stays unchange
  assert.match(c.logHistoryWarning,/unrecognised pagination/);
  assert.equal(calls.length,1);
 });
+test("A repeatedly returned full page is flagged instead of claiming history progress",async()=>{
+ const next="https://api.torn.com/v2/company/news?cat=training&limit=100&sort=DESC&to=1000";
+ const same=Array.from({length:100},(_,i)=>item("n",i,1000));
+ const {paging}=createHarness([{news:same,_metadata:{links:{next}}},{news:same,_metadata:{links:{next}}}]);
+ const c=company();paging.seed(c);
+ await paging.importNews(false);
+ assert.equal(c.news.length,100);
+ await paging.importNews(false);
+ assert.equal(c.news.length,100);
+ assert.equal(c.newsNext.to,"1000");
+ assert.match(c.newsHistoryWarning,/no new IDs/);
+});
+test("A recent full-page rescan does not create a misleading older-history warning",async()=>{
+ const {paging}=createHarness([{news:Array.from({length:100},(_,i)=>item("n",i,777))}]);
+ const c=company();c.newsCursor=600;paging.seed(c);
+ await paging.importNews(true);
+ assert.equal(c.newsCursor,600);
+ assert.equal(c.newsHistoryWarning,undefined);
+});
 test("Pagination is strictly manual and version is bumped",()=>{
  const {calls}=createHarness([]);
  assert.equal(calls.length,0);
