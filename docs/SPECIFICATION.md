@@ -14,7 +14,7 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - Archive departed employees.
 - Growth, profit and effectiveness comparisons with stability preference when full optimiser is delivered.
 
-## Shipped: v0.9.1
+## Shipped: v0.9.2
 
 - [x] Draggable, persistent-position PDA launcher visible only on company management pages
 - [x] Session-only API key; manually triggered read-only API calls
@@ -113,3 +113,11 @@ The role-fit score is a weighted capped requirement-coverage heuristic; never la
 - If a page is shorter than the 100-entry maximum and has no next link, the legacy timestamp cursor can continue as before.
 - Unit simulations cover tied timestamps, long log pages, malicious cursors, recent-versus-older separation and the non-creation of local purchases.
 - Not yet validated: production response variations, exact company-news tie handling when Torn does not supply a sufficiently precise cursor.
+
+
+## v0.9.2 — dashboard render reliability
+
+- Initialise the `detailView` UI state before any click handler calls `draw()`. Previously the undeclared identifier raised a JavaScript ReferenceError on opening, leaving the root overlay blank.
+- Render failures now show an explicit recovery panel with an error explanation and Close action, rather than hiding the cause. No saved company data is cleared in this recovery path.
+- DOM smoke tests fire the actual launcher event with an empty profile, a populated company, a detail drill-down and malformed cached data, protecting against future blank-screen regressions.
+- Version displayed in the app and script metadata is aligned. Read-only and storage-schema-1 invariants unchanged.
