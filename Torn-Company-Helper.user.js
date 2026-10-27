@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      0.9.0
+// @version      0.9.1
 // @description  Read-only Torn PDA company dashboard: staff, trains, daily accounts and 10-star planning
 // @author       IamEEKY
 // @match        https://www.torn.com/companies.php*
@@ -301,6 +301,42 @@
       if(c && Array.isArray(c.training))fixed+=repairImportDuplicates(c);
     });
     return fixed;
+  }
+  // Torn v2 supplies an official next-page URL for some paginated endpoints.
+  // Extract ONLY approved parameters from the expected official API route.
+  // A server-provided URL is never fetched directly and never trusted as a route.
+  function importNextParams(response,path,expected) {
+    const link=response && response._metadata && response._metadata.links && response._metadata.links.next;
+    if(link==null || link==="") return {next:null,invalid:false};
+    if(typeof link!=="string") return {next:null,invalid:true};
+    try {
+      const u=new URL(link,API+path);
+      if(u.protocol!=="https:" || u.hostname!=="api.torn.com" || u.port || u.username || u.password ||
+         u.pathname!=="/v2/"+path || u.hash) return {next:null,invalid:true};
+      const allowed=path==="company/news"?["cat","limit","sort","from","to"]:["log","limit","sort","from","to","nanostamp"];
+      const result={},entries=Array.from(u.searchParams.entries());
+      if(!entries.length) return {next:null,invalid:true};
+      for(const pair of entries) {
+        const k=pair[0],v=pair[1];
+        if(!allowed.includes(k) || Object.prototype.hasOwnProperty.call(result,k)) return {next:null,invalid:true};
+        if(k==="limit" && (!/^\\d{1,3}$/.test(v) || Number(v)<1 || Number(v)>100)) return {next:null,invalid:true};
+        if(["from","to","nanostamp"].includes(k) && !/^\\d+$/.test(v)) return {next:null,invalid:true};
+        if(k==="sort" && !/^(ASC|DESC)$/i.test(v)) return {next:null,invalid:true};
+        result[k]=v;
+      }
+      if(path==="company/news" && result.cat!=="training") return {next:null,invalid:true};
+      if(path==="user/log" && result.log!==expected) return {next:null,invalid:true};
+      return {next:result,invalid:false};
+    }catch(_) {return {next:null,invalid:true};}
+  }
+  function importPageDecision(response,path,expected,list) {
+    const cursor=importNextParams(response,path,expected);
+    if(cursor.invalid) return {next:null,warning:"Torn supplied an unrecognised pagination link. History has NOT advanced; use a new import only after checking the API response."};
+    if(cursor.next) return {next:cursor.next,warning:null};
+    // Without an official continuation token, a full page could cut through
+    // multiple records sharing the oldest second. Never silently skip them.
+    if(list.length>=100) return {next:null,warning:"A full page arrived without a safe continuation cursor. Older records may share a timestamp; history has NOT advanced."};
+    return {next:null,warning:null};
   }
   function normaliseNewsResponse(raw) {
     const records=Array.isArray(raw)?raw:Object.entries(raw||{}).map(function(pair){
@@ -918,6 +954,7 @@
         '<button class="primary" data-act="add-training">Record</button></div></section>';
     } else if(trainingView==="payments"){
       body='<section class="tch-panel"><h2>Import money received</h2><p>Imports run only when you tap. Sender and amount are matched automatically where possible. Confirm which transfers were actually for training before any trains are credited.</p>'+
+        (c.logHistoryWarning?'<p class="tch-hint">'+esc(c.logHistoryWarning)+'</p>':"")+
         '<div class="tch-actionrow"><button class="primary" data-act="rescan-logs">Check recent</button><button data-act="import-logs">Load older</button></div>'+
         '<p class="tch-hint">If Torn rejects money logs, set a custom API key for this script in Torn PDA with user/log permission. Your ordinary PDA key can still load company figures.</p></section>'+
         '<section class="tch-panel"><div class="tch-sectionhead"><h2>Needs review</h2><span class="tch-mini">'+pending.length+'</span></div>'+
@@ -935,6 +972,7 @@
         '<button data-act="add-payment">Save payment locally</button><p class="tch-hint">You choose how to allocate non-standard and partial payments.</p></section>';
     } else if(trainingView==="history"){
       body='<section class="tch-panel"><h2>Company training history</h2><p>Each Torn news ID can count only once. Matching happens locally after you initiate the import.</p>'+
+        (c.newsHistoryWarning?'<p class="tch-hint">'+esc(c.newsHistoryWarning)+'</p>':"")+
         '<div class="tch-actionrow"><button class="primary" data-act="rescan-news">Check recent</button><button data-act="import-news">Load older</button><button data-act="match-news">Recheck matches</button></div>'+
         '<div class="tch-minikpis"><span>'+unique.filter(function(t){return !!t.sourceId;}).length+' matched</span><span>'+reviewNews.length+' to check</span></div></section>'+
         '<section class="tch-panel"><h2>Unmatched records</h2>'+
@@ -1054,8 +1092,8 @@
   function notify(s,level) {message=s;severity=level || "";draw();}
   async function work(task) {
     if (busy) return;
-    busy=true;message="";draw();
-    try {await task();if(!message)message="Completed.";severity="good";}
+    busy=true;message="";severity="";draw();
+    try {await task();if(!message)message="Completed.";if(!severity)severity="good";}
     catch (e) {message=String(e && e.message || e);severity="bad";}
     finally {busy=false;draw();}
   }
@@ -1104,10 +1142,17 @@
       const c=current();
       if (!c || !c.profile) throw Error("Refresh company profile first.");
       const params={cat:"training",limit:"100",sort:"DESC"};
-      if (c.newsCursor && !newest) params.to=String(c.newsCursor);
+      if(!newest) {
+        if(c.newsNext) Object.assign(params,c.newsNext);
+        else if(c.newsCursor!=null) params.to=String(c.newsCursor);
+      }
       const response=await read("company/news",params);
       const list=normaliseNewsResponse(response.news);
-      if (!list.length) {message="No further training news available.";return;}
+      if (!list.length) {
+        if(!newest){c.newsNext=null;c.newsHistoryWarning=null;await persist();}
+        message="No further training news available.";return;
+      }
+      const page=importPageDecision(response,"company/news","training",list);
       let added=0,minTs=Infinity;
       list.forEach(function (n) {
         if (!n || !n.id || !Number.isFinite(Number(n.timestamp))) return;
@@ -1116,11 +1161,15 @@
         c.news.push({id:String(n.id),timestamp:num(n.timestamp),text:String(n.text || "").slice(0,700)});
         added++;
       });
-      if (Number.isFinite(minTs) && !newest) c.newsCursor=minTs-1;
+      if(!newest){
+        if(page.warning){c.newsHistoryWarning=page.warning;}
+        else {c.newsNext=page.next;c.newsHistoryWarning=null;if(!page.next && Number.isFinite(minTs))c.newsCursor=minTs-1;}
+      }
       const fixed=repairImportDuplicates(c);
       const summary=reconcileTraining(c);
       await persist();
-      message="Imported "+added+" new history entries, matched "+summary.matched+" training records; "+summary.review+" need review. "+fixed+" repeated historical entries repaired.";
+      message="Imported "+added+" new history entries, matched "+summary.matched+" training records; "+summary.review+" need review. "+fixed+" repeated historical entries repaired."+(page.warning?" "+page.warning:"");
+      if(page.warning)severity="bad";
     });
   }
   async function importLogs(newest) {
@@ -1132,16 +1181,24 @@
         const types=findMoneyTypes(response);
         if(!types.length)throw Error("Torn returned no recognisable incoming-money log types for this API key.");
         const selected=types.slice(0,10).map(function(t){return t.id;}).join(",");
-        if(selected!==c.logTypes){c.logTypes=selected;c.logCursor=null;}
+        if(selected!==c.logTypes){c.logTypes=selected;c.logCursor=null;c.logNext=null;}
         c.incomingTypesVerified=true;
       }
       if(!/^\d+(,\d+){0,9}$/.test(c.logTypes))throw Error("Payment type settings are invalid.");
-      const params={log:c.logTypes,limit:"100"};
-      if(c.logCursor && !newest) params.to=String(c.logCursor);
+      const params={log:c.logTypes,limit:"100",sort:"DESC"};
+      if(!newest) {
+        if(c.logNext)Object.assign(params,c.logNext);
+        else if(c.logCursor!=null)params.to=String(c.logCursor);
+      }
       const response=await read("user/log",params);
       const list=Array.isArray(response.log)?response.log:Object.entries(response.log||{}).map(function(pair){
         return Object.assign({id:pair[0]},pair[1]);
       });
+      if(!list.length){
+        if(!newest){c.logNext=null;c.logHistoryWarning=null;await persist();}
+        message="No further incoming transfers available.";return;
+      }
+      const page=importPageDecision(response,"user/log",c.logTypes,list);
       let added=0,updated=0,minTs=Infinity;
       list.forEach(function(log){
         if(!log || !log.id || !Number.isFinite(Number(log.timestamp)))return;
@@ -1158,12 +1215,16 @@
         c.logs.push({id:entryId,timestamp:ts,title:String(log.details&&log.details.title||"Incoming money").slice(0,160),suggestion:suggestion});
         added++;
       });
-      if(Number.isFinite(minTs))c.logCursor=minTs-1;
+      if(!newest){
+        if(page.warning){c.logHistoryWarning=page.warning;}
+        else {c.logNext=page.next;c.logHistoryWarning=null;if(!page.next && Number.isFinite(minTs))c.logCursor=minTs-1;}
+      }
       const duplicates=repairImportDuplicates(c);
       const classified=applyMatchedPayments(c);
       await persist();
       message="Imported "+added+" incoming transfers; "+classified.suggested+" have a suggested employee and train count, "+
-        classified.review+" need manual details. Confirm purchases in Training → Payments. Updated "+updated+" older entries.";
+        classified.review+" need manual details. Confirm purchases in Training → Payments. Updated "+updated+" older entries."+(page.warning?" "+page.warning:"");
+      if(page.warning)severity="bad";
     });
   }
   function positionLauncher() {
@@ -1285,7 +1346,7 @@
       const ids=Array.from(root.querySelectorAll("[data-log-choice]:checked")).map(function(x){return x.dataset.logChoice;});
       if (ids.length>10) return notify("Select at most 10 log types.","bad");
       const selected=ids.join(",");
-      if (selected!==c.logTypes){c.logTypes=selected;c.logCursor=null;c.logs=[];}
+      if (selected!==c.logTypes){c.logTypes=selected;c.logCursor=null;c.logNext=null;c.logHistoryWarning=null;c.logs=[];}
       return work(persist);
     }
     if (act==="import-logs") return importLogs(false);
@@ -1312,7 +1373,7 @@
       if (!c) return notify("Refresh to identify the company first.","bad");
       const typed=(root.querySelector("#tch-logtypes").value || "").replace(/\s/g,"");
       if (typed && !/^\d+(,\d+){0,9}$/.test(typed)) return notify("Use up to 10 numeric Torn log type IDs, separated by commas.","bad");
-      c.logTypes=typed;c.logCursor=null;c.logs=[];
+      c.logTypes=typed;c.logCursor=null;c.logNext=null;c.logHistoryWarning=null;c.logs=[];
       return work(persist);
     }
     if (act==="ignore-log") {
