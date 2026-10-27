@@ -7,6 +7,10 @@
 
 > This is an independent community userscript. It is not affiliated with Torn.
 
+## Phase 1: decision guardrails (v0.9.0)
+
+The Today screen prioritises incomplete financial inputs, overdue data refreshes, unverified incoming transfers and training history before discretionary budget advice. It only displays a cost-only advertising allowance when figures are complete and recently refreshed. This is not a forecast of profit, advertising ROI or star growth.
+
 ## Install in Torn PDA
 
 1. Open the **Torn PDA** app and its **Userscripts** manager.
@@ -18,7 +22,7 @@
 
 If the userscript launcher doesn't appear, check that scripts are enabled in Torn PDA and reload the Torn page.
 
-## Redesigned interface — v0.8.0
+## Redesigned interface — v0.9.0
 
 The app now has **four primary destinations**:
 
@@ -49,7 +53,7 @@ This release focuses on **trustworthy numbers before optimising**:
 
 **What this still does not do:** reliably identify the purpose of a money transfer without human review, provide accurate historical settlement-day accounts, infer the hidden Torn star formula, or produce guaranteed financial or staffing outcomes.
 
-## Staff and drill-down upgrade — v0.8.0
+## Staff and drill-down upgrade — v0.9.0
 
 - Tap the **star rating, daily P/L, trains, employee-count and company finance tiles** to open a relevant detailed view.
 - Tap an employee to see their **current-position working-stat fit %** alongside Torn's reported effectiveness, role requirements, alternative roles and individual training balance.
@@ -79,7 +83,7 @@ The company-wide What-if comparison is a **staffing decision aid**, not an exact
 | Price and advertising | Current membership price, scenario testing and limited observed-condition comparison |
 | Local data | Torn PDA \`PDA_storage\`; JSON backup/restore; company IDs kept separate |
 
-### Earlier improvements in v0.8.0
+### Earlier improvements in v0.9.0
 
 - **Launcher only on Torn's own company management page** (`/companies.php`), draggable with position saved in Torn PDA storage.
 - **Incoming transfers automatically identified:** sender and amount are suggested where the API supports them. Since the purpose of a transfer is not certain from its price, v0.9.0 requires confirmation before crediting a training purchase.
@@ -104,7 +108,7 @@ The dashboard supports payments allocated by the director, including **$250,000 
 
 Recording or voiding an entry **only changes local accounting records**, never Torn.
 
-## Training history matching (v0.8.0)
+## Training history matching (v0.9.0)
 
 In **Training**, tap **Import training history**. Identifiable training recipients are matched against current and archived employees. Matched entries contribute to the local training ledger automatically; uncertain records remain in **Needs review** and require an employee selection. For news you imported using an older version, tap **Match existing history**.
 
