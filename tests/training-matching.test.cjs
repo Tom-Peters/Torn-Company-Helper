@@ -54,7 +54,7 @@ test("Money log types are suggested rather than hard-coded",()=>{
 test("Remote script metadata remains valid",()=>{
  assert.ok(script.startsWith("// ==UserScript=="));
  assert.match(script,/\/\/ @author\s+IamEEKY/);
- assert.match(script,/\/\/ @version\s+0\.9\.0/);
+ assert.match(script,/\/\/ @version\s+0\.9\.1/);
 });
 
 test("Two imports from one Torn news source count once, even before cleanup",()=>{
