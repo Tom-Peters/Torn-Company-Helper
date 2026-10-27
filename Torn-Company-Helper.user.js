@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      0.9.1
+// @version      0.9.2
 // @description  Read-only Torn PDA company dashboard: staff, trains, daily accounts and 10-star planning
 // @author       IamEEKY
 // @match        https://www.torn.com/companies.php*
@@ -39,7 +39,7 @@
   function hasPdaKey() {return /^[A-Za-z0-9]{16,64}$/.test(PDA_APP_KEY);}
   function activeApiKey(){return key || (hasPdaKey()?PDA_APP_KEY:"");}
   let staffView="positions",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35;
-  let tab = "overview", open = false, busy = false, message = "", severity = "";
+  let tab = "overview", detailView = "", open = false, busy = false, message = "", severity = "";
   let launcherDragged = false;
   const esc = function (value) {return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});};
   const money = function (v) {return v == null || !Number.isFinite(Number(v)) ? "Unknown" : "$" + Math.round(Number(v)).toLocaleString("en-US");};
@@ -811,7 +811,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v0.9.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v0.9.2</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -820,7 +820,7 @@
       (secondary?'<small>'+esc(secondary)+'</small>':'')+(target?'<span class="tch-tilearrow" aria-hidden="true">↗</span>':"");
     if(target)return '<button type="button" data-act="goto" data-target="'+esc(target)+'" class="tch-metric tch-clickable '+(tone||"")+
       '" aria-label="'+esc(title)+': '+esc(value)+' — view details">'+inner+'</button>';
-    return '<button type="button" data-act="metric-detail" data-target="'+esc(target||"growth") +'" class="tch-metric '+(tone||"")+'">'+inner+'</div>';
+    return '<button type="button" data-act="metric-detail" data-target="'+esc(target||"growth") +'" class="tch-metric '+(tone||"")+'">'+inner+'</button>';
   }
 
   function introV2() {
@@ -1076,18 +1076,33 @@
     opener.hidden=open || !isCompanyPage();
     root.hidden=!open || !isCompanyPage();
     if(!open)return;
-    const c=current();
-    let body="";
-    if(detailView)body=detailsV2(c);
-    else if(tab==="overview")body=todayV2(c);
-    else if(tab==="employees")body=staffV2(c);
-    else if(tab==="training")body=trainingV2(c);
-    else if(tab==="growth")body=growthV2(c);
-    else if(tab==="settings")body=settingsV2(c);
-    root.className=data.themeMode==="light"?"theme-light":"";
-    root.innerHTML=headV2(c)+'<main class="tch-main">'+
-      (message?'<div class="notice '+esc(severity)+'">'+esc(message)+'</div>':"")+
-      (busy?'<div class="notice">Reading Torn API after your request…</div>':"")+body+'</main>'+tabsV2();
+    try {
+      const c=current();
+      let body="";
+      if(detailView)body=detailsV2(c);
+      else if(tab==="overview")body=todayV2(c);
+      else if(tab==="employees")body=staffV2(c);
+      else if(tab==="training")body=trainingV2(c);
+      else if(tab==="growth")body=growthV2(c);
+      else if(tab==="settings")body=settingsV2(c);
+      root.className=data.themeMode==="light"?"theme-light":"";
+      root.innerHTML=headV2(c)+'<main class="tch-main">'+
+        (message?'<div class="notice '+esc(severity)+'">'+esc(message)+'</div>':"")+
+        (busy?'<div class="notice">Reading Torn API after your request…</div>':"")+body+'</main>'+tabsV2();
+    } catch (error) {
+      // Render a usable, non-destructive fallback instead of a blank screen.
+      // Never clear or reset local storage in response to a rendering error.
+      const reason=error && error.message?String(error.message):"Unknown rendering error";
+      console.error("[Torn Company Helper] Dashboard render error:",reason);
+      root.className=data.themeMode==="light"?"theme-light":"";
+      root.innerHTML='<header class="tch-top"><div class="tch-headline"><strong>Company Helper</strong><small>Display recovery</small></div>'+
+        '<div class="actions"><button type="button" data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>'+
+        '<main class="tch-main"><section class="tch-panel" role="alert"><h2>Dashboard could not render</h2>'+
+        '<p>Your locally saved company records have not been cleared. This is a display issue.</p>'+
+        '<p class="tch-hint">Error: '+esc(reason)+'</p><div class="tch-actionrow">'+
+        '<button type="button" data-act="tab" data-tab="settings">Open Settings</button>'+
+        '<button type="button" data-act="close">Close dashboard</button></div></section></main>';
+    }
   }
   function notify(s,level) {message=s;severity=level || "";draw();}
   async function work(task) {
