@@ -319,8 +319,8 @@
       for(const pair of entries) {
         const k=pair[0],v=pair[1];
         if(!allowed.includes(k) || Object.prototype.hasOwnProperty.call(result,k)) return {next:null,invalid:true};
-        if(k==="limit" && (!/^\\d{1,3}$/.test(v) || Number(v)<1 || Number(v)>100)) return {next:null,invalid:true};
-        if(["from","to","nanostamp"].includes(k) && !/^\\d+$/.test(v)) return {next:null,invalid:true};
+        if(k==="limit" && (!/^\d{1,3}$/.test(v) || Number(v)<1 || Number(v)>100)) return {next:null,invalid:true};
+        if(["from","to","nanostamp"].includes(k) && !/^\d+$/.test(v)) return {next:null,invalid:true};
         if(k==="sort" && !/^(ASC|DESC)$/i.test(v)) return {next:null,invalid:true};
         result[k]=v;
       }
