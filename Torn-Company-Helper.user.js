@@ -442,6 +442,9 @@
     }).length;
     if(news)add("review","Reconcile "+news+" training history item"+(news===1?"":"s"),
       "Employee or training count needs confirmation before being included in the ledger.","High · unmatched source records","training-history");
+    const staleHours=Number.isFinite(Date.parse(c.lastRefresh||""))?Math.max(0,(Date.now()-Date.parse(c.lastRefresh))/3600000):Infinity;
+    if(staleHours>=24)add("review","Refresh before acting on staff or spending advice",
+      "Your saved roster and financial figures are "+(Number.isFinite(staleHours)?Math.floor(staleHours)+" hours old":"not yet available")+". Decisions based on stale data may be misleading.","High · data freshness","refresh");
     const balances=aggregates(c).balance;
     const eligible=Object.keys(balances).filter(function(k){
       const p=c.staff.find(function(x){return String(x.id)===k;});
@@ -453,12 +456,14 @@
         player.name+" is owed "+balances[eligible[0]].owed+" train(s). The oldest eligible obligation is prioritised; this is not a projected stat gain.",
         "High · confirmed ledger","training-queue");
     }
-    const last=Date.parse(c.lastRefresh||"");
-    if(!Number.isFinite(last)||Date.now()-last>24*3600000){
-      add("review","Refresh company data",
-        "Current role fits and finances may be out of date. No automatic API polling occurs.","High · age of saved data","refresh");
+    if(a.known && a.headroom>=0 && staleHours<24){
+      const allowance=Math.max(0,a.headroom);
+      add("next","Spending headroom is "+money(allowance)+" at current income",
+        "This is a cost-only ceiling, not permission to spend: changing advertising, wages or prices can change income. Compare several observed days before experimenting.",
+        "Medium · current revenue assumption","growth-pricing");
     }
-    return result.slice(0,6);
+    const rank={urgent:0,review:1,next:2};
+    return result.sort(function(x,y){return rank[x.level]-rank[y.level];}).slice(0,6);
   }
   function actionPanelV3(c) {
     const actions=companyActionList(c),quality=companyDataQuality(c);
@@ -770,7 +775,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v0.8.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v0.9.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
