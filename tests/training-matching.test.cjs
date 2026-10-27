@@ -54,7 +54,7 @@ test("Money log types are suggested rather than hard-coded",()=>{
 test("Remote script metadata remains valid",()=>{
  assert.ok(script.startsWith("// ==UserScript=="));
  assert.match(script,/\/\/ @author\s+IamEEKY/);
- assert.match(script,/\/\/ @version\s+0\.9\.0/);
+ assert.match(script,/\/\/ @version\s+0\.9\.1/);
 });
 
 test("Two imports from one Torn news source count once, even before cleanup",()=>{
@@ -130,7 +130,9 @@ test("Historical double-credit repair scans all company accounts",()=>{
 test("Training history has explicit older-page and recent-rescan controls",()=>{
  assert.match(script,/data-act="import-news"/);
  assert.match(script,/data-act="rescan-news"/);
- assert.match(script,/if \(c.newsCursor && !newest\)/);
+ assert.match(script,/if\(!newest\) \{/);
+ assert.match(script,/c.newsCursor!=null/);
+ assert.match(script,/c.newsNext/);
 });
 test("Company launcher hides on route change without page reload",()=>{
  assert.match(script,/routeObserver\.observe\(document\.body/);

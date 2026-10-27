@@ -14,7 +14,7 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - Archive departed employees.
 - Growth, profit and effectiveness comparisons with stability preference when full optimiser is delivered.
 
-## Shipped: v0.9.0
+## Shipped: v0.9.1
 
 - [x] Draggable, persistent-position PDA launcher visible only on company management pages
 - [x] Session-only API key; manually triggered read-only API calls
@@ -31,7 +31,7 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 
 ## Future work — not implemented yet
 
-- [ ] Fully tested historical import cursor handling when more than 100 logs share the same timestamp
+- [~] Same-second pagination: official v2 continuation links and log nanostamp supported with simulated regression tests; live API validation and ambiguous news tie handling still outstanding
 - [ ] Better validation of money amounts and sender IDs from specific log schemas; train quantities in grouped same-second news
 - [ ] Reviewable opening-balance wizard when API history is incomplete
 - [ ] Full combinatorial staffing optimisation, explicit growth/profit/effectiveness mode switching and model calibration
@@ -102,3 +102,14 @@ The role-fit score is a weighted capped requirement-coverage heuristic; never la
 - The Today decision list prioritises financial-data gaps and breaches, unresolved payment/training imports and stale observations before budget headroom.
 - Budget headroom is a **cost-only conditional estimate** based on the most recent complete data; it is not an ROI prediction.
 - Future work: opening balance wizard, schema-tested payment extraction, historical accounting reconciliation, and controlled business experiments.
+
+
+## v0.9.1 — continuation integrity
+
+- Historic training and money log imports retain an isolated continuation object for each company, without storage schema changes. Older imports preferentially use validated Torn API v2 `_metadata.links.next` query parameters. For log history, `nanostamp` is permitted to disambiguate same-second entries.
+- Refuse a redirect or parameter from an unexpected API host, path, filter or unsupported query field; no URL returned by the API is fetched directly.
+- Recent rescans leave the history cursor unchanged. Changing log-type filters resets the stored log continuation.
+- A 100-record response without a safe continuation link is **not** considered complete. The app retains the previous cursor and shows an explicit warning rather than advance and risk silently missing records.
+- If a page is shorter than the 100-entry maximum and has no next link, the legacy timestamp cursor can continue as before.
+- Unit simulations cover tied timestamps, long log pages, malicious cursors, recent-versus-older separation and the non-creation of local purchases.
+- Not yet validated: production response variations, exact company-news tie handling when Torn does not supply a sufficiently precise cursor.

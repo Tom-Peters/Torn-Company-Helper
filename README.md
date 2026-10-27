@@ -2,10 +2,18 @@
 
 **Author:** IamEEKY  
 **Platform:** Torn PDA (Android)  
-**Current status:** Early public beta — v0.9.0  
+**Current status:** Early public beta — v0.9.1  
 **Goal:** A strictly read-only, visual Torn company decision-support dashboard.
 
 > This is an independent community userscript. It is not affiliated with Torn.
+
+## v0.9.1: safer historical imports
+
+- **Load older** uses Torn API v2's official next-page cursor where supplied, including nanostamp for incoming personal logs. These values are validated and only approved API parameters are passed to Torn; remote pagination URLs are never requested directly.
+- **Check recent** does not change the older-history cursor for either training news or personal transfers.
+- If a full 100-item response lacks a trustworthy continuation link, the app **does not advance past that page**. A visible warning appears instead of silently skipping records sharing the same second.
+- Event IDs remain deduplicated, payments still need explicit training-purpose approval, and all API requests are manual. No historic stored ledger is reset.
+- **Known limit:** An API that supplies only second-precision pagination for a densely shared timestamp may not expose every event. If the cursor cannot progress, the import pauses with a warning rather than claim completeness. Live-key validation remains pending.
 
 ## Phase 1: decision guardrails (v0.9.0)
 
