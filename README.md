@@ -2,10 +2,18 @@
 
 **Author:** IamEEKY  
 **Platform:** Torn PDA (Android)  
-**Current status:** Early public beta — v0.9.1  
+**Current status:** Early public beta — v0.9.2  
 **Goal:** A strictly read-only, visual Torn company decision-support dashboard.
 
 > This is an independent community userscript. It is not affiliated with Torn.
+
+## v0.9.2: dashboard rendering fix
+
+- Fix a missing dashboard state variable that caused a blank panel immediately after tapping **Company Helper**, even when the userscript had loaded successfully.
+- Add a safe recovery panel if a future render fails, with a visible error and a working Close button instead of an empty blue screen.
+- Correct HTML for one metric button and update the displayed version number.
+- Add regression tests that **click the launcher** and render Today, an existing company, a drill-down and an intentionally corrupt view; these tests require **no API calls**.
+- All company data and training-ledger records remain untouched. No storage reset or migration is required.
 
 ## v0.9.1: safer historical imports
 
