@@ -96,3 +96,9 @@ The role-fit score is a weighted capped requirement-coverage heuristic; never la
 - `accounting(c)` returns nullable inputs and a list of missing fields. Missing revenue, a missing staff wage, an incomplete roster or an absent advertising budget invalidate operating P/L and spending headroom. All estimates still exclude other unreported costs and do not represent settled financials.
 - Today prioritises data gaps, exceeded loss allowances, unverified transfers, uncertain training-news matches, oldest eligible purchased trains and stale refreshes. Priorities are deterministic checks with evidence notes, not hidden-formula forecasts.
 - Further work: full roster role optimisation, training stat investment analysis, reliable finance experiments, opening balances and competitor benchmarks.
+
+## Phase 1 — v0.9.0
+
+- The Today decision list prioritises financial-data gaps and breaches, unresolved payment/training imports and stale observations before budget headroom.
+- Budget headroom is a **cost-only conditional estimate** based on the most recent complete data; it is not an ROI prediction.
+- Future work: opening balance wizard, schema-tested payment extraction, historical accounting reconciliation, and controlled business experiments.
