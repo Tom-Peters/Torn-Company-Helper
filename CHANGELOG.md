@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.2 — 2026-10-27
+
+- Fix the missing `detailView` state declaration that caused a blank dashboard on opening.
+- Catch render failures and show a non-destructive, actionable recovery panel rather than a blank screen.
+- Fix one mismatched metric button closing tag and synchronize the in-app version text.
+- Add end-to-end-style DOM smoke tests for opening, returning from detail view, and recovery.
+- No data migration, new permissions, or Torn gameplay actions.
+
+
 ## 0.9.1 — 2026-10-27
 
 - Follow API v2 validated next-page links for historical training news and personal money logs; support the documented `nanostamp` continuation for same-second log entries.
