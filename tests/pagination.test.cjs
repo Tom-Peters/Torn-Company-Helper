@@ -128,6 +128,6 @@ test("A recent full-page rescan does not create a misleading older-history warni
 test("Pagination is strictly manual and version is bumped",()=>{
  const {calls}=createHarness([]);
  assert.equal(calls.length,0);
- assert.match(source,/\/\/ @version\s+0\.9\.1/);
+ assert.match(source,/\/\/ @version\s+0\.9\.2/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
