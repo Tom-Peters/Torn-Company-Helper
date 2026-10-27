@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.1 — 2026-10-27
+
+- Follow API v2 validated next-page links for historical training news and personal money logs; support the documented `nanostamp` continuation for same-second log entries.
+- Preserve the oldest-page cursor during a recent-data rescan.
+- Refuse unexpected pagination hosts/routes/query values and fail closed on full pages without safe continuation rather than advancing past possibly missing records.
+- Surface a persistent import warning until a safe older-page import succeeds.
+- Retain read-only manual imports, confirmed payment purpose, existing private storage and original schema.
+- Add regression cases for tied timestamps, multi-page imports, rescan behaviour and invalid links.
+
+
 ## 0.9.0 — 2026-10-27
 
 - Phase 1: prioritised decision guardrails on Today.
