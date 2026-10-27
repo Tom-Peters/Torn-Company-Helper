@@ -1152,7 +1152,7 @@
         if(!newest){c.newsNext=null;c.newsHistoryWarning=null;await persist();}
         message="No further training news available.";return;
       }
-      const page=importPageDecision(response,"company/news","training",list);
+      const page=newest?{next:null,warning:null}:importPageDecision(response,"company/news","training",list);
       let added=0,minTs=Infinity;
       list.forEach(function (n) {
         if (!n || !n.id || !Number.isFinite(Number(n.timestamp))) return;
@@ -1162,14 +1162,15 @@
         added++;
       });
       if(!newest){
-        if(page.warning){c.newsHistoryWarning=page.warning;}
+        if(added===0 && list.length>=100)c.newsHistoryWarning="This full training-news page contained no new IDs. The API continuation may be repeating; history has NOT advanced.";
+        else if(page.warning){c.newsHistoryWarning=page.warning;}
         else {c.newsNext=page.next;c.newsHistoryWarning=null;if(!page.next && Number.isFinite(minTs))c.newsCursor=minTs-1;}
       }
       const fixed=repairImportDuplicates(c);
       const summary=reconcileTraining(c);
       await persist();
-      message="Imported "+added+" new history entries, matched "+summary.matched+" training records; "+summary.review+" need review. "+fixed+" repeated historical entries repaired."+(page.warning?" "+page.warning:"");
-      if(page.warning)severity="bad";
+      message="Imported "+added+" new history entries, matched "+summary.matched+" training records; "+summary.review+" need review. "+fixed+" repeated historical entries repaired."+(c.newsHistoryWarning && !newest?" "+c.newsHistoryWarning:"");
+      if(c.newsHistoryWarning && !newest)severity="bad";
     });
   }
   async function importLogs(newest) {
@@ -1198,7 +1199,7 @@
         if(!newest){c.logNext=null;c.logHistoryWarning=null;await persist();}
         message="No further incoming transfers available.";return;
       }
-      const page=importPageDecision(response,"user/log",c.logTypes,list);
+      const page=newest?{next:null,warning:null}:importPageDecision(response,"user/log",c.logTypes,list);
       let added=0,updated=0,minTs=Infinity;
       list.forEach(function(log){
         if(!log || !log.id || !Number.isFinite(Number(log.timestamp)))return;
@@ -1216,15 +1217,16 @@
         added++;
       });
       if(!newest){
-        if(page.warning){c.logHistoryWarning=page.warning;}
+        if(added===0 && list.length>=100)c.logHistoryWarning="This full money-log page contained no new IDs. The API continuation may be repeating; history has NOT advanced.";
+        else if(page.warning){c.logHistoryWarning=page.warning;}
         else {c.logNext=page.next;c.logHistoryWarning=null;if(!page.next && Number.isFinite(minTs))c.logCursor=minTs-1;}
       }
       const duplicates=repairImportDuplicates(c);
       const classified=applyMatchedPayments(c);
       await persist();
       message="Imported "+added+" incoming transfers; "+classified.suggested+" have a suggested employee and train count, "+
-        classified.review+" need manual details. Confirm purchases in Training → Payments. Updated "+updated+" older entries."+(page.warning?" "+page.warning:"");
-      if(page.warning)severity="bad";
+        classified.review+" need manual details. Confirm purchases in Training → Payments. Updated "+updated+" older entries."+(c.logHistoryWarning && !newest?" "+c.logHistoryWarning:"");
+      if(c.logHistoryWarning && !newest)severity="bad";
     });
   }
   function positionLauncher() {
