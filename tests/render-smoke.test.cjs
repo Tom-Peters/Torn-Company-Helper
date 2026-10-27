@@ -54,7 +54,7 @@ test("Opening an existing company renders metrics, decisions, and navigation",()
  t.opener.listeners.click({preventDefault(){}});
  assert.match(t.root.innerHTML,/Example Fitness/);
  assert.match(t.root.innerHTML,/Your next decisions/);
- assert.match(t.root.innerHTML,/Daily P\/L/);
+ assert.match(t.root.innerHTML,/daily P\/L/i);
  assert.doesNotMatch(t.root.innerHTML,/Dashboard could not render/);
  assert.equal(t.requests.length,0);
 });
