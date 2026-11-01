@@ -136,7 +136,7 @@
       toggle.setAttribute("aria-expanded",String(expanded));
     }
     function setExpanded(value){
-      expanded=Boolean(value);veil.hidden=drawer.hidden=!expanded;launcherVisibility();
+      expanded=Boolean(value);veil.hidden=drawer.hidden=!expanded;launcherVisibility();renderContext();
     }
     function activeNotice(id){
       const n=notices[id];if(!n||!(n.count>0))return null;
@@ -243,7 +243,7 @@
       if(control){control.textContent="On-page guidance: "+(contextEnabled()?"On":"Off");
         control.setAttribute("aria-pressed",String(contextEnabled()));}
       const ctx=currentContext();
-      if(!ctx||!contextEnabled()||!active[ctx.id]||openPanels.size||expanded){
+      if(!ctx||!contextEnabled()||!active[ctx.id]||openPanels.size||panelOpen||expanded){
         if(old)old.remove();return;
       }
       const anchor=document.querySelector?.("#gymroot h1, #mainContainer h1, .content-wrapper h1, h1");
@@ -406,6 +406,7 @@
       if(!e.detail||!idOk(e.detail.id))return;
       if(e.detail.open){openPanels.add(e.detail.id);panelOpen=true;setExpanded(false);}
       else{openPanels.delete(e.detail.id);panelOpen=openPanels.size>0;launcherVisibility();}
+      renderContext();
     });
     document.addEventListener("staxx:register",e=>{
       const d=e.detail||{},id=d.id;if(!idOk(id))return;
@@ -456,6 +457,7 @@
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",startHub,{once:true});else startHub();
 })();
+
 
 
 
