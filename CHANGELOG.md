@@ -1,3 +1,9 @@
+## 1.15.0 — Growth Stress Lab
+
+- Added interactive 5%, 10% and 20% revenue-shock scenarios to Company Overview and Growth Overview, calculated from confirmed reported income, wages and advertising costs.
+- Shows hypothetical daily profit/loss, a +5% revenue case and a conservative 75%-of-headroom discretionary-spend illustration inside the saved daily operating-loss limit. Revenue, wages and advertising are held constant except for the selected revenue scenario.
+- Added shortcuts to advertising and wage reviews. Never updates Torn budgets or salaries, and does not predict the hidden star-growth formula.
+
 # Changelog
 
 ## 0.9.2 — 2026-10-27
