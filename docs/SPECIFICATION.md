@@ -1,4 +1,4 @@
-# Torn Company Helper — Product specification V5 and implementation status
+# Torn Company Helper — Product specification V6 and implementation status
 
 Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** (design baseline; other company types where data supports it).
 
@@ -14,7 +14,18 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - Archive departed employees.
 - Growth, profit and effectiveness comparisons with stability preference when full optimiser is delivered.
 
-## Shipped: v0.9.2
+## Shipped: v1.0.0
+
+- [x] Five-section mobile command centre, with one unchanged userscript URL
+- [x] Train-cap risk radar, oldest eligible paid-train allocation and baseline per-close gain
+- [x] Dedicated stock replenishment page, 2/3/5/7-day targets and observation-based sell-through
+- [x] Cash runway and minimum seven-day wage/advert reserve
+- [x] Global slot-preserving Hungarian role assignment with stability penalty
+- [x] Applications read during explicit company refresh with candidate-to-role fit
+- [x] Graceful failure for optional stock/application calls while preserving last known data
+- [x] Existing storage schema 1, reconciled ledgers and manual imports kept intact
+
+## Shipped previously: v0.9.2
 
 - [x] Draggable, persistent-position PDA launcher visible only on company management pages
 - [x] Session-only API key; manually triggered read-only API calls
@@ -34,7 +45,7 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - [~] Same-second pagination: official v2 continuation links and log nanostamp supported with simulated regression tests; live API validation and ambiguous news tie handling still outstanding
 - [ ] Better validation of money amounts and sender IDs from specific log schemas; train quantities in grouped same-second news
 - [ ] Reviewable opening-balance wizard when API history is incomplete
-- [ ] Full combinatorial staffing optimisation, explicit growth/profit/effectiveness mode switching and model calibration
+- [~] Global role assignment optimiser shipped; exact revenue/effectiveness model and scenario mode switching are still unverified
 - [ ] Reliable marketing and membership experiment recommendations based on longer controlled comparisons
 - [ ] Competitor weekly benchmarks, rankings and trend comparisons
 - [ ] Accurate historical P/L matched to Torn's settlement day when data exists
