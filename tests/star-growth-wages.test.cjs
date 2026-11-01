@@ -125,6 +125,6 @@ test("Reworked screens include wage, rivals, star priorities, and existing train
  assert.match(app.growthV2(c),/Rivals/);
  assert.equal(calls.length,0);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
- assert.match(source,/\/\/ @version\s+1\.8\.0/);
+ assert.match(source,/\/\/ @version\s+1\.9\.0/);
  assert.match(source,/const PDA_APP_KEY = "###PDA-APIKEY###";/);
 });
