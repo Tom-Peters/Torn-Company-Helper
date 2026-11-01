@@ -1111,6 +1111,8 @@
   // Do not confuse an optional stock API failure with a genuine service company.
   function stockModeV117(c){
     const name=String(c?.profile?.type?.name||'').trim().toLowerCase();
+    // Explicit product lines take precedence (including legacy/example fixtures).
+    if(Array.isArray(c?.stock)&&c.stock.length)return 'products';
     if(name==='fitness center')return 'service';
     if(c?.stockModeV117==='products'&&Array.isArray(c.stock)&&c.stock.length)return 'products';
     if(c?.stockModeV117==='no-products'&&Array.isArray(c.stock)&&!c.stock.length)return 'no-products';
@@ -1119,7 +1121,7 @@
   function serviceOperationsV117(c){
     const p=c.profile||{},a=accounting(c),members=financialAmount(p.customers?.daily),weekly=valueOfMetricV12(p.income,'weekly');
     return '<section class="tch-panel"><h2>Service operations · '+esc(p.type?.name||'Company')+'</h2>'+
-      '<p>No physical stock to replenish. Company training capacity is a separate resource and remains fully tracked.</p>'+
+      '<p>'+(stockModeV117(c)==='service'?'No physical stock to replenish.':'The latest official company stock response has no product lines; replenishment is not recommended.')+' Training capacity is a separate resource and remains fully tracked.</p>'+
       '<div class="tch-metrics">'+
       metricV2('Daily customers',members===null?'Unreported':members,'Torn daily customer metric','','growth-performance')+
       metricV2('Weekly income',weekly===null?'Unreported':money(weekly),'Reported gross income','','growth-accounts')+
@@ -1130,7 +1132,7 @@
       '<p class="tch-hint">No customer or income numbers are invented when missing. Non-Fitness-Center companies with an empty official stock response show no reported product lines rather than an assumed permissions error.</p></section>';
   }
   function stockAdviceV3(c){
-    if(stockModeV117(c)==='service')return [];
+    if(['service','no-products'].includes(stockModeV117(c)))return [];
     const byDate={};
     (c.snapshots||[]).forEach(function(s){if(s&&s.observedAt&&Array.isArray(s.stock))byDate[String(s.observedAt).slice(0,10)]=s.stock;});
     const history=Object.keys(byDate).sort().slice(-7).map(function(k){return byDate[k];});
@@ -1265,7 +1267,7 @@
   }
   function stockV3(c){
     if(!c||!c.profile)return introV2();
-    if(stockModeV117(c)==='service')return serviceOperationsV117(c);
+    if(['service','no-products'].includes(stockModeV117(c)))return serviceOperationsV117(c);
     const health=riskRadarV3(c),products=health.stock,days=[2,3,5,7].includes(c.stockDays)?c.stockDays:3;
     return '<section class="tch-panel"><h2>Stock & replenishment</h2><p>Manual-refresh sales, price comparisons and simple stock cover. No Torn orders are placed.</p>'+
       '<div class="tch-actionrow">'+[2,3,5,7].map(function(n){return '<button data-act="stock-days" data-days="'+n+
@@ -2503,13 +2505,13 @@
   }
 
   function tabsV2(){
-    const tabs=[["overview","⌂","Today"],["alerts","!","Alerts"],["employees","♟","Staff"],["training","◇","Trains"],["growth","▥","Growth"],["stock","▣",stockModeV117(c)==="service"?"Services":"Stock"]];
+    const tabs=[["overview","⌂","Today"],["alerts","!","Alerts"],["employees","♟","Staff"],["training","◇","Trains"],["growth","▥","Growth"],["stock","▣",["service","no-products"].includes(stockModeV117(current()))?"Services":"Stock"]];
     return '<nav class="tch-bottom" aria-label="Company Helper sections">'+tabs.map(function(x){
       return '<button data-act="tab" data-tab="'+x[0]+'" class="'+(tab===x[0]?"active":"")+'"><span class="tch-navicon">'+x[1]+'</span><span>'+x[2]+'</span></button>';
     }).join("")+'</nav>';
   }
   function headV2(c) {
-    const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(stockModeV117(c)==="service"?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
+    const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
     return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.12.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
@@ -2574,7 +2576,7 @@
       '<button data-act="tab" data-tab="training">Check training queue<span>Paid and outstanding</span></button>'+
       '<button data-act="tab" data-tab="employees">Optimise staff<span>Suggested roles</span></button>'+
       '<button data-act="tab" data-tab="growth">Company performance<span>Costs and membership</span></button>'+
-      '<button data-act="tab" data-tab="stock">'+(stockModeV117(c)==="service"?"Service performance<span>Members & revenue</span>":"Stock priorities<span>Runout and orders</span>")+"</button>"+
+      '<button data-act="tab" data-tab="stock">'+(["service","no-products"].includes(stockModeV117(c))?"Service performance<span>Members & revenue</span>":"Stock priorities<span>Runout and orders</span>")+"</button>"+
       '<button data-act="refresh" '+(busy?"disabled":"")+'>Refresh Torn data<span>Only when you tap</span></button>'+
       '</div></section>';
   }
