@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.2.0
+// @version      1.3.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/companies.php*
@@ -155,6 +155,19 @@
       if(c.training.some(function(t){return canonicalTrainingSource(t)==="news:"+n.id;}))return;
       const result=matchTrainingNews(n,c);
       if(result.status!=="matched"){n.matchStatus="review";n.matchReason=result.reason;review++;return;}
+      // If the director manually recorded a train within 15 minutes of Torn news,
+      // bind its existing ledger row to the source rather than counting a second train.
+      const manual=(c.training||[]).find(function(t){
+        return !t.voided && !canonicalTrainingSource(t) &&
+          Number(t.playerId)===Number(result.playerId) &&
+          Number(t.units)===Number(result.units) &&
+          Number.isFinite(Number(t.ts)) &&
+          Math.abs(Number(t.ts)-Number(n.timestamp))<=900;
+      });
+      if(manual){
+        manual.sourceId="news:"+n.id;
+        n.matchStatus="matched-manual";n.matchedPlayerId=result.playerId;matched++;return;
+      }
       c.training.push({id:"news:auto:"+n.id,playerId:result.playerId,units:result.units,ts:n.timestamp,
         sourceId:"news:"+n.id,source:"company-news-auto",confirmed:true});
       n.matchStatus="matched";n.matchedPlayerId=result.playerId;matched++;
@@ -377,6 +390,7 @@
     (c.logs||[]).forEach(function(n){
       if(n.matchStatus==="ignored" || isApprovedLog(c,n.id))return;
       const guess=n.suggestion||{status:"review",reason:"Re-import to identify the sender and amount."};
+      if(n.matchReason && /Possible duplicate of a manually recorded purchase/.test(n.matchReason)) {n.matchStatus="review";review++;return;}
       n.matchStatus="review";
       if(guess.status==="matched") {
         n.matchReason="Sender and amount identified; training purpose unverified.";
@@ -964,31 +978,41 @@
       if(name)map[name]=(map[name]||0)+1;
     });return map;
   }
+
   function rosterBenchV12(c){
     const teams=c.rivalTeams&&Array.isArray(c.rivalTeams.rows)?c.rivalTeams.rows:[];
-    const current=positionCountsV12(c.staff),usable=teams.filter(function(x){return x&&x.counts&&Object.keys(x.counts).length>0;});
-    const roles=new Set(Object.keys(current));
-    usable.forEach(function(x){Object.keys(x.counts).forEach(function(k){roles.add(k);});});
+    const current=positionCountsV12(c.staff),usable=teams.filter(function(x){return x&&x.counts&&Object.keys(x.counts).length>0&&x.total>0;});
+    const roles=new Set(Object.keys(current));usable.forEach(function(x){Object.keys(x.counts).forEach(function(k){roles.add(k);});});
     const counts=Array.from(roles).sort().map(function(role){
-      const vals=usable.map(function(t){return Number(t.counts[role]||0);}).sort(function(a,b){return a-b;});
+      const vals=usable.map(function(t){return 100*Number(t.counts[role]||0)/Number(t.total);}).sort(function(a,b){return a-b;});
       const median=vals.length?vals[Math.floor(vals.length/2)]:null;
-      return {role:role,own:current[role]||0,median:median};
+      const target=median===null?null:median*(c.staff||[]).length/100;
+      const own=current[role]||0;
+      return {role:role,own:own,share:median,expected:target,
+        delta:target===null?null:target-own};
     });
-    return {teams:usable,counts:counts,scannedAt:c.rivalTeams&&c.rivalTeams.observedAt};
+    return {teams:usable,counts:counts,scannedAt:c.rivalTeams&&c.rivalTeams.observedAt,
+      tier:usable.length?usable[0].rating:null};
   }
   function rivalRostersPanelV12(c){
-    const m=rosterBenchV12(c);
-    return '<section class="tch-panel"><h2>10-star staffing patterns</h2>'+
-      '<p>Inspect up to five high-income 10-star Fitness Centers. Only public position names and their counts are stored, not individual names or working stats.</p>'+
-      '<button data-act="scan-rival-rosters" '+(busy?"disabled":"")+'>Compare 10-star role layouts</button>'+
-      '<p class="tch-hint">Manual lookup. Roster data is unavailable if the API key lacks access. Correlation does not establish the ideal mix for your current star level.</p>'+
-      (m.teams.length?'<div class="tch-metrics">'+m.teams.map(function(x){
-        return metricV2(x.name,String(x.total||0)+" employees",x.rating+" stars · "+money(x.weekly)+"/week");
-      }).join("")+'</div>'+
-      '<div class="tch-weekgrid"><span>Role</span><span>Yours</span><span>10★ median</span><span>Difference</span>'+
-      m.counts.map(function(x){return '<span>'+esc(x.role)+'</span><b>'+x.own+'</b><b>'+x.median+
-        '</b><b>'+(x.median-x.own>0?"+":"")+(x.median-x.own)+'</b>';}).join("")+'</div>':
-      '<p class="tch-hint">No role layouts collected yet. Scan public rivals first, then compare their rosters.</p>')+'</section>';
+    const m=rosterBenchV12(c),needs=m.counts.filter(function(r){return r.delta!==null&&Math.abs(r.delta)>=0.8;})
+      .sort(function(a,b){return Math.abs(b.delta)-Math.abs(a.delta);}).slice(0,4);
+    return '<section class="tch-panel"><h2>Peer staffing fit</h2>'+
+      '<p>Compare your staff size with the role mix of high-income '+(m.tier===null?'same/next-star':m.tier+'★')+
+      ' companies. Role counts are normalised to your '+(c.staff||[]).length+' staff, rather than blindly copying a ten-star company.</p>'+
+      '<button data-act="scan-rival-rosters" '+(busy?"disabled":"")+'>Compare similar-star staffing</button>'+
+      (needs.length?'<h3>Position gaps to investigate</h3>'+needs.map(function(r){
+        return '<div class="tch-dense-row"><div><strong>'+esc(r.role)+'</strong><small>You: '+r.own+
+          ' · scaled peer benchmark '+r.expected.toFixed(1)+'</small></div><div><b>'+
+          (r.delta>=0?'+':'')+r.delta.toFixed(1)+'</b><small>potential difference</small></div></div>';
+      }).join(""):
+      '<p class="tch-hint">No material staffing gap in the sampled companies, or no public layouts loaded.</p>')+
+      (m.teams.length?'<p class="tch-hint">Based on '+m.teams.length+' public peer rosters. Median role shares, not proof of more stars. Keep Managers, Cleaners and other support roles covered.</p>':
+        '<p class="tch-hint">Run the public rival scan first. This comparison needs readable public employee positions.</p>')+
+      '<details class="tch-advanced"><summary>View peer role mix</summary>'+
+      m.counts.map(function(r){return '<div class="tch-record"><div>'+esc(r.role)+'</div><b>'+
+        r.own+' vs '+(r.expected===null?'?':r.expected.toFixed(1))+'</b></div>';}).join("")+
+      '</details></section>';
   }
   function valueOfMetricV12(p,k){
     const x=p&&p[k];const n=Number(x);
@@ -1069,6 +1093,215 @@
       '<p class="tch-hint">Only recorded daily snapshots count. Income comparisons use Torn reported rolling weekly values, not fabricated weekly settlements.</p></section>';
   }
   function sundaysNeedV12(c){const days=new Set((c.snapshots||[]).filter(function(s){return s&&s.observedAt&&new Date(String(s.observedAt).slice(0,10)+"T12:00:00Z").getUTCDay()===0;}).map(function(s){return String(s.observedAt).slice(0,10);}));return days.size<2;}
+
+  // v1.3: explicit, reversible local receipt classification. Never makes a Torn action.
+  function exactPaidTrainingV13(c,log) {
+    const g=log&&log.suggestion;
+    if(!log || !g || g.status!=="matched" || !Number.isSafeInteger(Number(g.playerId)) ||
+       !Number.isSafeInteger(Number(g.amount)) || Number(g.amount)<=0)return null;
+    const staff=(c.staff||[]).find(function(p){return String(p.id)===String(g.playerId);});
+    if(!staff || !Number.isSafeInteger(Number(g.trains)) || Number(g.trains)!==priceTrains(Number(g.amount)))return null;
+    if(/refund|gift|donation|repay|loan|borrow/i.test(String(log.title||"")))return null;
+    return {playerId:Number(g.playerId),amount:Number(g.amount),trains:Number(g.trains)};
+  }
+  function autoCreditPurchasesV13(c,onlyNew) {
+    const result={credited:0,trains:0,review:0};
+    if(c.autoPackageMode===false)return result;
+    (c.logs||[]).forEach(function(n){
+      if(!n || (onlyNew && !onlyNew.has(String(n.id))) || n.matchStatus==="ignored" || isApprovedLog(c,n.id))return;
+      const source="log:"+String(n.id);
+      if((c.payments||[]).some(function(p){return p.sourceId===source && (p.voided || isApprovedLogPayment(p));}))return;
+      if(!Number.isFinite(Number(c.autoCreditSince)) || Number(n.timestamp)<Number(c.autoCreditSince))return;
+      const match=exactPaidTrainingV13(c,n);
+      if(!match){result.review++;return;}
+      const manualOverlap=(c.payments||[]).some(function(p){
+        return !p.voided && !p.sourceId && p.source!=="log-auto" &&
+          Number(p.playerId)===match.playerId && Number(p.amount)===match.amount &&
+          Math.abs(Number(p.ts)-Number(n.timestamp))<=86400;
+      });
+      if(manualOverlap){n.matchStatus="review";n.matchReason="Possible duplicate of a manually recorded purchase on the same day.";result.review++;return;}
+      c.payments.push({id:"log:package:"+String(n.id),playerId:match.playerId,
+        amount:match.amount,trains:match.trains,ts:Number(n.timestamp),
+        source:"log-package-auto",sourceId:source,confirmed:true,assumed:true,
+        note:"Automatically inferred from exact package-price receipt; can be voided."});
+      n.matchStatus="credited-auto";n.matchReason="Exact-size employee transfer credited as a likely training purchase (reversible).";
+      result.credited++;result.trains+=match.trains;
+    });
+    return result;
+  }
+
+  function backfillTrainingReceiptsV13(c) {
+    let added=0,skipped=0;
+    (c.logs||[]).forEach(function(n){
+      if(!n || n.matchStatus==="ignored" || isApprovedLog(c,n.id))return;
+      const m=exactPaidTrainingV13(c,n),source="log:"+String(n.id);
+      if(!m)return;
+      if((c.payments||[]).some(function(p){
+        return p.sourceId===source || (!p.voided&&Number(p.playerId)===m.playerId&&Number(p.amount)===m.amount&&
+          Math.abs(Number(p.ts)-Number(n.timestamp))<=86400);
+      })){skipped++;return;}
+      c.payments.push({id:"log:backfill:"+n.id,playerId:m.playerId,
+        amount:m.amount,trains:m.trains,ts:Number(n.timestamp),source:"log-package-backfill",
+        sourceId:source,confirmed:true,assumed:true,
+        note:"User-requested historical classification of exact-size employee transfer; reversible."});
+      n.matchStatus="credited-backfill";
+      added++;
+    });
+    return {credited:added,skipped:skipped};
+  }
+  function mergeTrainingNewsV13(c,response) {
+    const list=normaliseNewsResponse(response&&response.news),seen=new Set((c.news||[]).map(function(n){return String(n.id);}));
+    let added=0;
+    list.forEach(function(n){
+      if(seen.has(String(n.id)))return;
+      seen.add(String(n.id));
+      c.news.push({id:String(n.id),timestamp:Number(n.timestamp),text:String(n.text||"").slice(0,700)});
+      added++;
+    });
+    repairImportDuplicates(c);
+    const result=reconcileTraining(c);
+    c.newsSyncAt=new Date().toISOString();
+    return {added:added,matched:result.matched,review:result.review};
+  }
+  async function syncRecentNewsV13(c){
+    const result=await read("company/news",{cat:"training",limit:"100",sort:"DESC"});
+    return mergeTrainingNewsV13(c,result);
+  }
+  function mergeIncomingLogsV13(c,response){
+    const list=Array.isArray(response&&response.log)?response.log:Object.entries(response&&response.log||{}).map(function(pair){
+      return Object.assign({id:pair[0]},pair[1]);
+    });
+    let added=0;
+    const newlySeen=new Set();
+    list.forEach(function(log){
+      if(!log || log.id==null || !Number.isFinite(Number(log.timestamp)))return;
+      const k=String(log.id),guess=parseIncomingLog(log,c);
+      const existing=(c.logs||[]).find(function(x){return String(x.id)===k;});
+      if(existing){
+        if(!existing.suggestion || existing.suggestion.status==="review")existing.suggestion=guess;
+        return;
+      }
+      newlySeen.add(k);added++;
+      c.logs.push({id:k,timestamp:Number(log.timestamp),
+        title:String(log.details&&log.details.title||log.title||"Incoming money").slice(0,160),
+        suggestion:guess});
+    });
+    repairImportDuplicates(c);
+    const credited=autoCreditPurchasesV13(c,newlySeen);
+    const classified=applyMatchedPayments(c);
+    c.moneySyncAt=new Date().toISOString();
+    return {added:added,credited:credited.credited,trains:credited.trains,review:classified.review};
+  }
+  async function syncRecentMoneyV13(c){
+    if(!c.incomingTypesVerified && !/^\d+(,\d+){0,9}$/.test(String(c.logTypes||""))){
+      const raw=await read("torn/logtypes");
+      const options=findMoneyTypes(raw).slice(0,10);
+      if(!options.length)throw Error("No incoming money log types available");
+      c.logTypes=options.map(function(x){return x.id;}).join(",");
+      c.incomingTypesVerified=true;
+    }
+    if(!/^\d+(,\d+){0,9}$/.test(String(c.logTypes||"")))throw Error("Incoming-money log types not configured");
+    const response=await read("user/log",{log:c.logTypes,limit:"100",sort:"DESC"});
+    return mergeIncomingLogsV13(c,response);
+  }
+  function supportWageModelV13(c){
+    const wages=(c.staff||[]).map(function(p){
+      const wage=financialAmount(p.wage),eff=financialAmount(p.effectiveness&&p.effectiveness.total);
+      return {p:p,wage:wage,eff:eff,role:String(p.position&&p.position.name||""),value:financialAmount(p.value)};
+    });
+    const ratios=wages.filter(function(x){return x.wage!==null && x.eff!==null&&x.eff>0;})
+      .map(function(x){return x.wage/x.eff;}).sort(function(a,b){return a-b;});
+    const median=function(vals){if(!vals.length)return null;const middle=Math.floor(vals.length/2);
+      return vals.length%2?vals[middle]:(vals[middle-1]+vals[middle])/2;};
+    const med=median(ratios);
+    return wages.map(function(x){
+      const same=wages.filter(function(y){return y.p.id!==x.p.id&&y.role===x.role&&y.wage!==null&&y.eff!==null&&y.eff>0;});
+      const sameRate=median(same.map(function(y){return y.wage/y.eff;}).sort(function(a,b){return a-b;}));
+      const baseline=sameRate===null?med:sameRate;
+      const estimate=baseline!==null&&x.eff!==null&&x.eff>0?
+        Math.min(25000000,Math.round((baseline*x.eff)/1000)*1000):null;
+      const tenure=financialAmount(x.p.days_in_company);
+      const p=x.p.effectiveness||{};
+      const adjustment=[p.addiction,p.inactivity].map(function(v){return typeof v==="number"?v:0;});
+      const min=estimate===null?null:Math.max(0,Math.round(estimate*(tenure>=90?0.9:0.85)/1000)*1000);
+      const max=estimate===null?null:Math.min(25000000,Math.round(estimate*(tenure>=90?1.25:1.15)/1000)*1000);
+      return Object.assign({},x,{estimate:estimate,min:min,max:max,peerCount:same.length,
+        basis:sameRate!==null?"Same-role EFF rate":"Team median wage per EFF",
+        penalty:adjustment[0]+adjustment[1],
+        ratio:x.value!==null&&x.value>0&&x.wage!==null?x.wage/x.value:null});
+    });
+  }
+  function compactWagePanelV13(c){
+    const rows=supportWageModelV13(c),support=rows.filter(function(r){return r.value===null||r.value===0;});
+    return '<section class="tch-panel"><h2>Pay decisions · every employee</h2>'+
+      '<p>For direct-income roles, HR value remains available in the detailed wage breakdown. Support employees get an <strong>estimated pay band</strong> from comparable wage per effectiveness, not a fictional sales value.</p>'+
+      '<div class="tch-dense-list">'+rows.map(function(x){
+        const estimate=x.estimate===null?'Insufficient data':money(x.min)+' - '+money(x.max);
+        const below=x.min!==null&&x.wage!==null&&x.wage<x.min;
+        const above=x.max!==null&&x.wage!==null&&x.wage>x.max;
+        return '<div class="tch-dense-row"><div><strong>'+esc(x.p.name)+'</strong>'+
+          '<small>'+esc(x.role)+' · EFF '+esc(x.eff===null?'?':x.eff)+
+          (x.penalty<0?' · Penalty '+x.penalty:'')+'</small></div>'+
+          '<div><b>'+esc(money(x.wage))+'</b><small>'+esc(x.value===0||x.value===null?'Support proxy':"HR value "+money(x.value))+'</small></div>'+
+          '<div class="tch-dense-detail"><span>'+esc(x.basis)+': '+esc(estimate)+'</span>'+
+            (below?'<em>Below band</em>':above?'<em>Above band</em>':'')+'</div></div>';
+      }).join("")+'</div>'+
+      '<p class="tch-hint">'+support.length+' employees have zero or unavailable direct-value figures. Estimates use internal wage/EFF comparisons; loyalty, recruitment competition and position-specific benefits are not mathematically captured. No wages are changed automatically.</p></section>';
+  }
+  function growthMovesV13(c){
+    if(!c||!c.profile)return [];
+    const p=c.profile,rows=[],a=accounting(c),staff=(c.staff||[]);
+    function push(rank,title,detail,target){rows.push({rank:rank,title:title,detail:detail,target:target});}
+    const weak=staff.filter(function(x){return x&&x.effectiveness&&Number.isFinite(Number(x.effectiveness.total));})
+      .sort(function(x,y){return Number(x.effectiveness.total)-Number(y.effectiveness.total);});
+    if(p.efficiency!=null&&Number(p.efficiency)<100) {
+      const worst=weak[0],effect=worst&&worst.effectiveness;
+      push(1,"Fix efficiency: "+Number(p.efficiency)+"%",
+        worst?"Review "+worst.name+" ("+effect.total+" EFF), "+(effect.addiction<0?"addiction "+effect.addiction:"role fit/inactivity")+
+          ". Confirm the lowest performers before changing positions.":"Inspect lowest effectiveness first.","staff");
+    }
+    if(p.environment!=null&&Number(p.environment)<100)
+      push(2,"Recover environment: "+Number(p.environment)+"%",
+        "Check Cleaner coverage, effectiveness and activity before making other changes.","staff");
+    const peer=peerModelV11(c);
+    if(p.popularity!=null&&Number(p.popularity)<100)
+      push(3,"Grow popularity: "+Number(p.popularity)+"%",
+        "Compare advertising/membership settings against the next full daily report; test one change at a time.","growth-pricing");
+    if(peer.neighbours.length>=3&&peer.gap!==null&&peer.gap>0)
+      push(4,"Close observed weekly income gap",
+        money(peer.gap)+"/week below "+peer.target+"-star peer median ("+peer.neighbours.length+" companies). This is not a star threshold.","growth-rivals");
+    if(a.known&&a.headroom<0)push(0,"Protect daily loss allowance",
+      "Estimated operating loss exceeds the configured cap by "+money(-a.headroom)+".","growth-accounts");
+    const training=trainPlanV3(c);
+    if(training.overflow>0)push(0,"Use company trains before capacity",
+      "Possible overflow of "+training.overflow+" at the next company close. Review the oldest eligible paid obligations.","training-queue");
+    if(!rows.length)push(5,"Track one controlled change","No urgent weakness found. Record one change then compare after daily close.","growth-review");
+    return rows.sort(function(x,y){return x.rank-y.rank;}).slice(0,4);
+  }
+  function growthMovesPanelV13(c){
+    const moves=growthMovesV13(c);
+    return '<section class="tch-panel tch-focus"><div class="tch-sectionhead"><h2>Priority moves</h2><span class="tch-mini">Star growth</span></div>'+
+      moves.map(function(r,i){return '<button data-act="goto" data-target="'+esc(r.target)+'" class="tch-focus-item">'+
+        '<span class="tch-step">'+(i+1)+'</span><span><strong>'+esc(r.title)+'</strong><small>'+esc(r.detail)+'</small></span><b>›</b></button>';}).join("")+
+      '</section>';
+  }
+  function homeV13(c){
+    if(!c||!c.profile)return introV2();
+    const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
+    const due=Object.values(aggregates(c).balance).reduce(function(n,b){return n+b.owed;},0);
+    return '<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
+      '<span class="tch-mini">'+star+' ★ / 10</span></div><div class="tch-home-number">'+star+' ★</div></section>'+
+      '<div class="tch-homekpis">'+
+        metricV2("Efficiency",c.profile.efficiency==null?"?":c.profile.efficiency+"%","Daily report","","staff")+
+        metricV2("Popularity",c.profile.popularity==null?"?":c.profile.popularity+"%","Daily report","","growth-pricing")+
+        metricV2("Trains available",train.available===null?"?":train.available,"Paid owed "+due,"","training-queue")+
+        metricV2("Estimated P/L",a.known?money(a.profit):"Unknown","Excludes unreported costs","","growth-accounts")+
+      '</div>'+growthMovesPanelV13(c)+
+      '<div class="tch-quick"><button data-act="goto" data-target="training-queue">Training queue ›</button>'+
+      '<button data-act="goto" data-target="staff-wages">Wage analysis ›</button>'+
+      '<button data-act="goto" data-target="growth-review">Weekly review ›</button></div>'+
+      '<p class="tch-hint">Comparisons are advisory, and every data refresh is read-only.</p>';
+  }
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
 
@@ -1077,6 +1310,7 @@
   style.textContent += "\n#tch-open{background:#1268a5;box-shadow:0 6px 25px #051326bb}\n#tch-root{background:#0c1626;color:#edf7ff}\n#tch-root .tch-top,#tch-root .tch-bottom{background:#12243a;border-color:#385979}\n#tch-root .tch-hero{background:linear-gradient(130deg,#133f64,#192945 60%,#123754);border-color:#4383ae}\n#tch-root .tch-panel,#tch-root .tch-person,#tch-root .tch-metric{background:#1a2e46;border-color:#3b6182}\n#tch-root .tch-eyebrow,#tch-root .tch-kicker{color:#6cd8ff}\n#tch-root button.primary,#tch-root .tch-switch button.active{background:#1468ad;border-color:#67c7ff}\n#tch-root .tch-bottom{grid-template-columns:repeat(5,minmax(0,1fr))}\n#tch-root .tch-bottom button{font-size:10px;min-width:0;padding:3px 1px}\n#tch-root .tch-radar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:11px 0}\n#tch-root .tch-radar div{background:#24415d;border:1px solid #42698c;border-radius:10px;padding:10px}\n#tch-root .tch-radar small,#tch-root .tch-radar strong{display:block}\n#tch-root .tch-radar small{font-size:10px;color:#c6d8e9}\n#tch-root .tch-radar strong{font-size:22px}\n#tch-root .tch-stockrow{background:#223950;border:1px solid #405f7c;border-radius:12px;padding:13px;margin:11px 0}\n#tch-root .tch-stockrow p{font-size:12px}\n#tch-root .tch-stockrow>strong{color:#83ddff}\n#tch-root .tch-clickable:focus-visible,#tch-root button:focus-visible{outline:3px solid #60cdff}\n#tch-root.theme-light .tch-stockrow,#tch-root.theme-light .tch-radar div{background:#e9f3fc;border-color:#abc5db;color:#162a40}\n#tch-root.theme-light .tch-stockrow>strong{color:#176696}\n";
   style.textContent += "\n#tch-open{display:flex;align-items:center;gap:8px;white-space:nowrap}\n#tch-open .tch-launcherbadge{display:inline-flex;align-items:center;gap:2px;background:#f04458;color:white;border-radius:999px;padding:2px 7px;border:2px solid #0d1b2e;min-width:28px;height:25px;justify-content:center;font-size:11px;font-weight:900}\n#tch-root .tch-starplan .tch-insight{width:100%;text-align:left}\n#tch-root .tch-wagerow{background:#213952;border:1px solid #41617f;border-radius:12px;padding:12px;margin:10px 0}\n#tch-root .tch-wagegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}\n#tch-root .tch-wagegrid span{font-size:11px;color:#b9d2e7;background:#273f59;padding:8px;border-radius:8px}\n#tch-root .tch-wagegrid b{display:block;font-size:16px;color:#f0faff}\n#tch-root .tch-wage-target{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid #496987;padding-top:10px;font-size:12px}\n#tch-root .tch-weekgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;text-align:center;margin:12px 0}\n#tch-root .tch-weekgrid>*{background:#25415c;border-radius:6px;padding:8px 3px;min-width:0}\n#tch-root.theme-light .tch-wagerow{background:#e9f3fc;border-color:#abc5db;color:#142e47}\n#tch-root.theme-light .tch-wagegrid span{background:#dcebf7;color:#153a58}\n#tch-root.theme-light .tch-wagegrid b{color:#152a42}\n";
   style.textContent += "\n#tch-root .tch-wage-risk{border:1px solid #3b6684;background:#213a54;border-radius:12px;margin:10px 0;padding:12px;overflow-wrap:anywhere}\n#tch-root .tch-wage-risk>strong{font-size:14px}\n#tch-root .tch-wage-risk small{display:block;font-size:11px;color:#accfe8}\n#tch-root .tch-wage-risk p{margin:5px 0}\n#tch-root .tch-starplan .tch-insight{text-align:left}\n#tch-root .tch-weekgrid{overflow-x:auto;min-width:0}\n#tch-root.theme-light .tch-wage-risk{background:#e9f3fc;border-color:#9dbbd3;color:#16354e}\n#tch-root.theme-light .tch-wage-risk small{color:#375d78}\n";
+  style.textContent += "\n#tch-root .tch-top{min-height:54px;padding:8px 10px}\n#tch-root .tch-headline strong{font-size:17px}\n#tch-root .tch-eyebrow{font-size:9px;line-height:1.1}\n#tch-root .tch-timestamp{font-size:10px}\n#tch-root .tch-iconbtn{min-width:34px;padding:5px;font-size:18px;border-radius:9px}\n#tch-root .tch-main{padding:9px 10px calc(66px + env(safe-area-inset-bottom));max-width:680px}\n#tch-root .tch-bottom{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));padding:3px 5px calc(3px + env(safe-area-inset-bottom));gap:3px;box-shadow:0 -3px 14px #030c1c77}\n#tch-root .tch-bottom button{min-height:38px;height:38px;display:flex;flex-direction:row;justify-content:center;align-items:center;gap:4px;padding:3px 1px;font-size:10px;border-radius:8px;line-height:1.1}\n#tch-root .tch-navicon{font-size:16px;height:auto;line-height:1}\n#tch-root .tch-bottom button.active{background:#1d5d87;border:1px solid #65caff}\n#tch-root .tch-panel{margin:8px 0;padding:12px;border-radius:12px}\n#tch-root h2{font-size:16px;margin:8px 0 5px}\n#tch-root .tch-section{margin:9px 0}\n#tch-root .tch-homehead{padding:13px 15px;background:linear-gradient(130deg,#173e66,#172b45);border:1px solid #3b85ae;border-radius:13px;display:flex;align-items:center;justify-content:space-between}\n#tch-root .tch-homehead h2{font-size:18px;margin:2px 0}\n#tch-root .tch-homehead small{font-size:10px;color:#9fd9f5}\n#tch-root .tch-home-number{font-size:22px;font-weight:900;color:#74d6ff}\n#tch-root .tch-homekpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0}\n#tch-root .tch-homekpis .tch-metric{padding:10px;min-width:0;min-height:72px}\n#tch-root .tch-homekpis .tch-metric strong{font-size:20px}\n#tch-root .tch-focus-item{display:flex;width:100%;align-items:center;text-align:left;gap:10px;padding:10px 7px;border:0;border-bottom:1px solid #395570;background:transparent;color:inherit}\n#tch-root .tch-focus-item span:nth-child(2){flex:1;min-width:0}\n#tch-root .tch-focus-item strong,#tch-root .tch-focus-item small{display:block}\n#tch-root .tch-focus-item small{font-size:11px;font-weight:400;color:#b7d1e8;margin-top:3px}\n#tch-root .tch-step{display:grid;place-items:center;width:25px;height:25px;border-radius:7px;background:#185d89;color:white;font-weight:900}\n#tch-root .tch-quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 0}\n#tch-root .tch-quick button{padding:9px 4px;font-size:11px;border-radius:9px}\n#tch-root .tch-dense-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;border-bottom:1px solid #33536d;padding:11px 0}\n#tch-root .tch-dense-row small{display:block;color:#b8d3e9;font-size:11px}\n#tch-root .tch-dense-row>div:nth-child(2){text-align:right}\n#tch-root .tch-dense-detail{grid-column:1/-1;display:flex;justify-content:space-between;font-size:11px;color:#75d4fa;gap:8px}\n#tch-root .tch-dense-detail em{font-style:normal;color:#f6c36e}\n#tch-root .tch-advanced{margin:11px 0}\n#tch-root .tch-advanced summary{padding:12px;background:#24435d;border-radius:9px;cursor:pointer;font-weight:700}\n#tch-root.theme-light .tch-homehead{background:#e8f4fc;color:#14344c}\n#tch-root.theme-light .tch-focus-item small,#tch-root.theme-light .tch-dense-row small{color:#36556e}\n";
   style.textContent+="#tch-open{touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab}#tch-open:active{cursor:grabbing}#tch-open[hidden],#tch-root[hidden]{display:none!important}";
 
   style.textContent += "#tch-root{font-family:system-ui,-apple-system,Arial,sans-serif;background:#101923;color:#f4f7fb}#tch-root .tch-main{padding:16px 13px 118px;max-width:760px;margin:0 auto}#tch-root .tch-top{height:auto;min-height:76px;padding:12px 15px;gap:8px}#tch-root .tch-headline{flex:1;min-width:0}#tch-root .tch-headline strong{display:block;font-size:20px;line-height:1.2}#tch-root .tch-eyebrow{letter-spacing:.09em;font-size:10px;color:#6af0d7;font-weight:700}#tch-root .tch-timestamp{font-size:11px;color:#c0d5e5;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}#tch-root .tch-iconbtn{min-width:40px;padding:7px;font-size:21px;border-radius:12px}#tch-root .tch-bottom{position:fixed;bottom:0;left:0;right:0;background:#152639;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));z-index:3;border-top:1px solid #4b6a85;padding:7px 5px calc(env(safe-area-inset-bottom) + 8px);box-shadow:0 -9px 25px #050c1599}#tch-root .tch-bottom button{border:0;display:flex;flex-direction:column;gap:2px;align-items:center;background:transparent;color:#c7d7e5;border-radius:10px;min-height:56px;padding:3px;font-size:11px}#tch-root .tch-bottom button.active{background:#284d57;color:#f0fffc}#tch-root .tch-navicon{font-size:23px;height:27px}#tch-root .tch-hero{background:linear-gradient(128deg,#153d4b,#1b314e 65%,#172a3e);border:1px solid #446f7d;border-radius:17px;padding:18px;margin-bottom:13px}#tch-root .tch-kicker{color:#72f1da;font-size:11px;font-weight:800;letter-spacing:.1em}#tch-root .tch-hero-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 15px}#tch-root .tch-hero-line strong{font-size:22px;line-height:1.2}#tch-root .tch-rating{background:#16736f;border-radius:9px;padding:6px 10px;font-weight:800;white-space:nowrap}#tch-root .tch-progress{height:8px;background:#355368;border-radius:50px;overflow:hidden;margin:0 0 12px}#tch-root .tch-progress b{height:100%;display:block;background:#37dfc1}#tch-root .tch-hero small{color:#cbdce8}#tch-root .tch-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}#tch-root .tch-metric{background:#263b51;border:1px solid #496882;border-radius:13px;padding:14px;min-width:0;display:flex;flex-direction:column;gap:7px}#tch-root .tch-metric>strong{font-size:22px;letter-spacing:-.02em;overflow-wrap:anywhere}#tch-root .tch-metric>small{font-size:11px;color:#c5d7e6}#tch-root .tch-metric.tch-danger{border-color:#ff7979;background:#49353f}#tch-root .tch-metric.tch-positive{border-color:#468b86}#tch-root .tch-panel{background:#203247;border:1px solid #47627b;border-radius:14px;padding:15px;margin:12px 0}#tch-root .tch-panel h2,#tch-root .tch-section h2{font-size:18px;margin:0 0 8px}#tch-root .tch-section{margin:12px 2px 18px}#tch-root .tch-section p{margin:4px 0 12px}#tch-root .tch-sectionhead,#tch-root .tch-personhead{display:flex;align-items:center;justify-content:space-between;gap:9px}#tch-root .tch-mini{font-size:11px;letter-spacing:.02em;color:#c0dbe8;background:#325069;border-radius:7px;padding:5px 8px}#tch-root .tch-priority{display:flex;align-items:center;gap:12px;margin-top:9px;border:1px solid #536980;background:#2b4058;padding:12px;border-radius:11px}#tch-root .tch-priority>span{height:30px;min-width:30px;border-radius:9px;display:grid;place-items:center;background:#385e6a;color:#b5ffe6;font-weight:800}#tch-root .tch-priority.warning>span{background:#846735;color:#fff}#tch-root .tch-priority.danger>span{background:#9c4755;color:#fff}#tch-root .tch-priority>div{flex:1;min-width:0}#tch-root .tch-priority strong,#tch-root .tch-priority small{display:block}#tch-root .tch-priority small{font-size:11px;color:#cad9e7}#tch-root .tch-priority button{font-size:12px;min-height:36px}#tch-root .tch-actiongrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .tch-actiongrid button{text-align:left;min-height:72px;padding:11px;background:#304b64}#tch-root .tch-actiongrid button span{display:block;font-size:11px;color:#c1d6e6}#tch-root .tch-actionrow{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:10px 0}#tch-root .tch-switch{display:flex;gap:5px;padding:4px;background:#1f334a;border:1px solid #405d75;border-radius:12px;overflow-x:auto;scrollbar-width:none}#tch-root .tch-switch button{flex:1;white-space:nowrap;min-height:38px;padding:8px;border:none;background:transparent;font-size:12px}#tch-root .tch-switch button.active{background:#0b8079;color:#fff}#tch-root .tch-person,#tch-root .tch-review{background:#263b50;border:1px solid #476983;border-radius:13px;padding:13px;margin:10px 0}#tch-root .tch-personhead{justify-content:flex-start}#tch-root .tch-personhead>div:nth-child(2){flex:1}#tch-root .tch-personhead strong,#tch-root .tch-personhead small{display:block}#tch-root .tch-personhead small{font-size:12px;color:#c6d8e8}#tch-root .tch-avatar{width:39px;height:39px;border-radius:12px;background:#116963;display:grid;place-items:center;font-weight:800;font-size:17px}#tch-root .tch-eff{background:#344b64;border-radius:8px;padding:6px;font-size:17px;font-weight:800}#tch-root .tch-eff small{font-size:9px;color:#d5e7f2}#tch-root .tch-recommend{display:flex;align-items:center;gap:9px;margin:12px 0;padding:8px;background:#1d3348;border-radius:9px;flex-wrap:wrap}#tch-root .tch-recommend span{font-size:11px;color:#d5e2ec}#tch-root .tch-recommend strong{font-size:14px}#tch-root .tch-recommend.highlight strong{color:#5ce8ce}#tch-root .tch-recommend small{color:#c6d9e6}#tch-root .tch-statstrip{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0;color:#c5d7e5;font-size:11px}#tch-root .tch-statstrip span{padding:5px 7px;background:#304962;border-radius:7px}#tch-root .tch-statstrip b{color:#fff}#tch-root .tch-whatif{display:flex;align-items:center;justify-content:space-between;gap:12px}#tch-root .tch-whatif select{flex:1;max-width:220px}#tch-root .tch-hint{font-size:12px;color:#c4d7e6;margin:12px 0}#tch-root .tch-queueitem,#tch-root .tch-record{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 1px;border-bottom:1px solid #456077}#tch-root .tch-queueitem>div:first-child,#tch-root .tch-record>div:first-child{flex:1}#tch-root .tch-queueitem strong,#tch-root .tch-queueitem small,#tch-root .tch-record strong,#tch-root .tch-record small{display:block}#tch-root .tch-queueitem small,#tch-root .tch-record small{font-size:11px;color:#cbd9e6}#tch-root .tch-queueitem b{font-size:22px;color:#8af1d8}#tch-root .tch-queueitem>div:last-child{text-align:right}#tch-root .tch-record>div:last-child{text-align:right}#tch-root .tch-record button{display:block;margin-left:auto;min-height:34px}#tch-root .tch-fieldrow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}#tch-root .tch-fieldrow>select,#tch-root .tch-fieldrow>input,#tch-root .tch-fieldrow>label{flex:1 1 110px;min-width:0}#tch-root .tch-fieldrow>label input{display:block;width:100%;margin-top:5px}#tch-root .tch-empty{padding:20px;text-align:center;border-radius:9px;background:#2b445b;color:#d6e4ed}#tch-root .tch-minikpis{display:flex;gap:10px;margin:13px 0}#tch-root .tch-minikpis span{background:#37536b;padding:7px 11px;border-radius:7px}#tch-root .tch-highlight-number{font-size:30px;font-weight:800}#tch-root .tch-welcome{padding:24px}#tch-root .tch-welcome h2{font-size:24px}#tch-root.theme-light{background:#f3f6f9;color:#182d43;color-scheme:light}#tch-root.theme-light .tch-panel,#tch-root.theme-light .tch-person,#tch-root.theme-light .tch-review,#tch-root.theme-light .tch-metric{background:#fff;color:#1d3246;border-color:#cbd9e5}#tch-root.theme-light .tch-top,#tch-root.theme-light .tch-bottom{background:#e7eff6;color:#193449}#tch-root.theme-light .tch-bottom button{color:#354c5e}#tch-root.theme-light .tch-bottom button.active{background:#c9eae4;color:#095f58}#tch-root.theme-light .tch-section p,#tch-root.theme-light .tch-panel p,#tch-root.theme-light .muted,#tch-root.theme-light small,#tch-root.theme-light strong,#tch-root.theme-light h2,#tch-root.theme-light .tch-timestamp{color:#263f51}#tch-root.theme-light input,#tch-root.theme-light select,#tch-root.theme-light textarea{background:#fff;color:#12263a;border-color:#7995aa}#tch-root.theme-light .tch-switch{background:#e1ebf3}#tch-root.theme-light .tch-switch button{color:#233b4b}#tch-root.theme-light .tch-switch button.active{background:#167d78;color:#fff}#tch-root.theme-light .tch-priority,#tch-root.theme-light .tch-recommend,#tch-root.theme-light .tch-statstrip span,#tch-root.theme-light .tch-queueitem{background:#eef3f7;color:#193244}#tch-root.theme-light .tch-hero{background:linear-gradient(135deg,#e1f6ef,#dceaf7);color:#193449}#tch-root.theme-light .tch-hero-line strong,#tch-root.theme-light .tch-hero small{color:#163647}#tch-root.theme-light .tch-eyebrow,#tch-root.theme-light .tch-kicker{color:#046b60}#tch-root.theme-light .tch-avatar{background:#a5ded2;color:#13463d}";
@@ -1368,7 +1602,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.2.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.3.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -1449,7 +1683,8 @@
       {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
       {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
-    if(staffView==="wages")return '<div class="tch-section"><h2>Staff · Wage helper</h2>'+buttonsV2("Staff view",options)+'</div>'+wagesPanelV11(c)+wageRiskPanelV12(c);
+    if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+compactWagePanelV13(c)+
+      '<details class="tch-advanced"><summary>Detailed HR values, wage bands & scenarios</summary>'+wagesPanelV11(c)+wageRiskPanelV12(c)+'</details>';
     if(staffView==="simulator")return '<div class="tch-section"><h2>Staff optimiser</h2><p>Explore alternative staffing plans before making decisions.</p>'+buttonsV2("Staff view",options)+'</div>'+scenarioV2(c);
     const roles=roleList(c),sc=scenarioModel(c),suggested=suggestions(c);
     const suggestionById={};
@@ -1504,7 +1739,7 @@
     let body="";
     if(trainingView==="queue"){
       body='<section class="tch-panel"><div class="tch-sectionhead"><h2>Oldest commitments first</h2><span class="tch-mini">'+due.length+' waiting</span></div>'+
-        '<p>Ineligible employees are temporarily skipped without losing their original priority. Training credits reduce future purchases.</p>'+
+        '<p>Paid purchases include directly confirmed receipts and labelled, inferred exact-price transfers. Ineligible employees are skipped until their first 72 hours pass. Training credits offset later purchases.</p>'+
         (due.length?due.map(function(e){
           const id=e[0],p=c.staff.find(function(x){return String(x.id)===id;}),locked=p&&num(p.days_in_company)<3;
           return '<button type="button" data-act="employee-detail" data-id="'+esc(id)+'" class="tch-queueitem tch-taprow"><div><strong>'+esc(people[id]||"#"+id)+'</strong><small>'+esc(e[1].oldest?day(e[1].oldest):"Historical opening balance")+(locked?" · Not yet eligible":"")+'</small></div><div><b>'+e[1].owed+'</b><small>owed</small></div><span class="tch-tilearrow">↗</span></button>';
@@ -1513,7 +1748,12 @@
         '<div class="tch-fieldrow"><select id="tch-train-person">'+opts+'</select><input aria-label="Number of trains" id="tch-train-units" type="number" min="1" max="20" value="1">'+
         '<button class="primary" data-act="add-training">Record</button></div></section>';
     } else if(trainingView==="payments"){
-      body='<section class="tch-panel"><h2>Import money received</h2><p>Imports run only when you tap. Sender and amount are matched automatically where possible. Confirm which transfers were actually for training before any trains are credited.</p>'+
+      body='<section class="tch-panel"><h2>Money receipts & purchased trains</h2>'+
+         '<p>On opening, incoming logs are checked. New, exact-price transfers from identifiable employees are locally credited as likely training purchases. Review Records and void any mistaken credit. Other transfers still require approval.</p>'+
+         '<div class="tch-actionrow"><button data-act="toggle-auto-package" class="'+(c.autoPackageMode!==false?"primary":"")+'">Auto-credit new packages: '+(c.autoPackageMode!==false?"ON":"OFF")+'</button>'+
+         '<button data-act="backfill-packages">Review & credit old matches</button></div>'+
+         (c.moneySyncError?'<p class="tch-hint">Recent money-log sync could not complete: '+esc(c.moneySyncError)+'</p>':'')+
+         (c.newsSyncError?'<p class="tch-hint">Recent training-history sync could not complete: '+esc(c.newsSyncError)+'</p>':'')+
         (c.logHistoryWarning?'<p class="tch-hint">'+esc(c.logHistoryWarning)+'</p>':"")+
         '<div class="tch-actionrow"><button class="primary" data-act="rescan-logs">Check recent</button><button data-act="import-logs">Load older</button></div>'+
         '<p class="tch-hint">If Torn rejects money logs, set a custom API key for this script in Torn PDA with user/log permission. Your ordinary PDA key can still load company figures.</p></section>'+
@@ -1546,13 +1786,13 @@
         }).join(""):'<div class="tch-empty">Every imported record with a recognised recipient has been matched.</div>')+
         '</section>';
     } else {
-      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,unverified:p.source==="log-auto"&&!p.voided};})
+      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,inferred:p.assumed,unverified:p.source==="log-auto"&&!p.voided};})
         .concat(c.training.map(function(t){return {id:t.id,ts:t.ts,type:"Training",person:t.playerId,units:t.units,money:null,voided:t.voided};}))
         .sort(function(a,b){return b.ts-a.ts;});
-      body='<section class="tch-panel"><h2>Audit records</h2><p>Previous corrections remain traceable. Re-imported Torn records cannot increase balances twice.</p>'+
+      body='<section class="tch-panel"><h2>Audit records</h2><p>Automatic package classifications are inferred, not guaranteed. Void a mistaken credit here. Duplicate Torn IDs cannot increase balances twice.</p>'+
         '<button data-act="repair-duplicates">Check duplicate imports</button>'+
         logs.slice(0,70).map(function(e){
-          return '<div class="tch-record"><div><strong>'+esc(e.type)+(e.voided?" · VOID":e.unverified?" · NOT VERIFIED":"")+'</strong><small>'+esc(people[e.person]||"#"+e.person)+' · '+esc(day(e.ts))+'</small></div>'+
+          return '<div class="tch-record"><div><strong>'+esc(e.type)+(e.voided?" · VOID":e.unverified?" · NOT VERIFIED":e.inferred?" · INFERRED":"")+'</strong><small>'+esc(people[e.person]||"#"+e.person)+' · '+esc(day(e.ts))+'</small></div>'+
             '<div><b>'+esc(e.type==="Payment"?money(e.money):e.units+" trains")+'</b>'+
             (!e.voided?'<button data-act="void-entry" data-id="'+esc(e.id)+'">Void</button>':"")+'</div></div>';
         }).join("")+'</section>';
@@ -1610,7 +1850,7 @@
       {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"},
       {action:"growth-view",id:"review",name:"Sunday review",active:growthView==="review"}]);
     return '<div class="tch-section"><h2>10-star growth</h2><p>Revenue improvement within your daily loss limit of '+esc(money(c.lossLimit))+'. Estimates are labelled.</p>'+switches+'</div>'+
-      (growthView==="performance"?starGrowthPanelV11(c)+'<div class="tch-metrics">'+
+      (growthView==="performance"?growthMovesPanelV13(c)+'<div class="tch-metrics">'+
          metricV2("Current rating",c.profile.rating+" / 10","Competitive star progression","","growth-performance")+
          metricV2("Daily revenue",money(a.revenue),"Reported by Torn","","growth-accounts")+
          metricV2("Wages",money(a.wages),"Current daily staff wages","","growth-accounts")+
@@ -1644,7 +1884,7 @@
       const c=current();
       let body="";
       if(detailView)body=detailsV2(c);
-      else if(tab==="overview")body=todayV2(c);
+      else if(tab==="overview")body=homeV13(c);
       else if(tab==="employees")body=staffV2(c);
       else if(tab==="training")body=trainingV2(c);
       else if(tab==="growth")body=growthV2(c);
@@ -1686,6 +1926,7 @@
       companyId=String(p.id);
       const c=current();
       if(c && c.payments)migrateAutoPaymentClaims(c);
+      if(c.autoCreditSince===undefined)c.autoCreditSince=stamp(); // Never auto-reclassify old transfers.
       const e=await read("company/employees");
       let st=null;
       try {st=await read("company/stock");c.stockFetchError=null;}catch(e){c.stockFetchError=String(e.message||e);}
@@ -1718,6 +1959,16 @@
           stats:{manual_labor:e.stats&&e.stats.manual_labor,intelligence:e.stats&&e.stats.intelligence,endurance:e.stats&&e.stats.endurance}
         }];}))});
       if (c.snapshots.length>700) c.snapshots=c.snapshots.slice(-700);
+      let newsResult=null,moneyResult=null;
+      try {newsResult=await syncRecentNewsV13(c);c.newsSyncError=null;}
+      catch(err){c.newsSyncError=String(err&&err.message||err);}
+      try {moneyResult=await syncRecentMoneyV13(c);c.moneySyncError=null;}
+      catch(err){c.moneySyncError=String(err&&err.message||err);}
+      c.lastAutoSync={news:newsResult,money:moneyResult,observedAt:c.lastRefresh};
+      message="Company and roster updated."+
+        (newsResult?" Matched "+newsResult.matched+" new training entries.":" Training history unavailable.")+
+        (moneyResult?" Auto-credited "+moneyResult.trains+" trains from "+moneyResult.credited+" new receipt(s).":" Payment logs unavailable.");
+      severity=(!newsResult||!moneyResult)?"warn":"good";
       await persist();
     });
   }
@@ -1785,6 +2036,7 @@
       }
       const page=newest?{next:null,warning:null}:importPageDecision(response,"user/log",c.logTypes,list);
       let added=0,updated=0,minTs=Infinity;
+      const newIds=new Set();
       list.forEach(function(log){
         if(!log || !log.id || !Number.isFinite(Number(log.timestamp)))return;
         const entryId=String(log.id),ts=Number(log.timestamp);
@@ -1798,7 +2050,7 @@
           return;
         }
         c.logs.push({id:entryId,timestamp:ts,title:String(log.details&&log.details.title||"Incoming money").slice(0,160),suggestion:suggestion});
-        added++;
+        newIds.add(entryId);added++;
       });
       if(!newest){
         if(added===0 && list.length>=100)c.logHistoryWarning="This full money-log page contained no new IDs. The API continuation may be repeating; history has NOT advanced.";
@@ -1806,10 +2058,11 @@
         else {c.logNext=page.next;c.logHistoryWarning=null;if(!page.next && Number.isFinite(minTs))c.logCursor=minTs-1;}
       }
       const duplicates=repairImportDuplicates(c);
+      const credits=autoCreditPurchasesV13(c,newIds);
       const classified=applyMatchedPayments(c);
       await persist();
-      message="Imported "+added+" incoming transfers; "+classified.suggested+" have a suggested employee and train count, "+
-        classified.review+" need manual details. Confirm purchases in Training → Payments. Updated "+updated+" older entries."+(c.logHistoryWarning && !newest?" "+c.logHistoryWarning:"");
+      message="Imported "+added+" incoming transfers; auto-credited "+credits.trains+" trains from "+credits.credited+" exact-price new receipt(s). "+classified.suggested+" have suggestions, "+
+        classified.review+" require review. Updated "+updated+" older entries."+(c.logHistoryWarning && !newest?" "+c.logHistoryWarning:"");
       if(c.logHistoryWarning && !newest)severity="bad";
     });
   }
@@ -1819,9 +2072,13 @@
     return work(async function(){
       const c=current();
       if(!c||!c.profile)throw Error("Refresh company first.");
-      const peers=peerModelV11(c).rows.filter(function(x){return x.rating===10&&x.id!==Number(c.profile.id);})
-        .sort(function(a,b){return b.weekly-a.weekly;}).slice(0,5);
-      if(!peers.length)throw Error("Scan same-type public competitors first. No ten-star companies in saved results.");
+      const ownRating=Number(c.profile.rating)||0;
+      const candidates=peerModelV11(c).rows.filter(function(x){return x.rating>=ownRating&&x.id!==Number(c.profile.id);});
+      const next=candidates.filter(function(x){return x.rating===Math.min(10,ownRating+1);});
+      const same=candidates.filter(function(x){return x.rating===ownRating;});
+      const leaders=candidates.filter(function(x){return x.rating===10;});
+      const peers=(next.length?next:same.length?same:leaders).sort(function(a,b){return b.weekly-a.weekly;}).slice(0,5);
+      if(!peers.length)throw Error("Scan public rivals first. No same-star, next-star or ten-star company layouts found.");
       const rows=[],errors=[];
       for(const p of peers){
         try {
@@ -1837,7 +2094,7 @@
       if(!rows.length)throw Error("Torn provided no usable public role layouts. Public employee permissions may differ.");
       c.rivalTeams={rows:rows,observedAt:new Date().toISOString(),failures:errors.length};
       await persist();
-      message="Read "+rows.length+" ten-star role layouts; "+errors.length+" unavailable. Counts only; no private employee data saved.";
+      message="Read "+rows.length+" comparable rival role layouts; "+errors.length+" unavailable. Counts only; no private employee data saved.";
     });
   }
   async function scanPeersV11(){
@@ -1920,6 +2177,7 @@
     if(launcherDragged){launcherDragged=false;e.preventDefault();return;}
     if(!isCompanyPage()) return;
     open=true;message="";draw();
+    refresh(); // Opening explicitly triggers a fresh read; no background polling.
   });
   window.addEventListener("resize",syncCompanyVisibility);
   window.addEventListener("popstate",syncCompanyVisibility);
@@ -1949,6 +2207,20 @@
     if (act==="more-payments"){paymentViewLimit+=35;draw();return;}
     if (act==="growth-view"){growthView=el.dataset.view;draw();return;}
     if (act==="scan-peers")return scanPeersV11();
+    if (act==="backfill-packages"){
+      if(!c)return notify("Refresh first.","bad");
+      if(!window.confirm("Classify historic exact-price employee transfers as training purchases? Entries already in your payment ledger or manually voided are skipped. Review the audit Records afterwards."))return;
+      const out=backfillTrainingReceiptsV13(c);
+      await work(persist);
+      notify("Backfilled "+out.credited+" older inferred purchase(s); skipped "+out.skipped+" potential duplicates. All are reversible in Records.","good");
+      return;
+    }
+    if (act==="toggle-auto-package"){
+      if(!c)return notify("Refresh company data first.","bad");
+      c.autoPackageMode=c.autoPackageMode===false?true:false;
+      if(c.autoCreditSince===undefined)c.autoCreditSince=stamp();
+      return work(persist);
+    }
     if (act==="scan-rival-rosters")return scanRivalRostersV12();
     if (act==="mark-change"){
       const select=root.querySelector("#tch-change-kind");

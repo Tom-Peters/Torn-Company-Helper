@@ -53,15 +53,15 @@ test("Opening an existing company renders metrics, decisions, and navigation",()
  const t=launchFixture();t.model.seed(sample());
  t.opener.listeners.click({preventDefault(){}});
  assert.match(t.root.innerHTML,/Example Fitness/);
- assert.match(t.root.innerHTML,/Your next decisions/);
- assert.match(t.root.innerHTML,/daily P\/L/i);
+ assert.match(t.root.innerHTML,/Priority moves/);
+ assert.match(t.root.innerHTML,/Estimated P\/L/i);
  assert.doesNotMatch(t.root.innerHTML,/Dashboard could not render/);
  assert.equal(t.requests.length,0);
 });
 test("Metric drilldown and returning to Today render through actual draw",()=>{
  const t=launchFixture();t.model.seed(sample());t.opener.listeners.click({preventDefault(){}});
  t.model.view("rating");assert.match(t.root.innerHTML,/Road to ten stars/);
- t.model.tab("overview");assert.match(t.root.innerHTML,/Your next decisions/);
+ t.model.tab("overview");assert.match(t.root.innerHTML,/Priority moves/);
  assert.equal(t.requests.length,0);
 });
 test("Malformed stored data shows a recovery panel, never a blank screen",()=>{
@@ -82,6 +82,6 @@ test("Recovery UI can close and leave the launcher available",async()=>{
 });
 test("Non-navigation metric markup has a matching button closure",()=>{
  assert.match(script,/data-act="metric-detail"[\s\S]{0,160}\+inner\+'<\/button>'/);
- assert.match(script,/\/\/ @version\s+1\.2\.0/);
+ assert.match(script,/\/\/ @version\s+1\.3\.0/);
  assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });

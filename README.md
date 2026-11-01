@@ -2,10 +2,25 @@
 
 **Author:** IamEEKY  
 **Platform:** Torn PDA (Android)  
-**Current status:** v1.2.0 launcher repair, star growth and team analytics  
+**Current status:** v1.3.0 mobile sync, purchased trains and practical staff decisions  
 **Goal:** A strictly read-only, visual Torn company decision-support dashboard.
 
 > This is an independent community userscript. It is not affiliated with Torn.
+
+## v1.3.0: compact mobile UI, open-to-sync and purchased trains
+
+**Same Torn PDA userscript URL and private, per-company training/payment ledger.** No POSTs to Torn, gameplay automation, background timers or servers.
+
+- **Mobile redesign:** 38 px navigation tabs (plus device safe area), reduced header, condensed Today metrics and four specific priority moves. Long HR details are tucked under a collapsible section.
+- **Refresh on opening:** tapping the existing company launcher runs the company profile, roster, stock and applications reads and then best-effort recent company training news and inbound director money-log reads. Data is shown immediately from the last local cache; the header shows sync status and failures. There is no idle background polling.
+- **Auto assign new purchased trains:** when an incoming receipt identifies an active employee and matches an exact accepted package size ($250k per train or $1m per five), a new payment-log entry is *locally* credited to their training ledger and placed in the oldest-first queue. These receipts are explicitly tagged **INFERRED** because cash transfers do not prove purpose. Nonstandard payments remain for manual review; individual mistakes may be voided in Records.
+- **No silent historical reclassification:** a date cutoff is saved the first time the new version refreshes. Earlier payment suggestions can be processed only through **Training → Payments → Review & credit old matches**, with an explicit confirmation; obvious existing same-sender/same-value manual receipts and prior voids are skipped. The on/off button controls future exact-package credits.
+- **Automatic training news:** recent company/news training entries are imported and matched on each open, without double-counting Torn event IDs. Older records can still be imported manually with existing cursors.
+- **Support role wages:** employees with zero or unavailable direct HR value are no longer left blank. Their conditional estimated salary band uses same-position colleagues' daily wage per effectiveness point, or the team median if there are no same-position peers; this is a workforce cost proxy, not fictional direct revenue or a market salary benchmark.
+- **Actionable star growth:** shows weaker individual effectiveness, train-bank risk, environment, popularity and a comparable next-star income gap where observed. Assumptions and data quality are labelled.
+- **Competitor roster comparisons:** first use next-star or same-star public companies, falling back to 10-stars only where no comparable rows exist. Role counts are scaled to *your* staff size rather than copied from larger businesses.
+
+**Key permissions:** Torn PDA's supplied API key can generally read company reports, but money logs may require a Custom key with user/log rights. Failures to retrieve one optional data source do not prevent profile, roster or dashboard refresh.
 
 ## v1.2.0: launcher reliability and director intelligence
 
