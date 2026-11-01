@@ -1,3 +1,9 @@
+## v1.14.0 — full Company Helper access from StaxxHub anywhere in Torn
+
+- **Company panel available across Torn:** StaxxHub can now open the full director dashboard from any Torn page. Only the standalone company launcher is limited to the company page. Navigating away no longer closes an already-open helper.
+- **Fixes off-page refresh:** The main company tool and its read-only API code initialise on other Torn pages, so hub refresh requests no longer target an uninitialised function. Existing 15-minute rate limits and foreground checks remain in place.
+- **Gameplay actions stay manual:** The script does not set wages, assign training, order stock or move money; it only reads and recommends.
+
 # Torn Company Helper
 
 ## v1.13.0 — foreground sync across Torn pages
