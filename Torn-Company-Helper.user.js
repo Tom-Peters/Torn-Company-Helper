@@ -1847,12 +1847,18 @@
       changes.push({date:points[i][0],gapDays:(Date.parse(points[i][0])-Date.parse(points[i-1][0]))/86400000,
         delta:points[i][1]-points[i-1][1]});
     const current=Number(c.profile.rating)||0;
-    let observed='No recorded star-ups yet',eta='Not estimable';
+    let observed='No recorded star-ups yet',eta='Unknown · save more Sunday snapshots';
     if(changes.length){observed=changes.length+' observed increase(s) across '+points.length+' dated snapshots';}
-    // Hidden ranking inputs mean no calendar ETA is defensible from this alone.
+    const sundays=points.filter(x=>new Date(x[0]+'T12:00:00Z').getUTCDay()===0);
+    const firstSunday=sundays[0],lastSunday=sundays[sundays.length-1];
+    const totalGrowth=firstSunday&&lastSunday?lastSunday[1]-firstSunday[1]:0;
+    const elapsedWeeks=firstSunday&&lastSunday?(Date.parse(lastSunday[0])-Date.parse(firstSunday[0]))/604800000:0;
+    if(sundays.length>=4&&totalGrowth>=2&&elapsedWeeks>=3&&current<10)
+      eta='~'+(elapsedWeeks/totalGrowth).toFixed(1)+' weeks at saved historical pace';
+    // This conditional retrospective scenario cannot predict the hidden promotion formula.
     return '<section class="tch-panel"><h2>Next-star readiness</h2>'+
       '<div class="tch-metrics">'+metricV2("Reported rating",current+' / 10','Current Torn observation','','growth-review')+
-      metricV2("Next star ETA",eta,'Torn does not expose a reliable promotion formula','','growth-review')+
+      metricV2("Next star ETA",eta,'Historical pace only where enough Sunday increases exist','','growth-review')+
       metricV2("Promotion evidence",observed,'Your saved rating history','','growth-review')+'</div>'+
       '<p>Star ratings update weekly on Sunday. More popularity, revenue and effectiveness history helps identify improvement, but cannot establish an exact promotion date.</p>'+
       '<button data-act="goto" data-target="growth-review">Compare Sunday snapshots ›</button></section>';
