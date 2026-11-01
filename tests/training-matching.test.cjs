@@ -54,7 +54,7 @@ test("Money log types are suggested rather than hard-coded",()=>{
 test("Remote script metadata remains valid",()=>{
  assert.ok(script.startsWith("// ==UserScript=="));
  assert.match(script,/\/\/ @author\s+IamEEKY/);
- assert.match(script,/\/\/ @version\s+1\.3\.0/);
+ assert.match(script,/\/\/ @version\s+1\.4\.0/);
 });
 
 test("Two imports from one Torn news source count once, even before cleanup",()=>{
@@ -101,7 +101,8 @@ test("Unrelated payments and partial amounts require review",()=>{
  assert.equal(partial.amount,150000);
 });
 test("Company launcher only matches company URL and has touch drag handlers",()=>{
- assert.match(script,/\/\/ @match\s+https:\/\/www\.torn\.com\/companies\.php\*/);
+ assert.match(script,/\/\/ @match\s+https:\/\/www\.torn\.com\/\*/);
+ assert.match(script,/if \(!isCompanyPage\(\)\)/);
  assert.match(script,/touch-action:none/);
  assert.match(script,/pointerdown/);
  assert.match(script,/pointermove/);
