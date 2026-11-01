@@ -34,9 +34,11 @@ test("No API request on script initialisation",()=>assert.equal(requests(),0));
 test("No gameplay HTTP writes or remote website scraping",()=>{
   for(const expression of [/PDA_httpPost\s*\(/,/PDA_httpPut\s*\(/,/PDA_httpPatch\s*\(/,/PDA_httpDelete\s*\(/,/GM_xmlhttpRequest\s*\(/])
     assert.doesNotMatch(script,expression);
-  // The shared StaxxHub may use a local UI timer to expire snoozed notifications.
-  // Company management itself must never use timed background API refreshes.
-  assert.doesNotMatch(script.slice(script.indexOf("  const STORE =")),/setInterval\s*\(/);
+  // Foreground read-only company sync is permitted; explicit gameplay HTTP writes are not.
+  assert.match(script,/function autoCompanyRefreshV112\(/);
+  assert.match(script,/if\(document.hidden\|\|!isCompanyPage\(\)\|\|busy/);
+  assert.match(script,/now-lastAutoCompanyAttemptV112<15\*60000/);
+  assert.match(script,/await refresh\(\)/);
 });
 test("HTML escaping safely handles remote player names",()=>{
   assert.equal(model.esc('<img src=x onerror=alert(1)>'),'&lt;img src=x onerror=alert(1)&gt;');
