@@ -1,3 +1,9 @@
+## v1.20.0 — Alerts only when paid training can be given
+
+- **No more misleading owed-train alerts:** confirmed purchases remain recorded, but training owed does not count toward the Alerts badge or StaxxHub queue when there are zero available trains, the available balance is unknown, or none of the owed employees is eligible.
+- **Ready-only notifications:** once Torn reports available trains for an eligible paid obligation, Company Helper shows the number it can actually allocate immediately (oldest eligible first).
+- **Ledger stays complete:** Training still shows everyone owed trains and labels them as waiting while unavailable. Capacity overflow and pending-payment review remain separate alerts. All gameplay decisions are manual.
+
 ## v1.14.0 — full Company Helper access from StaxxHub anywhere in Torn
 
 - **Company panel available across Torn:** StaxxHub can now open the full director dashboard from any Torn page. Only the standalone company launcher is limited to the company page. Navigating away no longer closes an already-open helper.
