@@ -1,5 +1,11 @@
 # Torn Company Helper
 
+## v1.13.0 — foreground sync across Torn pages
+
+- **StaxxHub refresh:** Opening StaxxHub can request a company-data refresh from any foreground Torn page, even with the Company Helper panel closed. The request respects the existing 15-minute data and retry cooldowns, TornPDA API permissions and the busy guard.
+- **Automatic accounting follows verified refreshes:** Current company snapshots, payment-log reconciliation and eligible verified training history update through the existing read-only pipeline. No employee wages, training or orders are performed by the script.
+- **Shared hub:** StaxxHub v2.6 automatically discovers future tools implementing its event interface and requests read-only updates on opening.
+
 ## v1.12.0 — automatic foreground director sync
 
 - **Auto refresh:** While a Torn company page is visible in TornPDA, the helper checks whether the company snapshot is at least 15 minutes old and refreshes read-only data when due. It backs off unsuccessful attempts for at least 15 minutes and does nothing while the page is hidden or not a company page.
