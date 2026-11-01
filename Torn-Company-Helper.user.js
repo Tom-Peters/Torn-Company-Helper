@@ -1882,7 +1882,8 @@
     const recent=[...byDay.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-7)
       .map(([date,row])=>({date,profit:Number(row.profit),revenue:Number(row.revenue),wages:Number(row.wages),ad:Number(row.ad)}));
     const sum=recent.reduce((a,x)=>a+x.profit,0),average=recent.length?sum/recent.length:null;
-    const last3=recent.slice(-3),streak=last3.length===3&&last3.every(x=>x.profit<0);
+    const last3=recent.slice(-3),streak=last3.length===3&&last3.every(x=>x.profit<0)&&
+      last3.every((row,i)=>i===0||Date.parse(row.date+'T00:00:00Z')-Date.parse(last3[i-1].date+'T00:00:00Z')===86400000);
     return {recent,sum,average,streak};
   }
   function profitBridgePanelV191(c){
@@ -1901,11 +1902,58 @@
     return html;
   }
 
+
+  // Evidence-backed director briefing: actionable, ordered and never inferred from missing API values.
+  function directorBriefV110(c){
+    if(!c||!c.profile)return {items:[],ageHours:null,ready:false};
+    const parsed=Date.parse(c.lastRefresh||''),ageHours=Number.isFinite(parsed)?Math.max(0,(Date.now()-parsed)/3600000):null;
+    const fresh=ageHours!==null&&ageHours<6,actions=[],seen=new Set();
+    function add(level,title,why,target){
+      if(seen.has(target+':'+title))return;
+      seen.add(target+':'+title);actions.push({level,title,why,target});
+    }
+    if(!fresh)add(0,'Refresh the current company figures',
+      ageHours===null?'No complete refresh observed.':Math.round(ageHours)+' hours since last refresh. Revalidate before making financial or employee changes.','refresh');
+    const accounts=accounting(c);
+    if(!accounts.known)add(0,'Complete the missing accounts figures',
+      'Cannot verify the daily loss guardrail: '+(accounts.missing||[]).join(', '),'growth-accounts');
+    else if(accounts.headroom<0)add(0,'Protect your daily loss limit',
+      'Current operating model is '+money(-accounts.headroom)+' beyond your configured '+money(c.lossLimit)+' loss cap.','growth-accounts');
+    const p=trainPlanV3(c);
+    if(p.overflow>0)add(1,'Assign trains before capacity is lost',
+      p.overflow+' train(s) could be lost at the next company close; check the oldest eligible commitments first.','training-queue');
+    const due=p.queue?.find(x=>x.give>0);
+    if(due)add(2,'Give '+due.give+' train(s) to '+due.name,
+      'Oldest eligible paid commitment · '+due.owed+' recorded as owed. Confirm the recipient and quantity in Torn.','training-queue');
+    const payments=pendingPaymentLogs(c).length;
+    if(payments)add(2,'Verify '+payments+' incoming transfer(s)',
+      'Unapproved money receipts are not automatically treated as training purchases.','training-payments');
+    const shortage=stockAdviceV3(c).filter(x=>x.qty!==null&&x.qty>0&&x.days!==null&&x.days<1);
+    if(shortage.length)add(2,'Review '+shortage.length+' stock shortage(s)',
+      'Reported stock cover is less than one day. Check real stock and supplier listings before ordering.','stock');
+    if(companyProfitTrendV191(c).streak)add(2,'Review consecutive operating losses',
+      'Three consecutive observed UTC days show negative operating estimates. Check costs against revenue.','growth-accounts');
+    const weak=growthMovesV13(c).find(x=>x.rank>0&&x.rank<4);
+    if(weak)add(3,weak.title,weak.detail,weak.target);
+    if(!actions.length)add(4,'Review growth before changing settings',
+      'No urgent issue is demonstrated in saved data. Capture a daily report and compare Sunday star progression.','growth-review');
+    return {items:actions.sort((a,b)=>a.level-b.level).slice(0,7),ageHours,ready:fresh&&accounts.known};
+  }
+  function directorBriefPanelV110(c){
+    const report=directorBriefV110(c);
+    return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Director briefing · what to do now</h2>'+
+      '<span class="tch-mini">'+(report.ready?'Figures checked':'Verification needed')+'</span></div>'+
+      '<p class="tch-hint">Ordered by operational urgency. Suggestions use saved company data; refresh before applying any action inside Torn. All decisions are manual.</p>'+
+      report.items.map((r,i)=>'<button class="tch-insight" data-act="goto" data-target="'+esc(r.target)+'" type="button">'+
+        '<strong>'+(i+1)+'. '+esc(r.title)+'</strong><small>'+esc(r.why)+'</small><span>Review ›</span></button>').join('')+
+      '</section>';
+  }
+
   function homeV13(c){
     if(!c||!c.profile)return introV2();
     const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
     const due=Object.values(aggregates(c).balance).reduce(function(n,b){return n+b.owed;},0);
-    return '<section class="tch-panel"><h2>Top decisions · ranked</h2>'+(companyActionList(c).slice(0,3).map(a=>'<button class="tch-insight" data-act="goto" data-target="'+esc(a.target)+'"><strong>'+esc(a.title)+'</strong><small>'+esc(a.why)+'</small><span>Review ›</span></button>').join('')||'<p>No priority issues reported from saved data.</p>')+'</section>'+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
+    return directorBriefPanelV110(c)+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
       '<span class="tch-mini">'+star+' ★ / 10</span></div><div class="tch-home-number">'+star+' ★</div></section>'+
       '<div class="tch-homekpis">'+
         metricV2("Efficiency",c.profile.efficiency==null?"?":c.profile.efficiency+"%","Daily report","","staff")+
@@ -2220,7 +2268,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.8.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.10.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
