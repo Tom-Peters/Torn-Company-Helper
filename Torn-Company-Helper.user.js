@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.12.0
+// @version      1.13.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.5 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.6 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -90,6 +90,15 @@
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
     const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]"),taskList=root.querySelector("#staxx-hub-tasks"),diagnostics=root.querySelector("#staxx-hub-diagnostics"),diagnosticButton=root.querySelector("[data-diagnostics]");
     let expanded=false, panelOpen=false, overviewShown=false, diagnosticsShown=false, moving=null, suppressClickUntil=0;
+    let lastDataRequestV26=0;
+    function refreshConnectedV26(force=false){
+      if(document.hidden||!entries.some(x=>active[x.id]))return false;
+      const time=Date.now();
+      if(!force&&time-lastDataRequestV26<120000)return false;
+      lastDataRequestV26=time;
+      document.dispatchEvent(new CustomEvent("staxx:refresh-request",{detail:{reason:force?"manual":"hub-open",force}}));
+      return true;
+    }
     const openPanels=new Set();
     const idOk = v=>typeof v==="string" && /^[a-z][a-z0-9-]{0,31}$/.test(v);
     function node(tag,cls,value) {const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e;}
@@ -235,7 +244,7 @@
     }
     function diagnosticReportV25(){
       const time=Date.now();
-      return {hub:"2.5",capturedAt:new Date(time).toISOString(),page:String(location.pathname||""),
+      return {hub:"2.6",capturedAt:new Date(time).toISOString(),page:String(location.pathname||""),
         connectedCount:entries.filter(x=>active[x.id]).length,knownCount:entries.length,tools:entries.map(e=>{
           const sum=summaries[e.id],actions=actionSets[e.id],notice=notices[e.id],h=healthReports[e.id];
           const age=Number(sum?.updated),lastAction=Number(actions?.updated);
@@ -276,6 +285,8 @@
     function showOverview(){
       overview.replaceChildren();
       overview.append(node("p","staxx-trendnote","All registered tools automatically appear here, including future Staxx scripts. Stale suggestions are labelled and sorted after current data."));
+      const syncButton=node("button","staxx-overview-switch","↻ Check current data across connected tools");
+      syncButton.type="button";syncButton.dataset.syncAll="1";overview.append(syncButton);
       for(const [i,item] of taskRowsV25().slice(0,5).entries()){
         const row=node("button","staxx-task "+(!item.cached&&item.status==="urgent"?"urgent":""));
         row.dataset.openAlertTool=item.owner;row.dataset.openAlertId=item.id;
@@ -442,7 +453,8 @@
       }
       if(b.dataset.openAlertTool){openTool(b.dataset.openAlertTool,b.dataset.openAlertId);return;}
       if(b.dataset.openStaxx){openTool(b.dataset.openStaxx);return;}
-      if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;if(overviewShown)diagnosticsShown=false;render();return;}
+      if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;if(overviewShown){diagnosticsShown=false;refreshConnectedV26();}render();return;}
+       if(b.dataset.syncAll){refreshConnectedV26(true);return;}
        if(b.hasAttribute("data-diagnostics")){diagnosticsShown=!diagnosticsShown;if(diagnosticsShown){overviewShown=false;
          document.dispatchEvent(new CustomEvent("staxx:diagnostics-request"));}render();return;}
        if(b.dataset.checkDiagnostics){document.dispatchEvent(new CustomEvent("staxx:ping"));
@@ -452,7 +464,7 @@
          if(clipboard?.writeText){clipboard.writeText(report).catch(()=>{const box=diagnostics.querySelector("#staxx-safe-report");if(box){box.hidden=false;box.value=report;}});}
          else{const box=diagnostics.querySelector("#staxx-safe-report");if(box){box.hidden=false;box.value=report;box.select?.();}}
          return;}
-      if(b===toggle){if(Date.now()<suppressClickUntil)return;setExpanded(true);return;}
+      if(b===toggle){if(Date.now()<suppressClickUntil)return;setExpanded(true);refreshConnectedV26();return;}
       if(b.hasAttribute("data-hub-close"))setExpanded(false);
     });
     veil.addEventListener("click",()=>setExpanded(false));
@@ -564,7 +576,8 @@
   const STORE = "company-helper-v1";
   const isCompanyPage = function () {return /^\/companies\.php$/i.test(window.location.pathname);};
   if (!isCompanyPage()) {
-    document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}})));
+    document.addEventListener?.("staxx:refresh-request",()=>{void autoCompanyRefreshV112(true);});
+  document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}})));
     document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}}));
     return; // Company UI and API only run on companies.php.
   }
@@ -2806,8 +2819,8 @@
     finally {busy=false;draw();}
   }
   let lastAutoCompanyAttemptV112=0;
-  async function autoCompanyRefreshV112(){
-    if(document.hidden||(!isCompanyPage()&&!open)||busy||typeof PDA_storage==="undefined")return;
+  async function autoCompanyRefreshV112(allowAnyPage=false){
+    if(document.hidden||(!allowAnyPage&&!isCompanyPage()&&!open)||busy||typeof PDA_storage==="undefined")return;
     if(!activeApiKey())return; // Missing permissions remain visible in Settings; no blind retries.
     const last=Date.parse(current()?.lastRefresh||"");
     const now=Date.now();
@@ -3083,7 +3096,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.12.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.13.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
@@ -3326,7 +3339,7 @@
       try{if(sessionStorage.getItem("staxx-open-company")==="1"){sessionStorage.removeItem("staxx-open-company");const f=sessionStorage.getItem("staxx-open-company-alert");sessionStorage.removeItem("staxx-open-company-alert");if(f){tab="alerts";companyAlertFocus=f;}opener.click();focusCompanyAlert();}}catch(_){}
     } catch (_) { /* Do not silently overwrite damaged storage. */ }
   })();
-  // Auto-read only when Torn PDA is foregrounded and the company page is active.
+  // Auto-read on the company page or an open helper; StaxxHub can request foreground updates from other Torn pages.
   // Do not automate any training, wages, stock orders or director actions.
   if(typeof setInterval==="function")setInterval(function(){void autoCompanyRefreshV112();},60000);
   document.addEventListener?.("visibilitychange",function(){
