@@ -876,6 +876,199 @@
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
     opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
   }
+
+  function employeePenaltyV12(p) {
+    const e=p&&p.effectiveness||{},n=Number(e.addiction),i=Number(e.inactivity),settled=Number(e.settled_in);
+    return {addiction:Number.isFinite(n)?n:null,inactivity:Number.isFinite(i)?i:null,
+      settled:Number.isFinite(settled)?settled:null,days:financialAmount(p.days_in_company)};
+  }
+  function wageRiskModelV12(c) {
+    const base=wageModelV11(c),rows=base.rows.map(function(row){
+      const p=(c.staff||[]).find(function(x){return String(x.id)===String(row.id);})||{};
+      const pen=employeePenaltyV12(p),notes=[];
+      if(pen.days!==null && pen.days>=90)notes.push("Long-tenure retention factor: review before reducing pay");
+      if(pen.days!==null && pen.days<10)notes.push("Still settling in: effectiveness may rise");
+      if(pen.addiction!==null && pen.addiction<=-5)notes.push("Addiction penalty "+pen.addiction+" EFF: discuss recovery before relying on value estimates");
+      if(pen.inactivity!==null && pen.inactivity<=-5)notes.push("Inactivity penalty "+pen.inactivity+" EFF: check recent activity");
+      if(row.value===0)notes.push("Indirect contribution: avoid wage cuts based on zero direct value");
+      if(row.value===null)notes.push("HR value missing: cannot calculate a contribution-based pay band");
+      const unit=row.value!==null&&row.value>0&&row.target!==null?row.target:null;
+      const tenure=pen.days!==null&&pen.days>=90?1.1:1;
+      const lo=unit===null?null:Math.max(0,Math.round(unit*.85/1000)*1000);
+      const hi=unit===null?null:Math.min(25000000,Math.round(unit*1.15*tenure/1000)*1000);
+      const label=lo===null||row.wage===null?"Insufficient value data":
+        row.wage<lo?"Below planning band":row.wage>hi?"Above planning band":"Within planning band";
+      return Object.assign({},row,{pen:pen,notes:notes,lo:lo,hi:hi,label:label});
+    });
+    return {rows:rows,share:base.share,atRisk:rows.filter(function(x){return x.pen.addiction!==null&&x.pen.addiction<=-5||x.pen.inactivity!==null&&x.pen.inactivity<=-5;}).length};
+  }
+  function wageRiskPanelV12(c) {
+    const m=wageRiskModelV12(c);
+    return '<section class="tch-panel"><h2>Retention, addiction & wage bands</h2>'+
+      '<p>Indicative band: 85-115% of the selected value-share budget, with a 10% upper retention allowance after 90 days. This is a planning assumption, not an official Torn wage formula.</p>'+
+      '<div class="tch-metrics">'+metricV2("Effectiveness concerns",m.atRisk,"Significant addiction / inactivity penalties","","staff-wages")+
+      metricV2("Missing HR values",m.rows.filter(function(x){return x.value===null;}).length,"Salary band deliberately withheld","","staff-wages")+'</div>'+
+      m.rows.map(function(x){return '<div class="tch-wage-risk"><div class="tch-sectionhead"><strong>'+esc(x.name)+'</strong>'+
+        '<span class="tch-mini">'+esc(x.label)+'</span></div>'+
+        '<p>Planning range: '+(x.lo===null?"Unavailable":money(x.lo)+" - "+money(x.hi))+
+        ' / day · Tenure '+esc(x.pen.days===null?"Unknown":x.pen.days+" days")+'</p>'+
+        (x.notes.length?'<small>'+x.notes.map(esc).join(" · ")+'</small>':"")+
+        '</div>';}).join("")+
+      '<p class="tch-hint">Retain special-role staffing even when its direct value is low. Never infer that wages increase star rating; all suggestions require judgement.</p></section>';
+  }
+  function candidateStatsV12(a) {
+    const p=a&&a.player||{};
+    const stats=p.stats||a.stats||{};
+    const readNum=function(k){return financialAmount(stats[k]!==undefined?stats[k]:p[k]);};
+    const man=readNum("manual_labor"),intel=readNum("intelligence"),end=readNum("endurance");
+    if(man===null||intel===null||end===null)return null;
+    return {manual_labor:man,intelligence:intel,endurance:end};
+  }
+  function replacementsV12(c){
+    const roles=roleList(c),staff=c.staff||[],apps=c.applications||[];
+    const protectedNames=/manager|marketer|cleaner|human resources|secretary|trainer/i;
+    const output=[];
+    apps.forEach(function(a){
+      const stats=candidateStatsV12(a);
+      if(!stats)return;
+      const person=a.player||{}, candidate={stats:stats};
+      staff.forEach(function(p){
+        const name=p.position&&p.position.name||"",role=roleByName(roles,name);
+        if(!role||protectedNames.test(name))return;
+        const before=score(p,role),after=score(candidate,role);
+        if(before===null||after===null)return;
+        const points=(after-before)*roleGrowthWeightV11(c,name);
+        if(points<12)return;
+        output.push({applicantId:person.id,name:String(person.name||"Applicant"),employeeId:p.id,
+          current:p.name,role:name,before:before,after:after,points:points,
+          days:financialAmount(p.days_in_company)});
+      });
+    });
+    return output.sort(function(a,b){return b.points-a.points;}).slice(0,8);
+  }
+  function replacementPanelV12(c){
+    const rows=replacementsV12(c);
+    return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Hiring impact simulator</h2><span class="tch-mini">'+rows.length+' comparisons</span></div>'+
+      '<p>Compares applicants with the employee occupying the same revenue-facing role. Shows potential working-stat fit improvement, not future revenue. Special roles are deliberately excluded from replacement suggestions.</p>'+
+      (rows.length?rows.map(function(r){return '<div class="tch-wage-risk"><strong>'+esc(r.name)+' for '+esc(r.role)+'</strong>'+
+        '<p>Compare with '+esc(r.current)+': '+fitText(r.before)+' → '+fitText(r.after)+
+        ' · Weighted improvement +'+r.points.toFixed(1)+' pp</p>'+
+        '<small>Read-only comparison. Consider loyalty, absence, paid training commitments and retention before making staffing decisions.</small></div>';}).join(""):
+        '<p class="tch-hint">No candidate clears the conservative +12-point fit threshold, or applicant working stats are unavailable.</p>')+
+      '</section>';
+  }
+  function positionCountsV12(items){
+    const map={};
+    (items||[]).forEach(function(p){
+      const name=typeof p==="string"?p:String(p&&p.position&&p.position.name||"");
+      if(name)map[name]=(map[name]||0)+1;
+    });return map;
+  }
+  function rosterBenchV12(c){
+    const teams=c.rivalTeams&&Array.isArray(c.rivalTeams.rows)?c.rivalTeams.rows:[];
+    const current=positionCountsV12(c.staff),usable=teams.filter(function(x){return x&&x.counts&&Object.keys(x.counts).length>0;});
+    const roles=new Set(Object.keys(current));
+    usable.forEach(function(x){Object.keys(x.counts).forEach(function(k){roles.add(k);});});
+    const counts=Array.from(roles).sort().map(function(role){
+      const vals=usable.map(function(t){return Number(t.counts[role]||0);}).sort(function(a,b){return a-b;});
+      const median=vals.length?vals[Math.floor(vals.length/2)]:null;
+      return {role:role,own:current[role]||0,median:median};
+    });
+    return {teams:usable,counts:counts,scannedAt:c.rivalTeams&&c.rivalTeams.observedAt};
+  }
+  function rivalRostersPanelV12(c){
+    const m=rosterBenchV12(c);
+    return '<section class="tch-panel"><h2>10-star staffing patterns</h2>'+
+      '<p>Inspect up to five high-income 10-star Fitness Centers. Only public position names and their counts are stored, not individual names or working stats.</p>'+
+      '<button data-act="scan-rival-rosters" '+(busy?"disabled":"")+'>Compare 10-star role layouts</button>'+
+      '<p class="tch-hint">Manual lookup. Roster data is unavailable if the API key lacks access. Correlation does not establish the ideal mix for your current star level.</p>'+
+      (m.teams.length?'<div class="tch-metrics">'+m.teams.map(function(x){
+        return metricV2(x.name,String(x.total||0)+" employees",x.rating+" stars · "+money(x.weekly)+"/week");
+      }).join("")+'</div>'+
+      '<div class="tch-weekgrid"><span>Role</span><span>Yours</span><span>10★ median</span><span>Difference</span>'+
+      m.counts.map(function(x){return '<span>'+esc(x.role)+'</span><b>'+x.own+'</b><b>'+x.median+
+        '</b><b>'+(x.median-x.own>0?"+":"")+(x.median-x.own)+'</b>';}).join("")+'</div>':
+      '<p class="tch-hint">No role layouts collected yet. Scan public rivals first, then compare their rosters.</p>')+'</section>';
+  }
+  function valueOfMetricV12(p,k){
+    const x=p&&p[k];const n=Number(x);
+    return x===null||x===undefined||!Number.isFinite(n)?null:n;
+  }
+  function statsAtV12(p){
+    return {rating:valueOfMetricV12(p,"rating"),efficiency:valueOfMetricV12(p,"efficiency"),
+      environment:valueOfMetricV12(p,"environment"),popularity:valueOfMetricV12(p,"popularity"),
+      weekly:valueOfMetricV12(p.income,"weekly")};
+  }
+  function changeImpactV12(c){
+    return (c.changeNotes||[]).slice(-8).reverse().map(function(evt){
+      const latest=statsAtV12(c.profile||{}),changes={};
+      Object.keys(latest).forEach(function(k){
+        changes[k]=latest[k]!==null&&evt.baseline&&evt.baseline[k]!==null&&evt.baseline[k]!==undefined?
+          latest[k]-evt.baseline[k]:null;
+      });
+      const days=Math.max(0,(Date.now()-Date.parse(evt.observedAt))/86400000);
+      return {evt:evt,changes:changes,days:days,hasLater:Date.parse(c.lastRefresh||"")>Date.parse(evt.observedAt)};
+    });
+  }
+  function markChangeV12(c,label){
+    if(!c||!c.profile)throw Error("Refresh the company before recording a change.");
+    if(!["Positions changed","Employee hired/left","Wages changed","Advertising or prices changed","Other change"].includes(label))
+      throw Error("Unsupported change label.");
+    c.changeNotes=c.changeNotes||[];
+    c.changeNotes.push({id:id(),observedAt:new Date().toISOString(),label:label,baseline:statsAtV12(c.profile)});
+    c.changeNotes=c.changeNotes.slice(-40);
+  }
+  function changeTrackingPanelV12(c){
+    const changes=changeImpactV12(c);
+    return '<section class="tch-panel"><h2>Before & after company changes</h2>'+
+      '<p>Record an action after you make it manually in Torn. Future manual refreshes then compare company performance with this baseline.</p>'+
+      '<div class="tch-actionrow"><select id="tch-change-kind">'+
+      ["Positions changed","Employee hired/left","Wages changed","Advertising or prices changed","Other change"].map(function(k){return '<option>'+esc(k)+'</option>';}).join("")+
+      '</select><button class="primary" data-act="mark-change">Mark change now</button></div>'+
+      (changes.length?changes.map(function(x){return '<div class="tch-wage-risk"><strong>'+esc(x.evt.label)+
+        '</strong><small>Recorded '+esc(new Date(x.evt.observedAt).toLocaleDateString())+' · '+x.days.toFixed(1)+' days ago</small>'+
+        (x.hasLater?'<p>Efficiency '+deltaV12(x.changes.efficiency,' pp')+
+          ' · Environment '+deltaV12(x.changes.environment,' pp')+
+          ' · Popularity '+deltaV12(x.changes.popularity,' pp')+
+          ' · Weekly income '+deltaV12(x.changes.weekly,' dollars')+'</p>':
+          '<p>Refresh after the next company report to measure observed changes.</p>')+
+        '<small>Other changes and weekly rollover may contribute; not a causal attribution.</small></div>';}).join(""):
+        '<p class="tch-hint">No marked changes yet. All records stay private in Torn PDA storage.</p>')+'</section>';
+  }
+  function deltaV12(n,unit){
+    if(n===null||!Number.isFinite(n))return "Unknown";
+    return (n>=0?"+":"")+n.toLocaleString("en-US")+unit;
+  }
+  function sundayReviewV12(c){
+    const snapshots=(c.snapshots||[]).filter(function(s){return s&&s.observedAt&&s.rating!==null&&s.rating!==undefined;});
+    const byDay={};snapshots.forEach(function(s){byDay[String(s.observedAt).slice(0,10)]=s;});
+    const dates=Object.keys(byDay).sort();
+    const week=dates.slice(-7).map(function(d){return byDay[d];}),sundays=dates.filter(function(d){return new Date(d+"T12:00:00Z").getUTCDay()===0;});
+    const current=sundays.length?byDay[sundays[sundays.length-1]]:null;
+    const prior=sundays.length>=2?byDay[sundays[sundays.length-2]]:null;
+    const average=function(rows,k){const vals=rows.map(function(x){return valueOfMetricV12(x,k);}).filter(function(x){return x!==null;});return vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null;};
+    const peers=Array.isArray(c.peerHistory)?c.peerHistory:[],now=peers[peers.length-1],before=peers.length>=2?peers[peers.length-2]:null;
+    return {latest:current,previous:prior,days:week.length,averageEfficiency:average(week,"efficiency"),
+      averageEnvironment:average(week,"environment"),averagePopularity:average(week,"popularity"),
+      peerGap:now&&now.gap!=null?now.gap:null,previousPeerGap:before&&before.gap!=null?before.gap:null,
+      peerComparability:!!(now&&before&&now.target===before.target&&now.competitors===before.competitors)};
+  }
+  function sundayPanelV12(c){
+    const s=sundayReviewV12(c),rating=Number(c.profile.rating);
+    return '<section class="tch-panel"><h2>Sunday star review</h2><p>Compare actual star ratings and observed performance. This is a retrospective report, not a predicted promotion date.</p>'+
+      '<div class="tch-metrics">'+metricV2("Current stars",rating+"/10","Torn reported","","growth-review")+
+        metricV2("Change since saved Sunday",s.latest&&s.previous?deltaV12(s.latest.rating-s.previous.rating," ★"):"Not enough Sundays",
+          "Two Sunday snapshots required","","growth-review")+
+        metricV2("Observed days",s.days,"Latest seven distinct dates","","growth-review")+
+        metricV2("Weekly peer gap change",s.peerComparability&&s.peerGap!==null&&s.previousPeerGap!==null?
+          deltaV12(s.peerGap-s.previousPeerGap," dollars"):"Insufficient comparable scans","Manual rival snapshots","","growth-rivals")+'</div>'+
+      '<div class="tch-radar">'+[["Avg efficiency",s.averageEfficiency],["Avg environment",s.averageEnvironment],["Avg popularity",s.averagePopularity]].map(function(x){
+        return '<div><small>'+x[0]+'</small><strong>'+esc(x[1]===null?"Unknown":x[1].toFixed(1)+"%")+'</strong></div>';
+      }).join("")+'</div>'+
+      (sundaysNeedV12(c)?'<p class="tch-hint">Save manual observations on two different Sundays to show week-over-week star changes.</p>':"")+
+      '<p class="tch-hint">Only recorded daily snapshots count. Income comparisons use Torn reported rolling weekly values, not fabricated weekly settlements.</p></section>';
+  }
+  function sundaysNeedV12(c){return (c.snapshots||[]).filter(function(s){return s&&s.observedAt&&new Date(String(s.observedAt).slice(0,10)+"T12:00:00Z").getUTCDay()===0;}).length<2;}
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
 
