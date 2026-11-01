@@ -2,10 +2,26 @@
 
 **Author:** IamEEKY  
 **Platform:** Torn PDA (Android)  
-**Current status:** Early public beta — v0.9.2  
+**Current status:** v1.0.0 director command centre  
 **Goal:** A strictly read-only, visual Torn company decision-support dashboard.
 
 > This is an independent community userscript. It is not affiliated with Torn.
+
+## v1.0.0: director command centre
+
+**Same installation URL:** \`https://raw.githubusercontent.com/Tom-Peters/Torn-Company-Helper/main/Torn-Company-Helper.user.js\`. Existing installations and local stored records continue to work after the main-branch update.
+
+- Five mobile-first areas: **Today, Staff, Trains, Growth and Stock**, with a refreshed navy/cyan interface.
+- **Director radar** shows popularity, efficiency, environment, cash reserve, risk of exceeding the 20-train cap and imminent stock-outs.
+- **Balanced team optimiser** solves a global assignment problem, preserving the number of slots in each role. It imposes a five-point role-fit switching penalty and applies proposed roles only to the local what-if simulator, not Torn.
+- **Applications** are fetched during manual refresh where the API permits, displaying each candidate's strongest working-stat role fit.
+- **Train allocation** shows banked trains, baseline daily gains, possible cap overflow and oldest-eligible paid obligations; trainer bonuses may make the real overflow larger.
+- **Stock planning** uses 2/3/5/7-day targets, on-hand and on-order quantities, current sales and up to seven daily observations. Its proposed order cost and stock cover are explicitly estimates.
+- **Cash runway** compares vault funds against wages and advertising, including a seven-day minimum reserve calculation; stock and other expenses are excluded.
+- **Partial API failure tolerance** retains previous stock and applicants if restricted selections are unavailable. These are identified as potentially stale.
+- Existing payment verification, news reconciliation, per-company storage, import cursors, backups and audit history are preserved. No automatic Torn company changes or background polling.
+
+**Important:** Financial P/L still excludes stock and unknown costs; staff fit does not predict income; stock sell-through is not a price-demand forecast. The company API and UI require verification with a real director account in Torn PDA.
 
 ## v0.9.2: dashboard rendering fix
 
@@ -40,7 +56,7 @@ If the userscript launcher doesn't appear, check that scripts are enabled in Tor
 
 ## Redesigned interface — v0.9.0
 
-The app now has **four primary destinations**:
+The earlier interface had **four primary destinations** (now five in v1.0.0):
 
 - **Today:** at-a-glance star rating, profit/loss estimate, training obligations and issues needing review.
 - **Staff:** employee role suggestions and a roster view; local-only what-if changes.
