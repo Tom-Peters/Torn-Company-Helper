@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.15.0
+// @version      1.16.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1764,6 +1764,16 @@
   }
   async function syncRecentNewsV13(c){
     const result=await read("company/news",{cat:"training",limit:"100",sort:"DESC"});
+    const items=normaliseNewsResponse(result.news);
+    if(!c.autoNewsHistoryInitializedV116){
+      c.autoNewsHistoryInitializedV116=true;
+      if(items.length>=100&&!c.newsNext&&!c.newsHistoryWarning){
+        const decision=importPageDecision(result,"company/news","training",items);
+        if(decision.warning)c.newsHistoryWarning=decision.warning;
+        else c.newsNext=decision.next;
+      }
+      if(items.length<100&&!c.newsNext)c.autoNewsHistoryDoneV116=true;
+    }
     return mergeTrainingNewsV13(c,result);
   }
   function mergeIncomingLogsV13(c,response){
@@ -1801,6 +1811,16 @@
     }
     if(!/^\d+(,\d+){0,9}$/.test(String(c.logTypes||"")))throw Error("Incoming-money log types not configured");
     const response=await read("user/log",{log:c.logTypes,limit:"100",sort:"DESC"});
+    if(!c.autoMoneyHistoryInitializedV116){
+      const list=Array.isArray(response.log)?response.log:Object.entries(response.log||{}).map(function(pair){return Object.assign({id:pair[0]},pair[1]);});
+      c.autoMoneyHistoryInitializedV116=true;
+      if(list.length>=100&&!c.logNext&&!c.logHistoryWarning){
+        const decision=importPageDecision(response,"user/log",c.logTypes,list);
+        if(decision.warning)c.logHistoryWarning=decision.warning;
+        else c.logNext=decision.next;
+      }
+      if(list.length<100&&!c.logNext)c.autoMoneyHistoryDoneV116=true;
+    }
     return mergeIncomingLogsV13(c,response);
   }
   function supportWageModelV13(c){
@@ -2839,9 +2859,52 @@
     catch (e) {message=String(e && e.message || e);severity="bad";}
     finally {busy=false;draw();}
   }
+
+  // An official Torn continuation token permits one extra historical page per normal refresh.
+  // Older transfers get matching suggestions, never forced training allocations.
+  async function autoHistoryBackfillV116(c){
+    if(!c||!c.profile)return;
+    const now=Date.now(),last=Number(c.autoHistoryLastAttemptV116)||0;
+    if(last&&now-last<15*60000)return;
+    const modes=c.autoHistoryNextV116==="money"?["money","news"]:["news","money"];
+    for(const mode of modes){
+      const isNews=mode==="news";
+      const cursor=isNews?c.newsNext:c.logNext;
+      const paused=isNews?c.newsHistoryWarning:c.logHistoryWarning;
+      const done=isNews?c.autoNewsHistoryDoneV116:c.autoMoneyHistoryDoneV116;
+      if(!cursor||paused||done)continue;
+      const path=isNews?"company/news":"user/log";
+      const filter=isNews?"training":String(c.logTypes||"");
+      if(!isNews&&!/^\\d+(,\\d+){0,9}$/.test(filter))continue;
+      const params=isNews?{cat:"training",limit:"100",sort:"DESC"}:{log:filter,limit:"100",sort:"DESC"};
+      Object.assign(params,cursor);
+      c.autoHistoryLastAttemptV116=now; // Persisted even on errors, preventing rapid retries after reload.
+      c.autoHistoryNextV116=isNews?"money":"news";
+      try{
+        const response=await read(path,params);
+        const list=isNews?normaliseNewsResponse(response.news):Array.isArray(response.log)?response.log:Object.entries(response.log||{}).map(function(pair){return Object.assign({id:pair[0]},pair[1]);});
+        const decision=importPageDecision(response,path,filter,list);
+        if(decision.warning){
+          if(isNews)c.newsHistoryWarning=decision.warning;
+          else c.logHistoryWarning=decision.warning;
+          break;
+        }
+        if(isNews)mergeTrainingNewsV13(c,response);
+        else mergeIncomingLogsV13(c,response);
+        if(isNews){c.newsNext=decision.next;if(!decision.next)c.autoNewsHistoryDoneV116=true;}
+        else {c.logNext=decision.next;if(!decision.next)c.autoMoneyHistoryDoneV116=true;}
+        c.autoHistoryLastSuccessV116=now;
+      }catch(error){
+        c.autoHistoryLastErrorV116=String(error?.message||error).slice(0,180);
+      }
+      break; // One extra page maximum, not an uncontrolled API crawl.
+    }
+  }
+
   let lastAutoCompanyAttemptV112=0;
   async function autoCompanyRefreshV112(allowAnyPage=false){
-    if(document.hidden||(!allowAnyPage&&!isCompanyPage()&&!open)||busy||typeof PDA_storage==="undefined")return;
+    // A TornPDA tool may safely keep its read-only company data current from any visible Torn page.
+    if(document.hidden||busy||typeof PDA_storage==="undefined")return;
     if(!activeApiKey())return; // Missing permissions remain visible in Settings; no blind retries.
     const last=Date.parse(current()?.lastRefresh||"");
     const now=Date.now();
@@ -2898,6 +2961,7 @@
       catch(err){c.newsSyncError=String(err&&err.message||err);}
       try {moneyResult=await syncRecentMoneyV13(c);c.moneySyncError=null;}
       catch(err){c.moneySyncError=String(err&&err.message||err);}
+      if(newsResult||moneyResult)await autoHistoryBackfillV116(c);
       c.lastAutoSync={news:newsResult,money:moneyResult,observedAt:c.lastRefresh};
       message="Company and roster updated."+
         (newsResult?" Matched "+newsResult.matched+" new training entries.":" Training history unavailable.")+
@@ -3117,7 +3181,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.14.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.16.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
@@ -3364,9 +3428,9 @@
   })();
   // Auto-read on the company page or an open helper; StaxxHub requests foreground updates from every Torn page.
   // Do not automate any training, wages, stock orders or director actions.
-  if(typeof setInterval==="function")setInterval(function(){void autoCompanyRefreshV112();},60000);
+  if(typeof setInterval==="function")setInterval(function(){void autoCompanyRefreshV112(true);},60000);
   document.addEventListener?.("visibilitychange",function(){
-    if(!document.hidden)void autoCompanyRefreshV112();
+    if(!document.hidden)void autoCompanyRefreshV112(true);
   });
-  if(typeof setTimeout==="function")setTimeout(function(){void autoCompanyRefreshV112();},12000);
+  if(typeof setTimeout==="function")setTimeout(function(){void autoCompanyRefreshV112(true);},12000);
 })();
