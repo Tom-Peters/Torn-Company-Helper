@@ -1,3 +1,11 @@
+## 1.17.0 — stockless service companies and automatic decline alerts
+
+- **Fitness Centers are service businesses:** refresh skips the optional `company/stock` read, avoids irrelevant missing-stock warnings, and shows real customers, popularity, weekly income and operating-cost estimates instead of product replenishment.
+- **Other stockless companies:** a verified empty official `company/stock` array is displayed as no product lines, not an API-permission failure. Actual failed or malformed requests remain visibly unverified and never become synthetic zero stock.
+- **Company type-specific navigation:** stockless companies show a Services tab; company identity and customer-facing growth language are not hard-coded to Fitness Centers.
+- **Automatic performance alerts:** sufficiently large consecutive-observation deterioration in operating result (at least $25,000 and/or 10% of previous absolute value) and a reported efficiency drop of 5+ points join the existing StaxxHub actionable alerts. The source data must cover two distinct consecutive complete UTC dates, not two refreshes of the same day. No salary, company settings, training or purchasing action is taken automatically.
+- Existing automatic roster refresh, training-ledger reconciliation and bounded backfill remain active; full product companies keep stock forecasting.
+
 ## 1.16.0 — foreground company sync and automatic history catch-up
 
 - The Company Helper updates from **any visible TornPDA page**, with its existing 15-minute check interval and required API permissions; the company panel does not need to be open.
