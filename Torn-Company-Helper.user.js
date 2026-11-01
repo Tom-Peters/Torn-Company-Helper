@@ -12,7 +12,7 @@
 /* Shared Staxx Hub v1 · bundled into each Torn PDA script · IamEEKY */
 (function(){
   "use strict";
-  if(!/^(www\.)?torn\.com$/i.test(location.hostname)||window.top!==window.self)return;
+  if(typeof location==="undefined"||typeof document==="undefined"||!document.documentElement||typeof document.createElement!=="function"||!/^(www\.)?torn\.com$/i.test(location.hostname)||window.top!==window.self)return;
   function boot(){
     if(document.getElementById("staxx-hub-root"))return;
     const root=document.createElement("div");
