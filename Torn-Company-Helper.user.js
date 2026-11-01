@@ -1113,7 +1113,10 @@
     const name=String(c?.profile?.type?.name||'').trim().toLowerCase();
     // Explicit product lines take precedence (including legacy/example fixtures).
     if(Array.isArray(c?.stock)&&c.stock.length)return 'products';
-    if(name==='fitness center')return 'service';
+    if(name==='fitness center'||name==='fitness centre')return 'service';
+    // A confirmed empty official stock response means service/no-inventory operations,
+    // not a stock-fetch failure. Do not infer this from a failed or denied API request.
+    if(c?.stockModeV117==='no-products'&&Array.isArray(c.stock)&&!c.stock.length)return 'no-products';
     if(c?.stockModeV117==='products'&&Array.isArray(c.stock)&&c.stock.length)return 'products';
     if(c?.stockModeV117==='no-products'&&Array.isArray(c.stock)&&!c.stock.length)return 'no-products';
     return 'unknown';
@@ -2390,7 +2393,7 @@
   }
   function settings(c) {
     return label("Settings & privacy")+
-      '<div class="card"><h3>Dedicated custom API key</h3><p>Key is used only for GET requests to api.torn.com through Torn PDA. It stays in memory for this session; it is never saved, exported, published, logged or sent elsewhere.</p><label>Custom API key</label><input id="tch-key" type="password" autocomplete="off" placeholder="'+(key?"Key loaded for this session":"Paste key")+'"><button data-act="use-key">Use key this session</button><p class="muted">Suggested API selections: company/profile, company/employees, company/stock, company/news, torn/companies. For payment-history import, grant only incoming-money user/log types; the script detects their IDs when importing. Treat such keys as highly sensitive.</p></div>'+
+      '<div class="card"><h3>Dedicated custom API key</h3><p>Key is used only for GET requests to api.torn.com through Torn PDA. It stays in memory for this session; it is never saved, exported, published, logged or sent elsewhere.</p><label>Custom API key</label><input id="tch-key" type="password" autocomplete="off" placeholder="'+(key?"Key loaded for this session":"Paste key")+'"><button data-act="use-key">Use key this session</button><p class="muted">Suggested API selections: company/profile, company/employees, company/news, torn/companies. company/stock is needed only for companies with product inventory; Fitness Centers do not require it. For payment-history import, grant only incoming-money user/log types; the script detects their IDs when importing. Treat such keys as highly sensitive.</p></div>'+
       '<div class="card"><h3>Payment imports</h3><p>There is no money-log filter to configure. Open Training and tap Import older payments or Rescan recent payments. The script detects the incoming-money types itself, matches identifiable employees and amounts, and asks you only about unclear records.</p><p class="muted">Your dedicated Torn API key must permit the relevant personal user/log types. Only manual taps cause API reads; no money is ever moved.</p><p class="muted">Detected incoming log types: '+esc(c?c.logTypes||"Not loaded yet":"Not loaded yet")+'</p></div>'+
       '<div class="card"><h3>Financial guardrail</h3><label>Maximum daily operating loss ($)</label><input id="tch-limit" type="number" min="0" step="50000" value="'+esc(c?c.lossLimit:500000)+'"><button data-act="save-limit">Save limit</button></div>'+
       '<div class="card"><h3>Local backups</h3><p>Export contains actual company and employee records. Keep the file private. It contains no API key.</p><button data-act="backup">Export JSON backup</button><label>Restore a backup (replaces all local company records)</label><textarea id="tch-restore" rows="3" placeholder="Paste a previously exported JSON backup here"></textarea><button data-act="restore">Restore backup</button></div>'+
@@ -2965,9 +2968,9 @@
       if(c.autoCreditSince===undefined)c.autoCreditSince=stamp(); // Never auto-reclassify old transfers.
       const e=await read("company/employees");
       let st=null;
-      if(stockModeV117(c)==='service'){
+      if(stockModeV117(c)==='service'||stockModeV117(c)==='no-products'){
         // Fitness Centers sell memberships; avoid repeatedly requesting nonexistent inventory.
-        c.stock=[];c.stockFetchError=null;c.stockModeV117='service';
+        c.stock=[];c.stockFetchError=null;c.stockModeV117=stockModeV117(c);
       }else{
         try{
           st=await read("company/stock");
