@@ -7,7 +7,7 @@ const vm=require("node:vm");
 const source=fs.readFileSync(path.join(__dirname,"..","Torn-Company-Helper.user.js"),"utf8");
 const expose='  const style=document.createElement("style");';
 function app(raw) {
-  const withBinding=raw.replace(expose, '  globalThis.__uiTest={todayV2,staffV2,trainingV2,growthV2,settingsV2,hasPdaKey,activeApiKey,scenarioModel,fitFor,roleList,employeeDetail,scenarioV2,employeeProgress,growthChecks,growthAdvisorV2,finances};\n'+expose);
+  const withBinding=raw.replace(expose, '  globalThis.__uiTest={todayV2,staffV2,trainingV2,growthV2,settingsV2,hasPdaKey,activeApiKey,scenarioModel,fitFor,roleList,employeeDetail,scenarioV2,employeeProgress,growthChecks,growthAdvisorV2,finances,employeeDevelopmentV14,developmentPanelV14,wageScenarioPanelV14,starMomentumPanelV14};\n'+expose);
   let requestCount=0;
   const node=()=>({style:{},dataset:{},hidden:false,addEventListener(){},appendChild(){},offsetWidth:140,offsetHeight:44,setPointerCapture(){},getBoundingClientRect(){return {left:3,top:4,width:140,height:44};}});
   const document={getElementById(){return null;},createElement:node,documentElement:{appendChild(){}},body:{appendChild(){}}};
@@ -192,4 +192,32 @@ test("Drilldowns and team simulator do not introduce Torn gameplay actions",()=>
  ui.todayV2(data);ui.staffV2(data);ui.trainingV2(data);ui.growthV2(data);ui.finances(data);
  assert.equal(requests(),0);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
+});
+
+test("employee development ETA requires dated measured working-stat progress",()=>{
+  const v=app(source),c=structuredClone(data);
+  c.roles=[{name:"Receptionist",requirements:{manual_labor:40000,intelligence:50000,endurance:42000}}];
+  c.snapshots=[
+    {observedAt:"2026-10-01T12:00:00Z",roster:{"111":{stats:{manual_labor:30000,intelligence:47000,endurance:39000}}}},
+    {observedAt:"2026-10-06T12:00:00Z",roster:{"111":{stats:{manual_labor:32000,intelligence:48000,endurance:40000}}}}
+  ];
+  const rows=v.ui.employeeDevelopmentV14(c);
+  assert.equal(rows.length,1);
+  assert.ok(rows[0].eta>0);
+  assert.match(v.ui.developmentPanelV14(c),/SampleEmployee/);
+  assert.equal(v.requests(),0);
+});
+test("wage what-ifs only change modelled costs and never submit payroll",()=>{
+  const v=app(source),c=structuredClone(data),before=c.staff[0].wage;
+  const html=v.ui.wageScenarioPanelV14(c);
+  assert.match(html,/Raise all by 5%/);
+  assert.match(html,/Raise all by 10%/);
+  assert.equal(c.staff[0].wage,before);
+  assert.equal(v.requests(),0);
+});
+test("star readiness with insufficient Sunday snapshots refuses fabricated ETA",()=>{
+  const v=app(source),c=structuredClone(data);
+  const html=v.ui.starMomentumPanelV14(c);
+  assert.match(html,/Unknown/);
+  assert.match(html,/Sunday snapshots/);
 });
