@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.4.0
+// @version      1.5.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,116 +9,258 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* Shared Staxx Hub v1 · bundled into each Torn PDA script · IamEEKY */
-(function(){
+/* StaxxHub v2.0 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+(function () {
   "use strict";
-  if(typeof location==="undefined"||typeof document==="undefined"||!document.documentElement||typeof document.createElement!=="function"||!/^(www\.)?torn\.com$/i.test(location.hostname)||window.top!==window.self)return;
-  function boot(){
-    if(document.getElementById("staxx-hub-root"))return;
-    const root=document.createElement("div");
-    root.id="staxx-hub-root";
-    root.innerHTML='<button id="staxx-hub-toggle" aria-expanded="false" aria-label="Open Staxx tools and notifications"><b>S</b><span id="staxx-hub-count" hidden></span></button>'+
-      '<div id="staxx-hub-veil" hidden></div><aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>'+
-      '<header><div><strong>Staxx<span>Hub</span></strong><small>TORN COMMAND CENTRE</small></div><button data-hub-close aria-label="Close menu">×</button></header>'+
-      '<div class="staxx-scroll"><h3>YOUR TOOLS</h3><div id="staxx-hub-tools"></div>'+
-      '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div><div id="staxx-hub-alerts"></div>'+
-      '<p class="staxx-foot">Read-only alerts · No automatic game actions</p></div></aside>';
-    const css=document.createElement("style");
-    css.id="staxx-hub-css";
-    css.textContent=[
+  if (typeof location === "undefined" || typeof document === "undefined" ||
+      !document.documentElement || typeof document.createElement !== "function" ||
+      !/^(www\.)?torn\.com$/i.test(location.hostname) || window.top !== window.self) return;
+  function startHub() {
+    if (document.getElementById("staxx-hub-root")) return;
+    const root = document.createElement("div");
+    root.id = "staxx-hub-root";
+    root.innerHTML =
+      '<button type="button" id="staxx-hub-toggle" aria-label="Open Staxx tools" aria-expanded="false"><b>S</b><span id="staxx-hub-count" hidden></span></button>' +
+      '<div id="staxx-hub-veil" hidden></div>' +
+      '<aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>' +
+      '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><button type="button" data-hub-close aria-label="Close sidebar">×</button></header>' +
+      '<div class="staxx-scroll"><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Combined overview</button>' +
+      '<section id="staxx-hub-overview" hidden></section><h3>YOUR TOOLS</h3><div id="staxx-hub-tools"></div>' +
+      '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div>' +
+      '<div id="staxx-hub-alerts"></div><p class="staxx-foot">Read-only signals · Alerts use last known data · Drag the S tab vertically to reposition</p>' +
+      '</div></aside>';
+    const css = document.createElement("style");
+    css.id = "staxx-hub-css";
+    css.textContent = [
       '#staxx-hub-root{position:fixed!important;inset:0!important;z-index:2147483647!important;pointer-events:none!important;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif!important;color:#e7f2ff!important}',
-      '#staxx-hub-root *{box-sizing:border-box}#staxx-hub-root button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}',
-      '#staxx-hub-root [hidden]{display:none!important}#staxx-hub-root button:focus-visible{outline:2px solid #73dfff;outline-offset:2px}',
-      '#staxx-hub-toggle{position:fixed;left:5px;top:43%;width:47px;height:54px;pointer-events:auto;display:flex;align-items:center;justify-content:center;border:1px solid #69dfff99;border-radius:0 15px 15px 0;background:linear-gradient(150deg,#0b74ba,#082a4a);box-shadow:0 6px 24px #000b}',
-      '#staxx-hub-toggle b{font-weight:900;font-size:24px;color:#baf1ff}#staxx-hub-count{position:absolute;top:-8px;right:-8px;background:#36d3a7;color:#052c25;border:2px solid #08192d;border-radius:20px;font-size:11px;font-weight:900;padding:2px 5px}',
-      '#staxx-hub-veil{position:fixed;inset:0;pointer-events:auto;background:#020a17b9}',
-      '#staxx-hub-drawer{position:fixed;inset:0 auto 0 0;width:min(360px,calc(100vw - 24px));height:100dvh;max-height:100vh;pointer-events:auto;background:#08192d;border-right:1px solid #28506e;box-shadow:10px 0 45px #000b;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}',
-      '#staxx-hub-drawer header{display:flex;align-items:center;justify-content:space-between;padding:16px;background:linear-gradient(120deg,#0c3358,#0b203b);border-bottom:1px solid #28506e}',
-      '#staxx-hub-drawer header strong{display:block;font-size:22px;font-weight:850;letter-spacing:-.5px}#staxx-hub-drawer header strong span{color:#54d7fa}',
-      '#staxx-hub-drawer header small{font-size:10px;letter-spacing:1.4px;color:#8fabca}#staxx-hub-drawer [data-hub-close]{background:#1c3b59;border:0;border-radius:9px;width:36px;height:36px;font-size:24px}',
-      '#staxx-hub-drawer .staxx-scroll{flex:1;overflow:auto;overscroll-behavior:contain;padding:14px 12px 30px}',
-      '#staxx-hub-drawer h3{color:#8faec9;font-size:11px;letter-spacing:1px;margin:5px 3px 10px}',
-      '#staxx-hub-drawer .staxx-tool{display:flex;align-items:center;gap:10px;text-align:left;width:100%;background:#102844;border:1px solid #284b6b;border-radius:12px;padding:12px 10px;min-height:67px;margin-bottom:9px}',
-      '#staxx-hub-drawer .staxx-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(135deg,#0b79b9,#123c65);border:1px solid #4f9dc8;color:#cff6ff;font-weight:900;flex-shrink:0}',
-      '#staxx-hub-drawer .staxx-info{flex:1;min-width:0}#staxx-hub-drawer .staxx-info b{display:block;font-size:14px}#staxx-hub-drawer .staxx-info small{display:block;font-size:11px;color:#94b1c9;margin-top:3px}',
-      '#staxx-hub-drawer .staxx-pill{border-radius:14px;background:#1b486c;padding:2px 7px;font-size:11px;font-weight:800;color:#bdeaff}#staxx-hub-drawer .staxx-pill.on{background:#145f58;color:#89edca}',
-      '#staxx-hub-drawer .staxx-label{display:flex;align-items:center;justify-content:space-between;margin-top:18px}#staxx-hub-drawer .staxx-label span{color:#a4c1d8;font-size:11px}',
-      '#staxx-hub-drawer .staxx-alert{display:block;width:100%;text-align:left;background:#0e2945;border:1px solid #315977;border-radius:11px;padding:12px;margin-bottom:8px}',
-      '#staxx-hub-drawer .staxx-alert b{display:block;color:#81dbfa;font-size:12px}#staxx-hub-drawer .staxx-alert span{display:block;color:#daecf9;font-size:12px;margin:5px 0}#staxx-hub-drawer .staxx-alert small{display:block;color:#91aec6;font-size:11px;margin-top:3px}',
-      '#staxx-hub-drawer .staxx-empty{color:#9db7cd;background:#0c243e;border:1px dashed #305473;border-radius:10px;font-size:12px;padding:17px 12px}',
-      '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:20px}'
+      '#staxx-hub-root *{box-sizing:border-box}#staxx-hub-root [hidden]{display:none!important}#staxx-hub-root button{font:inherit;color:inherit;cursor:pointer}',
+      '#staxx-hub-root button:focus-visible{outline:2px solid #73dfff;outline-offset:2px}',
+      '#staxx-hub-toggle{position:fixed;left:5px;top:43%;width:43px;height:49px;pointer-events:auto;border:1px solid #69dfff99;border-radius:0 13px 13px 0;background:linear-gradient(150deg,#0b74ba,#082a4a);box-shadow:0 6px 24px #000b;align-items:center;justify-content:center;touch-action:none;user-select:none}',
+      '#staxx-hub-toggle b{font-size:22px;font-weight:900;color:#baf1ff}#staxx-hub-count{position:absolute;top:-8px;right:-8px;padding:2px 5px;min-width:20px;border-radius:14px;background:#38cfa9;border:2px solid #08192d;color:#062821;font-size:11px;font-weight:900}',
+      '#staxx-hub-toggle.staxx-urgent{border-color:#ff778d;background:linear-gradient(150deg,#a83b54,#4b1734)}#staxx-hub-toggle.staxx-urgent #staxx-hub-count{background:#ff6b83;color:#fff}',
+      '#staxx-hub-toggle.staxx-warning{border-color:#ffd17e;background:linear-gradient(150deg,#9b5b19,#433322)}#staxx-hub-toggle.staxx-warning #staxx-hub-count{background:#ffd17e;color:#32220a}',
+      '#staxx-hub-veil{position:fixed;inset:0;pointer-events:auto;background:#020a17ba}',
+      '#staxx-hub-drawer{position:fixed;inset:0 auto 0 0;width:min(302px,calc(100vw - 36px));height:100vh;height:100dvh;pointer-events:auto;background:#08192d;border-right:1px solid #28506e;box-shadow:10px 0 45px #000b;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}',
+      '#staxx-hub-drawer .staxx-head{display:flex;align-items:center;justify-content:space-between;padding:15px 13px;background:linear-gradient(120deg,#0c3358,#0b203b);border-bottom:1px solid #28506e;flex-shrink:0}',
+      '#staxx-hub-drawer .staxx-head strong{display:block;font-size:20px;font-weight:850;letter-spacing:-.4px}#staxx-hub-drawer .staxx-head strong span{color:#54d7fa}',
+      '#staxx-hub-drawer .staxx-head small{font-size:9px;letter-spacing:1px;color:#8fabca}',
+      '#staxx-hub-drawer [data-hub-close]{background:#1c3b59;border:0;border-radius:9px;width:34px;height:34px;font-size:24px}',
+      '#staxx-hub-drawer .staxx-scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:12px 10px 26px}',
+      '#staxx-hub-drawer h3{color:#8faec9;font-size:10px;letter-spacing:1.1px;margin:9px 4px 10px}',
+      '#staxx-hub-drawer .staxx-overview-switch{width:100%;text-align:left;background:linear-gradient(120deg,#124a71,#0c2d4b);border:1px solid #4384ad;border-radius:10px;padding:11px;margin-bottom:10px;font-weight:750}',
+      '#staxx-hub-drawer .staxx-overview-switch.selected{border-color:#71d9fd;background:#19527b}',
+      '#staxx-hub-drawer .staxx-tool{display:flex;align-items:center;gap:8px;text-align:left;width:100%;background:#102844;border:1px solid #284b6b;border-radius:11px;padding:10px 8px;min-height:62px;margin-bottom:8px}',
+      '#staxx-hub-drawer .staxx-icon{width:35px;height:35px;display:grid;place-items:center;border-radius:9px;background:linear-gradient(135deg,#0b79b9,#123c65);border:1px solid #4f9dc8;color:#cff6ff;font-weight:900;flex-shrink:0;font-size:12px}',
+      '#staxx-hub-drawer .staxx-info{flex:1;min-width:0}#staxx-hub-drawer .staxx-info b{display:block;font-size:13px}#staxx-hub-drawer .staxx-info small{display:block;font-size:10px;color:#94b1c9;margin-top:3px;overflow-wrap:anywhere}',
+      '#staxx-hub-drawer .staxx-pill{border-radius:14px;background:#1b486c;padding:2px 6px;font-size:11px;font-weight:800;color:#bdeaff}#staxx-hub-drawer .staxx-pill.on{background:#145f58;color:#89edca}',
+      '#staxx-hub-drawer .staxx-label{display:flex;align-items:center;justify-content:space-between;margin-top:15px}#staxx-hub-drawer .staxx-label span{color:#a4c1d8;font-size:10px}',
+      '#staxx-hub-drawer .staxx-alert{background:#0e2945;border:1px solid #315977;border-radius:10px;padding:10px;margin-bottom:9px}',
+      '#staxx-hub-drawer .staxx-alert.urgent{border-color:#e56785}#staxx-hub-drawer .staxx-alert.warning{border-color:#ae8450}',
+      '#staxx-hub-drawer .staxx-alert-title{border:0;background:none;padding:0;text-align:left;width:100%;font-size:12px;font-weight:750;color:#81dbfa!important}',
+      '#staxx-hub-drawer .staxx-alert.urgent .staxx-alert-title{color:#ff9bad!important}',
+      '#staxx-hub-drawer .staxx-alert span{display:block;color:#daecf9;font-size:12px;margin:5px 0;overflow-wrap:anywhere}',
+      '#staxx-hub-drawer .staxx-alert small{display:block;color:#91aec6;font-size:11px;margin:4px 0}',
+      '#staxx-hub-drawer .staxx-alert-actions{display:flex;gap:7px;margin-top:10px}',
+      '#staxx-hub-drawer .staxx-alert-actions button{background:#1c3e5b;border:1px solid #365978;border-radius:8px;padding:6px 9px;font-size:11px;flex:1;min-height:32px}',
+      '#staxx-hub-drawer .staxx-empty{color:#9db7cd;background:#0c243e;border:1px dashed #305473;border-radius:10px;font-size:11px;padding:14px 10px}',
+      '#staxx-hub-drawer .staxx-overview-card{background:#0d2945;border:1px solid #2d5574;border-radius:11px;padding:11px;margin-bottom:8px}',
+      '#staxx-hub-drawer .staxx-overview-card b{color:#83dbfa;font-size:12px}#staxx-hub-drawer .staxx-overview-card p{margin:5px 0;color:#d4eafa;font-size:11px}',
+      '#staxx-hub-drawer .staxx-overview-card dl{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0 0}',
+      '#staxx-hub-drawer .staxx-overview-card dt{font-size:10px;color:#96b6cf}#staxx-hub-drawer .staxx-overview-card dd{font-size:13px;font-weight:750;margin:0;overflow-wrap:anywhere}',
+      '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:17px}'
     ].join("");
-    document.documentElement.append(css,root);
-    const catalog=[{id:"profit",label:"ProfitStaxx",icon:"PS",desc:"Market · Museum · Ledger"},
+    document.documentElement.append(css, root);
+
+    const entries = [
+      {id:"profit",label:"ProfitStaxx",icon:"PS",desc:"Markets · Museum · Ledger"},
       {id:"company",label:"Company Helper",icon:"CO",desc:"Staff · Training · Growth"},
-      {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}];
-    const active=Object.create(null),notices=Object.create(null);
-    // Keep recent read-only notifications while navigating between Torn pages.
-    // Cached statuses are explicitly identified as previous observations.
-    try {
-      const saved=JSON.parse(sessionStorage.getItem("staxx-hub-notifications-v1")||"null");
-      if(saved&&typeof saved==="object"&&Date.now()-saved.time<4*3600000&&saved.byTool){
-        for(const id of ["profit","company","happy"]){
-          const a=saved.byTool[id];
-          if(a&&typeof a==="object"&&Number(a.count)>0)notices[id]={
-            count:Math.min(99,Math.max(0,Math.floor(Number(a.count)||0))),
-            summary:"Previously seen · "+String(a.summary||"Needs attention").slice(0,120),
-            items:Array.isArray(a.items)?a.items.slice(0,3).map(v=>String(v).slice(0,120)):[]
-          };
-        }
-      }
-    }catch(_){}
-    function rememberNotices(){
-      try{sessionStorage.setItem("staxx-hub-notifications-v1",JSON.stringify({time:Date.now(),byTool:notices}));}catch(_){}
-    }
+      {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}
+    ];
+    const active = Object.create(null), notices = Object.create(null), summaries = Object.create(null), controls = Object.create(null);
     const toggle=root.querySelector("#staxx-hub-toggle"),veil=root.querySelector("#staxx-hub-veil"),drawer=root.querySelector("#staxx-hub-drawer");
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
-    let expanded=false;
-    function el(tag,cls,value){const n=document.createElement(tag);if(cls)n.className=cls;if(value!==undefined)n.textContent=String(value);return n;}
-    function expand(value){expanded=!!value;veil.hidden=drawer.hidden=!expanded;toggle.hidden=expanded;toggle.setAttribute("aria-expanded",String(expanded));}
+    const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]");
+    let expanded=false, panelOpen=false, overviewShown=false, moving=null, suppressClick=false;
+    const openPanels=new Set();
+    const idOk = v=>typeof v==="string" && /^[a-z][a-z0-9-]{0,31}$/.test(v);
+    function node(tag,cls,value) {const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e;}
+    function safeRead(key, fallback) {try {const v=JSON.parse(localStorage.getItem(key)||"null");return v===null?fallback:v;}catch(_){return fallback;}}
+    function saveLocal(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch(_){}}
+    function remember(){
+      try{sessionStorage.setItem("staxx-hub-state-v2",JSON.stringify({at:Date.now(),notices,summaries}));}catch(_){}
+    }
+    try {
+      const known=safeRead("staxx-hub-registry-v2",[]);
+      if(Array.isArray(known))for(const e of known.slice(0,25)){
+        if(idOk(e.id)&&!entries.some(x=>x.id===e.id))entries.push({id:e.id,label:String(e.label||e.id).slice(0,40),icon:String(e.icon||"S").slice(0,3),desc:String(e.desc||"Staxx tool").slice(0,70)});
+      }
+    }catch(_){}
+    try {
+      const old=JSON.parse(sessionStorage.getItem("staxx-hub-state-v2")||"null");
+      if(old&&Date.now()-old.at<4*3600000){
+        for(const id of Object.keys(old.notices||{}))if(idOk(id)){const n=old.notices[id];if(n&&Number(n.count)>=0)notices[id]=Object.assign({},n,{cached:true});}
+        for(const id of Object.keys(old.summaries||{}))if(idOk(id)){const d=old.summaries[id];if(d&&typeof d==="object")summaries[id]=d;}
+      }
+    }catch(_){}
+    for(const e of entries)controls[e.id]=safeRead("staxx-hub-alert-control-"+e.id,{});
+    const pos=safeRead("staxx-hub-position-v2",0.43);
+    function position(value) {
+      const height=Math.max(160,window.innerHeight||600),buttonHeight=49;
+      const top=Math.max(18,Math.min(height-buttonHeight-18,Math.round(height*Math.max(0,Math.min(1,Number(value)||0)))));
+      toggle.style.top=top+"px";
+      return top/height;
+    }
+    position(typeof pos==="number"?pos:0.43);
+    function launcherVisibility(){
+      const hide=expanded||panelOpen;
+      toggle.hidden=hide;
+      toggle.style.setProperty("display",hide?"none":"flex","important");
+      toggle.style.setProperty("pointer-events",hide?"none":"auto","important");
+      toggle.setAttribute("aria-expanded",String(expanded));
+    }
+    function setExpanded(value){
+      expanded=Boolean(value);veil.hidden=drawer.hidden=!expanded;launcherVisibility();
+    }
+    function activeNotice(id){
+      const n=notices[id];if(!n||!(n.count>0))return null;
+      const control=controls[id]||{};
+      if(control.dismissed===n.fingerprint || Number(control.snoozeUntil)>Date.now())return null;
+      return n;
+    }
     function openTool(id){
       if(id==="company"&&!/^\/companies\.php$/i.test(location.pathname)){
         try{sessionStorage.setItem("staxx-open-company","1");}catch(_){}
         location.assign(location.origin+"/companies.php");return;
       }
-      if(!active[id]){const info=catalog.find(x=>x.id===id);alerts.replaceChildren(el("p","staxx-empty",(info?info.label:"Script")+" is not running. Enable it in Torn PDA, then reload this page."));return;}
-      expand(false);
-      document.dispatchEvent?.(new CustomEvent("staxx:closeall"));
-      document.dispatchEvent?.(new CustomEvent("staxx:open",{detail:{id:id}}));
+      if(!active[id]){
+        alerts.replaceChildren(node("p","staxx-empty","This tool is not active on this page. Enable its script in Torn PDA and reload."));
+        return;
+      }
+      panelOpen=true;setExpanded(false);launcherVisibility();
+      document.dispatchEvent(new CustomEvent("staxx:closeall"));
+      document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id}}));
+    }
+    function showOverview(){
+      overview.replaceChildren();
+      for(const e of entries){
+        const s=summaries[e.id],card=node("article","staxx-overview-card");
+        card.append(node("b","",e.label),node("p","",s?.headline || (active[e.id]?"No verified figures yet":"Open tool for the latest figures")));
+        const d=node("dl");
+        for(const m of (Array.isArray(s?.metrics)?s.metrics:[]).slice(0,4)){
+          const group=node("div");group.append(node("dt","",m.label),node("dd","",m.value));d.append(group);
+        }
+        if(d.childElementCount)card.append(d);
+        const btn=node("button","staxx-overview-switch","Open "+e.label);btn.dataset.openStaxx=e.id;card.append(btn);
+        overview.append(card);
+      }
+      overview.hidden=!overviewShown;
+      overviewButton.classList.toggle("selected",overviewShown);
+      overviewButton.setAttribute("aria-expanded",String(overviewShown));
     }
     function render(){
       tools.replaceChildren();alerts.replaceChildren();
-      let total=0;
-      for(const info of catalog){
-        const n=Math.min(99,Math.max(0,Number(notices[info.id]?.count)||0));total+=n;
-        const btn=el("button","staxx-tool");btn.type="button";btn.dataset.openStaxx=info.id;
-        const txt=el("span","staxx-info");txt.append(el("b","",info.label),el("small","",active[info.id]?info.desc:"Not loaded · enable in Torn PDA"));
-        btn.append(el("span","staxx-icon",info.icon),txt,el("span","staxx-pill"+(n?" on":""),n||"›"));tools.append(btn);
+      let total=0,maxLevel=0,visible=0,muted=0;
+      for(const e of entries){
+        const n=activeNotice(e.id),count=n?Math.min(99,Number(n.count)||0):0;
+        total+=count;visible+=Number(count>0);
+        if(n)maxLevel=Math.max(maxLevel,n.level==="urgent"?2:n.level==="warning"?1:0);
+        if(!n && notices[e.id]?.count>0)muted++;
+        const btn=node("button","staxx-tool");btn.type="button";btn.dataset.openStaxx=e.id;
+        const info=node("span","staxx-info");info.append(node("b","",e.label),node("small","",active[e.id]?e.desc:"Enable script to open"));
+        btn.append(node("span","staxx-icon",e.icon),info,node("span","staxx-pill"+(count?" on":""),count||"›"));tools.append(btn);
       }
-      bubble.hidden=total<1;bubble.textContent=total>=100?"99+":String(total);
-      root.querySelector("#staxx-hub-total").textContent=total?total+" active":"All clear";
-      let any=false;
-      for(const info of catalog){
-        const d=notices[info.id];if(!d||!(d.count>0))continue;any=true;
-        const btn=el("button","staxx-alert");btn.type="button";btn.dataset.openStaxx=info.id;
-        btn.append(el("b","",info.label+" · "+d.count+" alert"+(d.count===1?"":"s")),el("span","",d.summary||"Needs attention"));
-        for(const item of d.items.slice(0,3))btn.append(el("small","",item));alerts.append(btn);
+      toggle.classList.toggle("staxx-urgent",maxLevel===2);
+      toggle.classList.toggle("staxx-warning",maxLevel===1);
+      bubble.hidden=total===0;bubble.textContent=total>=100?"99+":String(total);
+      toggle.setAttribute("aria-label",total?total+" Staxx notifications; open tools":"Open Staxx tools");
+      root.querySelector("#staxx-hub-total").textContent=visible?visible+" tools":muted?muted+" muted":"All clear";
+      for(const e of entries){
+        const n=activeNotice(e.id);if(!n)continue;
+        const card=node("div","staxx-alert "+n.level);
+        const title=node("button","staxx-alert-title",e.label+" · "+n.count+" alert"+(n.count===1?"":"s"));
+        title.type="button";title.dataset.openStaxx=e.id;card.append(title);
+        card.append(node("span","",n.summary||"Needs attention"));
+        for(const item of n.items.slice(0,2))card.append(node("small","",item));
+        if(n.cached)card.append(node("small","","Last observed on a previous page"));
+        const buttons=node("div","staxx-alert-actions");
+        const dismiss=node("button","","Dismiss"),snooze=node("button","","Snooze 1h");
+        dismiss.type=snooze.type="button";dismiss.dataset.dismissStaxx=e.id;snooze.dataset.snoozeStaxx=e.id;
+        buttons.append(dismiss,snooze);card.append(buttons);alerts.append(card);
       }
-      if(!any)alerts.append(el("p","staxx-empty","Nothing needs your attention right now."));
+      if(!visible)alerts.append(node("p","staxx-empty",muted?"Alerts dismissed or snoozed. New alerts will still appear.":"Nothing needs your attention right now."));
+      showOverview();
+      launcherVisibility();
     }
-    root.addEventListener("click",e=>{const target=e.target.closest("button[data-open-staxx]");if(target)openTool(target.dataset.openStaxx);else if(e.target.closest("#staxx-hub-toggle"))expand(true);else if(e.target===veil||e.target.closest("[data-hub-close]"))expand(false);});
-    document.addEventListener("keydown",e=>{if(e.key==="Escape"&&expanded)expand(false);});
-    document.addEventListener?.("staxx:register",e=>{const id=e.detail?.id;if(catalog.some(x=>x.id===id)){active[id]=true;render();}});
-    document.addEventListener?.("staxx:notice",e=>{const d=e.detail||{},id=d.id;if(!catalog.some(x=>x.id===id))return;
-      const clean={count:Math.min(99,Math.max(0,Math.floor(Number(d.count)||0))),summary:String(d.summary||"").slice(0,160),
-        items:Array.isArray(d.items)?d.items.slice(0,5).map(v=>String(v).slice(0,160)):[]};
-      if(JSON.stringify(clean)!==JSON.stringify(notices[id])){notices[id]=clean;rememberNotices();render();}
+    root.addEventListener("click",e=>{
+      const b=e.target.closest("button");if(!b)return;
+      if(b.dataset.dismissStaxx){const id=b.dataset.dismissStaxx,n=notices[id];if(n){controls[id]={...controls[id],dismissed:n.fingerprint,snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();}return;}
+      if(b.dataset.snoozeStaxx){const id=b.dataset.snoozeStaxx;controls[id]={...controls[id],snoozeUntil:Date.now()+3600000};saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();return;}
+      if(b.dataset.openStaxx){openTool(b.dataset.openStaxx);return;}
+      if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;render();return;}
+      if(b===toggle){if(suppressClick){suppressClick=false;return;}setExpanded(true);return;}
+      if(b.hasAttribute("data-hub-close"))setExpanded(false);
     });
+    veil.addEventListener("click",()=>setExpanded(false));
+    document.addEventListener("keydown",e=>{if(e.key==="Escape"&&expanded)setExpanded(false);});
+    toggle.addEventListener("pointerdown",e=>{
+      if(e.button!==undefined&&e.button!==0)return;
+      moving={id:e.pointerId,startY:e.clientY,top:toggle.getBoundingClientRect().top,dragged:false};
+      try{toggle.setPointerCapture?.(e.pointerId);}catch(_){}
+    });
+    toggle.addEventListener("pointermove",e=>{
+      if(!moving||e.pointerId!==moving.id)return;
+      if(Math.abs(e.clientY-moving.startY)>7)moving.dragged=true;
+      if(moving.dragged){const height=Math.max(160,window.innerHeight||600);
+        const y=Math.max(18,Math.min(height-67,moving.top+e.clientY-moving.startY));
+        toggle.style.top=Math.round(y)+"px";}
+    });
+    function endMove(e){if(!moving||e.pointerId!==moving.id)return;
+      if(moving.dragged){suppressClick=true;saveLocal("staxx-hub-position-v2",position((parseFloat(toggle.style.top)||0)/Math.max(1,window.innerHeight)));
+        // Prevent a post-drag synthetic click from reopening the drawer.
+        e.preventDefault?.();}
+      moving=null;
+    }
+    toggle.addEventListener("pointerup",endMove);toggle.addEventListener("pointercancel",endMove);
+    window.addEventListener("resize",()=>position((parseFloat(toggle.style.top)||0)/Math.max(1,window.innerHeight)));
+    document.addEventListener("staxx:panel",e=>{
+      if(!e.detail||!idOk(e.detail.id))return;
+      if(e.detail.open){openPanels.add(e.detail.id);panelOpen=true;setExpanded(false);}
+      else{openPanels.delete(e.detail.id);panelOpen=openPanels.size>0;launcherVisibility();}
+    });
+    document.addEventListener("staxx:register",e=>{
+      const d=e.detail||{},id=d.id;if(!idOk(id))return;
+      let entry=entries.find(x=>x.id===id);
+      if(!entry && entries.length<25){
+        entry={id,label:String(d.label||id).slice(0,40),icon:String(d.icon||"S").slice(0,3),desc:String(d.desc||"Staxx tool").slice(0,70)};
+        entries.push(entry);controls[id]=safeRead("staxx-hub-alert-control-"+id,{});
+        saveLocal("staxx-hub-registry-v2",entries.slice(3));
+      }
+      if(entry){active[id]=true;render();}
+    });
+    document.addEventListener("staxx:notice",e=>{
+      const d=e.detail||{},id=d.id;if(!idOk(id)||!entries.some(x=>x.id===id))return;
+      const count=Math.min(99,Math.max(0,Math.floor(Number(d.count)||0)));
+      const n={count,summary:String(d.summary||"").slice(0,180),
+        items:Array.isArray(d.items)?d.items.slice(0,5).map(x=>String(x).slice(0,160)):[],
+        level:["urgent","warning","info"].includes(d.level)?d.level:"info",cached:false};
+      n.fingerprint=JSON.stringify([n.count,n.summary,n.items,n.level]);
+      if(JSON.stringify(notices[id])!==JSON.stringify(n)){notices[id]=n;remember();render();}
+    });
+    document.addEventListener("staxx:summary",e=>{
+      const d=e.detail||{},id=d.id;if(!idOk(id)||!entries.some(x=>x.id===id))return;
+      const entry={headline:String(d.headline||"").slice(0,90),
+        metrics:Array.isArray(d.metrics)?d.metrics.slice(0,4).map(x=>({label:String(x.label||"").slice(0,36),value:String(x.value??"—").slice(0,45)})):[],
+        updated:Number(d.updated)||Date.now()};
+      if(JSON.stringify(summaries[id])!==JSON.stringify(entry)){summaries[id]=entry;remember();if(expanded&&overviewShown)showOverview();}
+    });
+    window.setInterval(()=>{if(!document.hidden&&entries.some(e=>Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now())){for(const e of entries){if(Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now()){controls[e.id]={...controls[e.id],snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+e.id,controls[e.id]);}}render();}},60000);
+    // Older v1 notifications cannot be trusted for dismiss-state comparisons.
     render();
-    document.dispatchEvent?.(new CustomEvent("staxx:ping"));
+    document.dispatchEvent(new CustomEvent("staxx:ping"));
   }
-  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",startHub,{once:true});else startHub();
 })();
+
 
 
 (function () {
@@ -1005,7 +1147,13 @@
       esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
     opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
-    document.dispatchEvent?.(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text)}}));
+    document.dispatchEvent?.(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,level:status.items.some(x=>/guardrail exceeded|overflow/i.test(x.text))?'urgent':status.count?'warning':'info',summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text)}}));
+    if(c&&c.profile){const a=accounting(c);
+      document.dispatchEvent?.(new CustomEvent('staxx:summary',{detail:{id:'company',headline:String(c.profile.name||'Company')+' · '+String(c.profile.rating??'?')+' stars',metrics:[
+        {label:'Star rating',value:String(c.profile.rating??'?')+' / 10'},
+        {label:'Staff',value:String((c.staff||[]).length)},
+        {label:'Daily P/L estimate',value:a&&a.known?money(a.profit):'Unverified'}
+      ],updated:Date.now()}}));}
   }
 
   function employeePenaltyV12(p) {
@@ -1436,6 +1584,7 @@
   style.textContent += "#tch-root .tch-insight{display:grid;grid-template-columns:1fr auto;gap:5px 12px;width:100%;text-align:left;border:1px solid #4d6b7d;border-radius:12px;background:#294254;color:#f6fafb;padding:14px;margin:8px 0}#tch-root .tch-insight strong,#tch-root .tch-insight small{grid-column:1}#tch-root .tch-insight small{color:#cce0e9;font-size:12px}#tch-root .tch-insight span{grid-column:2;grid-row:1/3;font-size:20px;color:#74efdc;align-self:center}#tch-root.theme-light .tch-insight{background:#f3f8fc;color:#153649}#tch-root.theme-light .tch-insight small{color:#35586b}";
   style.textContent+="#tch-root .tch-taprow{position:relative;width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;background:transparent;border:0;padding:13px 4px}#tch-root .tch-taprow .tch-tilearrow{position:static;margin-left:8px}#tch-root.theme-light .tch-taprow{background:transparent;color:#15394c}";
   style.textContent += "#tch-open{display:none!important}#tch-root:not(.theme-light){background:#08192d!important;color:#e7f2ff!important}#tch-root:not(.theme-light) header,#tch-root:not(.theme-light) .tch-top{background:linear-gradient(120deg,#0c3358,#0b203b)!important;border-color:#28506e!important}#tch-root:not(.theme-light) .tch-bottom,#tch-root:not(.theme-light) .nav{background:#0b223b!important;border-color:#284b6b!important}#tch-root:not(.theme-light) .card,#tch-root:not(.theme-light) .tch-panel,#tch-root:not(.theme-light) .tch-person,#tch-root:not(.theme-light) .tch-wagerow,#tch-root:not(.theme-light) .tch-wage-risk{background:#0d2945!important;border:1px solid #284b6b!important;border-radius:12px!important;box-shadow:none!important}#tch-root:not(.theme-light) .tch-hero{background:linear-gradient(130deg,#103d61,#0c2945)!important;border-color:#3f7ea6!important}#tch-root:not(.theme-light) .tch-metric,#tch-root:not(.theme-light) .tch-radar>div{background:#102844!important;border-color:#294661!important}#tch-root:not(.theme-light) .tch-eyebrow,#tch-root:not(.theme-light) .tch-kicker{color:#75ddff!important}#tch-root:not(.theme-light) button.primary,#tch-root:not(.theme-light) button.active{background:#1c5080!important;border-color:#67c7ff!important}#tch-root:not(.theme-light) button{border-radius:9px;border-color:#356181;color:#edf7ff}#tch-root:not(.theme-light) input,#tch-root:not(.theme-light) select,#tch-root:not(.theme-light) textarea{background:#061b31;border-color:#325c79;color:#fff}#tch-root:not(.theme-light) .tch-bottom{padding-bottom:calc(4px + env(safe-area-inset-bottom))!important}#tch-root:not(.theme-light) .tch-bottom button{font-size:10px!important;height:40px!important;min-height:40px!important}";
+  style.textContent += "#tch-open{display:none!important}#tch-root[hidden]{display:none!important}#tch-root:not([hidden]){position:fixed!important;inset:0!important;display:flex!important;align-items:flex-end!important;justify-content:center!important;background:#020a17c7!important;z-index:2147483646!important;overflow:hidden!important;padding:0!important;color:#e7f2ff!important;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif!important}#tch-root .tch-staxx-panel{display:flex!important;flex-direction:column!important;flex:0 1 auto!important;width:min(650px,100vw)!important;height:min(93dvh,900px)!important;min-height:0!important;background:#08192d!important;border:1px solid #28506e!important;border-bottom:0!important;border-radius:19px 19px 0 0!important;overflow:hidden!important;box-shadow:0 0 45px #000c!important;position:relative!important}#tch-root .tch-staxx-panel *{box-sizing:border-box}#tch-root .tch-staxx-panel .tch-top{position:static!important;display:flex!important;flex-shrink:0!important;min-height:66px!important;padding:12px 15px!important;background:linear-gradient(120deg,#0c3358,#0b203b)!important;border:0!important;border-bottom:1px solid #28506e!important;box-shadow:none!important}#tch-root .tch-staxx-panel .tch-headline strong{font-size:18px!important;letter-spacing:-.2px!important;color:#f0faff!important}#tch-root .tch-staxx-panel .tch-eyebrow{color:#75ddff!important;font-size:10px!important}#tch-root .tch-staxx-panel .tch-timestamp{color:#8fb1cf!important;font-size:10px!important}#tch-root .tch-staxx-panel .tch-top button{min-height:34px!important;width:36px!important;padding:4px!important;background:#1c3b59!important;border:1px solid #365d78!important;color:#fff!important}#tch-root .tch-staxx-panel .tch-bottom{position:static!important;inset:auto!important;flex-shrink:0!important;order:0!important;width:100%!important;display:flex!important;grid-template-columns:none!important;gap:5px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;padding:7px 8px!important;background:#0b223b!important;border:0!important;border-bottom:1px solid #284b6b!important;box-shadow:none!important}#tch-root .tch-staxx-panel .tch-bottom button{height:42px!important;min-height:42px!important;min-width:60px!important;flex:1 0 60px!important;display:flex!important;flex-direction:row!important;gap:4px!important;padding:5px 6px!important;border:1px solid transparent!important;background:transparent!important;border-radius:8px!important;color:#97b5ce!important;font-size:11px!important;font-weight:650!important;line-height:1!important}#tch-root .tch-staxx-panel .tch-bottom button.active{background:#1c5080!important;border:1px solid #579ed4!important;color:#fff!important}#tch-root .tch-staxx-panel .tch-bottom .tch-navicon{font-size:14px!important;color:inherit!important}#tch-root .tch-staxx-panel .tch-main{position:static!important;flex:1 1 auto!important;order:1!important;min-height:0!important;min-width:0!important;max-width:none!important;width:100%!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;padding:13px 13px 28px!important;margin:0!important;background:#08192d!important}#tch-root .tch-staxx-panel .tch-homehead,#tch-root .tch-staxx-panel .tch-hero{background:linear-gradient(130deg,#103d61,#0c2945)!important;border:1px solid #3f7ea6!important;border-radius:12px!important}#tch-root .tch-staxx-panel .card,#tch-root .tch-staxx-panel .tch-panel,#tch-root .tch-staxx-panel .tch-person,#tch-root .tch-staxx-panel .tch-wagerow,#tch-root .tch-staxx-panel .tch-wage-risk,#tch-root .tch-staxx-panel .tch-stockrow{background:#0d2945!important;border:1px solid #284b6b!important;border-radius:12px!important;box-shadow:none!important}#tch-root .tch-staxx-panel .tch-metric,#tch-root .tch-staxx-panel .tch-radar>div,#tch-root .tch-staxx-panel .tch-homekpis .tch-metric{background:#102844!important;border:1px solid #294661!important;border-radius:11px!important}#tch-root .tch-staxx-panel .tch-metric strong,#tch-root .tch-staxx-panel .tch-home-number{color:#f0f8ff!important}#tch-root .tch-staxx-panel .tch-mini,#tch-root .tch-staxx-panel .tch-kicker{color:#8fdbff!important}#tch-root .tch-staxx-panel .tch-main button.primary,#tch-root .tch-staxx-panel .tch-main button.active{background:#0879bd!important;border:1px solid #4db8ec!important;color:#fff!important}#tch-root .tch-staxx-panel .tch-main button{border-radius:9px!important}#tch-root .tch-staxx-panel .tch-main input,#tch-root .tch-staxx-panel .tch-main select,#tch-root .tch-staxx-panel .tch-main textarea{background:#061b31!important;border:1px solid #325c79!important;color:#fff!important;border-radius:8px!important}#tch-root .tch-staxx-panel p,#tch-root .tch-staxx-panel .muted,#tch-root .tch-staxx-panel .tch-hint{color:#aac3d9!important}#tch-root .tch-staxx-panel .good{color:#49e2ad!important}#tch-root .tch-staxx-panel .bad{color:#ff8c9b!important}#tch-root .tch-staxx-panel .tch-main .scroll{max-width:100%;overflow-x:auto!important}@media(min-width:800px){#tch-root:not([hidden]){align-items:center!important}#tch-root .tch-staxx-panel{height:min(85vh,880px)!important;border-radius:18px!important;border-bottom:1px solid #28506e!important}}@media(max-width:390px){#tch-root .tch-staxx-panel .tch-bottom button{font-size:10px!important;flex-basis:52px!important;min-width:52px!important;padding:5px 3px!important}#tch-root .tch-staxx-panel .tch-bottom .tch-navicon{font-size:12px!important}}";
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
   const root=document.createElement("div");root.id="tch-root";root.hidden=true;document.body.appendChild(root);
@@ -1720,7 +1869,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.4.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.5.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -1993,10 +2142,16 @@
       (advancedSettings?settings(c):"");
   }
 
+  let staxxCompanyPanelState=null;
   function draw() {
     updateLauncherV11();
     opener.hidden=open || !isCompanyPage();
     root.hidden=!open || !isCompanyPage();
+    const visible=Boolean(open&&isCompanyPage());
+    if(staxxCompanyPanelState!==visible){
+      staxxCompanyPanelState=visible;
+      document.dispatchEvent?.(new CustomEvent('staxx:panel',{detail:{id:'company',open:visible}}));
+    }
     if(!open)return;
     try {
       const c=current();
@@ -2009,22 +2164,22 @@
       else if(tab==="stock")body=stockV3(c);
       else if(tab==="settings")body=settingsV2(c);
       root.className=data.themeMode==="light"?"theme-light":"";
-      root.innerHTML=headV2(c)+'<main class="tch-main">'+
+      root.innerHTML='<div class="tch-staxx-panel" role="dialog" aria-label="Company Helper">'+headV2(c)+tabsV2()+'<main class="tch-main">'+
         (message?'<div class="notice '+esc(severity)+'">'+esc(message)+'</div>':"")+
-        (busy?'<div class="notice">Reading Torn API after your request…</div>':"")+body+'</main>'+tabsV2();
+        (busy?'<div class="notice">Reading Torn API after your request…</div>':"")+body+'</main></div>';
     } catch (error) {
       // Render a usable, non-destructive fallback instead of a blank screen.
       // Never clear or reset local storage in response to a rendering error.
       const reason=error && error.message?String(error.message):"Unknown rendering error";
       console.error("[Torn Company Helper] Dashboard render error:",reason);
       root.className=data.themeMode==="light"?"theme-light":"";
-      root.innerHTML='<header class="tch-top"><div class="tch-headline"><strong>Company Helper</strong><small>Display recovery</small></div>'+
+      root.innerHTML='<div class="tch-staxx-panel" role="dialog" aria-label="Company Helper"><header class="tch-top"><div class="tch-headline"><strong>Company Helper</strong><small>Display recovery</small></div>'+
         '<div class="actions"><button type="button" data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>'+
         '<main class="tch-main"><section class="tch-panel" role="alert"><h2>Dashboard could not render</h2>'+
         '<p>Your locally saved company records have not been cleared. This is a display issue.</p>'+
         '<p class="tch-hint">Error: '+esc(reason)+'</p><div class="tch-actionrow">'+
         '<button type="button" data-act="tab" data-tab="settings">Open Settings</button>'+
-        '<button type="button" data-act="close">Close dashboard</button></div></section></main>';
+        '<button type="button" data-act="close">Close dashboard</button></div></section></main></div>';
     }
   }
   function notify(s,level) {message=s;severity=level || "";draw();}
@@ -2318,6 +2473,7 @@
   syncCompanyVisibility();
 
   root.addEventListener("click",async function (evt) {
+    if(evt.target===root){open=false;draw();return;}
     const el=evt.target.closest("button[data-act]");if (!el) return;
     const act=el.dataset.act, c=current();
     if (act==="close") {open=false;draw();return;}
