@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.8.0
+// @version      1.9.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1736,6 +1736,77 @@
     if(!c.lastRefresh)html+='<section class="tch-panel" id="tch-alert-refresh-company"><h3>Refresh company data</h3><button data-act="refresh">Load latest data</button></section>';
     return html;
   }
+
+  // Cross-functional advisory models: no promises about hidden Torn star mechanics.
+  function employeeDevelopmentV14(c){
+    const roles=roleList(c),rows=[];
+    for(const p of (c.staff||[])){
+      const role=roles.find(r=>r.name===currentPosition(p));if(!role||!p.stats)continue;
+      const requirements=Object.entries(role.requirements||{}).filter(x=>Number(x[1])>0);
+      const short=requirements.map(([k,v])=>({key:k,need:Number(v),have:num(p.stats[k]),gap:Math.max(0,Number(v)-num(p.stats[k]))})).filter(x=>x.gap>0);
+      if(!short.length)continue;
+      const progress=employeeProgress(c,p.id),observations=(c.snapshots||[]).filter(x=>x?.roster?.[p.id]&&x.observedAt);
+      const first=observations[0],last=observations[observations.length-1];
+      const days=first&&last?Math.max(0,(Date.parse(last.observedAt)-Date.parse(first.observedAt))/86400000):0;
+      const scenarios=short.map(x=>{
+        const gained=progress.stats&&progress.stats[x.key];
+        const daily=days>=3&&Number.isFinite(gained)&&gained>0?gained/days:null;
+        return {...x,daily,days:daily===null?null:Math.ceil(x.gap/daily)};
+      });
+      const eta=scenarios.every(x=>x.days!==null)?Math.max(...scenarios.map(x=>x.days)):null;
+      rows.push({person:p,role:role.name,missing:scenarios,eta,observedDays:days,samples:progress.count||0,
+        gap:short.reduce((n,x)=>n+x.gap,0)});
+    }
+    return rows.sort((a,b)=>a.eta===null?1:b.eta===null?-1:a.eta-b.eta||b.gap-a.gap);
+  }
+  function developmentPanelV14(c){
+    const rows=employeeDevelopmentV14(c);
+    if(!rows.length)return '<section class="tch-panel"><h2>Employee development</h2><p>No current-role working-stat shortages can be established with saved role requirements.</p></section>';
+    return '<section class="tch-panel"><h2>Employee development forecasts</h2>'+
+      '<p>Measured shortfall against the assigned role. ETA is an extrapolation of observed working-stat change between saved company snapshots, <b>not</b> a train entitlement, guaranteed gain or predicted effectiveness.</p>'+
+      rows.slice(0,8).map(x=>'<div class="tch-dense-row"><strong>'+esc(x.person.name)+'</strong> · '+esc(x.role)+
+        '<div><small>'+x.missing.map(m=>esc(m.key.replace("_"," "))+' short '+Math.ceil(m.gap).toLocaleString()).join(' · ')+'</small></div>'+
+        '<b>'+esc(x.eta===null?'ETA unknown':x.eta+' days at recorded pace')+'</b>'+
+        '<small>'+x.samples+' snapshots · '+x.observedDays.toFixed(1)+' days observed</small>'+
+        '<button data-act="employee-detail" data-id="'+esc(x.person.id)+'">Review employee and trains ›</button></div>').join('')+
+      '<p class="tch-hint">Two snapshots on the same day are not enough for an ETA. Actual trains, passive gains and new assignments can change the result.</p></section>';
+  }
+  function wageScenarioPanelV14(c){
+    const current=accounting(c),rows=supportWageModelV13(c),known=rows.every(x=>x.wage!==null);
+    if(!current||!known)return '<section class="tch-panel"><h2>Wage budget scenarios</h2><p>Complete employee wages are needed for reliable wage-only comparisons.</p></section>';
+    const scenarios=[{label:'Current wages',cost:current.wages},
+      {label:'Raise all by 5%',cost:Math.round(current.wages*1.05)},
+      {label:'Raise all by 10%',cost:Math.round(current.wages*1.1)}];
+    const comparable=rows.filter(x=>x.peerCount>=2&&x.estimate!==null);
+    if(comparable.length)scenarios.push({label:'Peer-median subset ('+comparable.length+' staff)',
+      cost:current.wages+comparable.reduce((n,x)=>n+x.estimate-x.wage,0)});
+    return '<section class="tch-panel"><h2>Wage impact simulator</h2>'+
+      '<p>Hold revenue and advertising constant to isolate the <b>daily cash cost</b> of possible pay decisions. Pay itself does not improve Torn company stars.</p>'+
+      scenarios.map(x=>'<div class="tch-change"><strong>'+esc(x.label)+'</strong><span>Daily wages '+esc(money(x.cost))+
+        '</span><b>'+esc(current.known?'P/L '+money(current.revenue-current.ad-x.cost):'P/L unavailable')+'</b></div>').join('')+
+      '<p class="tch-hint">The peer-median option adjusts only employees with two comparable same-role peers. It is not a recommended pay cut; retention, special-role contribution and competitiveness need manual review.</p>'+
+      '<button data-act="goto" data-target="staff-wages">Review individual pay bands ›</button></section>';
+  }
+  function starMomentumPanelV14(c){
+    const byDay=new Map();
+    for(const s of (c.snapshots||[]))if(s?.observedAt&&Number.isFinite(Number(s.rating)))
+      byDay.set(String(s.observedAt).slice(0,10),Number(s.rating));
+    const points=[...byDay].sort((a,b)=>a[0].localeCompare(b[0]));
+    const changes=[];
+    for(let i=1;i<points.length;i++)if(points[i][1]>points[i-1][1])
+      changes.push({date:points[i][0],gapDays:(Date.parse(points[i][0])-Date.parse(points[i-1][0]))/86400000,
+        delta:points[i][1]-points[i-1][1]});
+    const current=Number(c.profile.rating)||0;
+    let observed='No recorded star-ups yet',eta='Not estimable';
+    if(changes.length){observed=changes.length+' observed increase(s) across '+points.length+' dated snapshots';}
+    // Hidden ranking inputs mean no calendar ETA is defensible from this alone.
+    return '<section class="tch-panel"><h2>Next-star readiness</h2>'+
+      '<div class="tch-metrics">'+metricV2("Reported rating",current+' / 10','Current Torn observation','','growth-review')+
+      metricV2("Next star ETA",eta,'Torn does not expose a reliable promotion formula','','growth-review')+
+      metricV2("Promotion evidence",observed,'Your saved rating history','','growth-review')+'</div>'+
+      '<p>Star ratings update weekly on Sunday. More popularity, revenue and effectiveness history helps identify improvement, but cannot establish an exact promotion date.</p>'+
+      '<button data-act="goto" data-target="growth-review">Compare Sunday snapshots ›</button></section>';
+  }
   function homeV13(c){
     if(!c||!c.profile)return introV2();
     const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
@@ -1747,7 +1818,7 @@
         metricV2("Popularity",c.profile.popularity==null?"?":c.profile.popularity+"%","Daily report","","growth-pricing")+
         metricV2("Trains available",train.available===null?"?":train.available,"Paid owed "+due,"","training-queue")+
         metricV2("Estimated P/L",a.known?money(a.profit):"Unknown","Excludes unreported costs","","growth-accounts")+
-      '</div>'+growthMovesPanelV13(c)+
+      '</div>'+starMomentumPanelV14(c)+growthMovesPanelV13(c)+
       '<div class="tch-quick"><button data-act="goto" data-target="training-queue">Training queue ›</button>'+
       '<button data-act="goto" data-target="staff-wages">Wage analysis ›</button>'+
       '<button data-act="goto" data-target="growth-review">Weekly review ›</button></div>'+
@@ -2136,9 +2207,9 @@
       {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
       {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
-    if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+compactWagePanelV13(c)+
+    if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+wageScenarioPanelV14(c)+compactWagePanelV13(c)+
       '<details class="tch-advanced"><summary>Detailed HR values, wage bands & scenarios</summary>'+wagesPanelV11(c)+wageRiskPanelV12(c)+'</details>';
-    if(staffView==="simulator")return '<div class="tch-section"><h2>Staff optimiser</h2><p>Explore alternative staffing plans before making decisions.</p>'+buttonsV2("Staff view",options)+'</div>'+scenarioV2(c);
+    if(staffView==="simulator")return '<div class="tch-section"><h2>Staff optimiser</h2><p>Explore alternative staffing plans before making decisions.</p>'+buttonsV2("Staff view",options)+'</div>'+wageScenarioPanelV14(c)+scenarioV2(c);
     const roles=roleList(c),sc=scenarioModel(c),suggested=suggestions(c);
     const suggestionById={};
     suggested.forEach(function(x){suggestionById[x.person.id]=x;});
@@ -2149,7 +2220,7 @@
     });
     return '<div class="tch-section"><h2>Staff optimiser</h2><p>Current-role fit is calculated from working-stat requirements, independently of the effectiveness Torn reports.</p>'+
       buttonsV2("Staff view",options)+'</div>'+
-      '<section class="tch-panel"><div class="tch-sectionhead"><h2>Current team</h2><span class="tch-mini">'+c.staff.length+' employees</span></div>'+
+      developmentPanelV14(c)+'<section class="tch-panel"><div class="tch-sectionhead"><h2>Current team</h2><span class="tch-mini">'+c.staff.length+' employees</span></div>'+
       '<div class="tch-comparison"><div><span>Average role fit</span><strong>'+fitText(sc.averageBefore)+'</strong></div>'+
       '<div><span>Team changes tested</span><strong>'+sc.changeCount+'</strong></div></div>'+
       (sc.count<c.staff.length?'<p class="tch-hint">Only '+sc.count+' staff have comparable role requirements and stats.</p>':"")+
@@ -2303,7 +2374,7 @@
       {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"},
       {action:"growth-view",id:"review",name:"Sunday review",active:growthView==="review"}]);
     return '<div class="tch-section"><h2>10-star growth</h2><p>Revenue improvement within your daily loss limit of '+esc(money(c.lossLimit))+'. Estimates are labelled.</p>'+switches+'</div>'+
-      (growthView==="performance"?growthMovesPanelV13(c)+'<div class="tch-metrics">'+
+      (growthView==="performance"?starMomentumPanelV14(c)+growthMovesPanelV13(c)+'<div class="tch-metrics">'+
          metricV2("Current rating",c.profile.rating+" / 10","Competitive star progression","","growth-performance")+
          metricV2("Daily revenue",money(a.revenue),"Reported by Torn","","growth-accounts")+
          metricV2("Wages",money(a.wages),"Current daily staff wages","","growth-accounts")+
