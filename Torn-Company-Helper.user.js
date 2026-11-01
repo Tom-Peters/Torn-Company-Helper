@@ -80,7 +80,7 @@
     const toggle=root.querySelector("#staxx-hub-toggle"),veil=root.querySelector("#staxx-hub-veil"),drawer=root.querySelector("#staxx-hub-drawer");
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
     const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]");
-    let expanded=false, panelOpen=false, overviewShown=false, moving=null, suppressClick=false;
+    let expanded=false, panelOpen=false, overviewShown=false, moving=null, suppressClickUntil=0;
     const openPanels=new Set();
     const idOk = v=>typeof v==="string" && /^[a-z][a-z0-9-]{0,31}$/.test(v);
     function node(tag,cls,value) {const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e;}
@@ -197,7 +197,7 @@
       if(b.dataset.snoozeStaxx){const id=b.dataset.snoozeStaxx;controls[id]={...controls[id],snoozeUntil:Date.now()+3600000};saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();return;}
       if(b.dataset.openStaxx){openTool(b.dataset.openStaxx);return;}
       if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;render();return;}
-      if(b===toggle){if(suppressClick){suppressClick=false;return;}setExpanded(true);return;}
+      if(b===toggle){if(Date.now()<suppressClickUntil)return;setExpanded(true);return;}
       if(b.hasAttribute("data-hub-close"))setExpanded(false);
     });
     veil.addEventListener("click",()=>setExpanded(false));
@@ -215,13 +215,13 @@
         toggle.style.top=Math.round(y)+"px";}
     });
     function endMove(e){if(!moving||e.pointerId!==moving.id)return;
-      if(moving.dragged){suppressClick=true;saveLocal("staxx-hub-position-v2",position((parseFloat(toggle.style.top)||0)/Math.max(1,window.innerHeight)));
+      if(moving.dragged){suppressClickUntil=Date.now()+350;saveLocal("staxx-hub-position-v2",position((parseFloat(toggle.style.top)||0)/Math.max(1,window.innerHeight)));
         // Prevent a post-drag synthetic click from reopening the drawer.
         e.preventDefault?.();}
       moving=null;
     }
     toggle.addEventListener("pointerup",endMove);toggle.addEventListener("pointercancel",endMove);
-    window.addEventListener("resize",()=>position((parseFloat(toggle.style.top)||0)/Math.max(1,window.innerHeight)));
+    window.addEventListener("resize",()=>position(safeRead("staxx-hub-position-v2",0.43)));
     document.addEventListener("staxx:panel",e=>{
       if(!e.detail||!idOk(e.detail.id))return;
       if(e.detail.open){openPanels.add(e.detail.id);panelOpen=true;setExpanded(false);}
@@ -260,6 +260,7 @@
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",startHub,{once:true});else startHub();
 })();
+
 
 
 
