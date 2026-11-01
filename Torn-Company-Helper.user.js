@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.5.0
+// @version      1.6.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.0 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.1 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -25,7 +25,7 @@
       '<aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>' +
       '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><button type="button" data-hub-close aria-label="Close sidebar">×</button></header>' +
       '<div class="staxx-scroll"><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Combined overview</button>' +
-      '<section id="staxx-hub-overview" hidden></section><h3>YOUR TOOLS</h3><div id="staxx-hub-tools"></div>' +
+      '<section id="staxx-hub-overview" hidden></section><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div>' +
       '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div>' +
       '<div id="staxx-hub-alerts"></div><p class="staxx-foot">Read-only signals · Alerts use last known data · Drag the S tab vertically to reposition</p>' +
       '</div></aside>';
@@ -49,11 +49,11 @@
       '#staxx-hub-drawer h3{color:#8faec9;font-size:10px;letter-spacing:1.1px;margin:9px 4px 10px}',
       '#staxx-hub-drawer .staxx-overview-switch{width:100%;text-align:left;background:linear-gradient(120deg,#124a71,#0c2d4b);border:1px solid #4384ad;border-radius:10px;padding:11px;margin-bottom:10px;font-weight:750}',
       '#staxx-hub-drawer .staxx-overview-switch.selected{border-color:#71d9fd;background:#19527b}',
-      '#staxx-hub-drawer .staxx-tool{display:flex;align-items:center;gap:8px;text-align:left;width:100%;background:#102844;border:1px solid #284b6b;border-radius:11px;padding:10px 8px;min-height:62px;margin-bottom:8px}',
+      '#staxx-hub-drawer .staxx-toolrow{display:flex;align-items:center;gap:4px;margin-bottom:8px}#staxx-hub-drawer .staxx-toolrow .staxx-tool{margin-bottom:0;flex:1;min-width:0}#staxx-hub-drawer .staxx-move{height:31px;width:27px;flex:0 0 27px;border-radius:7px;background:#1a4364;border:1px solid #416c8e;color:#ccecff;font-weight:900}#staxx-hub-drawer .staxx-move:disabled{opacity:.25}#staxx-hub-drawer .staxx-tool{display:flex;align-items:center;gap:8px;text-align:left;width:100%;background:#102844;border:1px solid #284b6b;border-radius:11px;padding:10px 8px;min-height:62px;margin-bottom:8px}',
       '#staxx-hub-drawer .staxx-icon{width:35px;height:35px;display:grid;place-items:center;border-radius:9px;background:linear-gradient(135deg,#0b79b9,#123c65);border:1px solid #4f9dc8;color:#cff6ff;font-weight:900;flex-shrink:0;font-size:12px}',
       '#staxx-hub-drawer .staxx-info{flex:1;min-width:0}#staxx-hub-drawer .staxx-info b{display:block;font-size:13px}#staxx-hub-drawer .staxx-info small{display:block;font-size:10px;color:#94b1c9;margin-top:3px;overflow-wrap:anywhere}',
       '#staxx-hub-drawer .staxx-pill{border-radius:14px;background:#1b486c;padding:2px 6px;font-size:11px;font-weight:800;color:#bdeaff}#staxx-hub-drawer .staxx-pill.on{background:#145f58;color:#89edca}',
-      '#staxx-hub-drawer .staxx-label{display:flex;align-items:center;justify-content:space-between;margin-top:15px}#staxx-hub-drawer .staxx-label span{color:#a4c1d8;font-size:10px}',
+      '#staxx-hub-drawer .staxx-label{display:flex;align-items:center;justify-content:space-between;margin-top:15px}#staxx-hub-drawer .staxx-label span{color:#a4c1d8;font-size:10px}#staxx-hub-drawer .staxx-label button{background:#173958;border:1px solid #365b79;border-radius:8px;padding:5px 9px;font-size:10px}#staxx-hub-drawer .staxx-label button[aria-pressed="true"]{background:#175f91;color:#fff}',
       '#staxx-hub-drawer .staxx-alert{background:#0e2945;border:1px solid #315977;border-radius:10px;padding:10px;margin-bottom:9px}',
       '#staxx-hub-drawer .staxx-alert.urgent{border-color:#e56785}#staxx-hub-drawer .staxx-alert.warning{border-color:#ae8450}',
       '#staxx-hub-drawer .staxx-alert-title{border:0;background:none;padding:0;text-align:left;width:100%;font-size:12px;font-weight:750;color:#81dbfa!important}',
@@ -61,7 +61,7 @@
       '#staxx-hub-drawer .staxx-alert span{display:block;color:#daecf9;font-size:12px;margin:5px 0;overflow-wrap:anywhere}',
       '#staxx-hub-drawer .staxx-alert small{display:block;color:#91aec6;font-size:11px;margin:4px 0}',
       '#staxx-hub-drawer .staxx-alert-actions{display:flex;gap:7px;margin-top:10px}',
-      '#staxx-hub-drawer .staxx-alert-actions button{background:#1c3e5b;border:1px solid #365978;border-radius:8px;padding:6px 9px;font-size:11px;flex:1;min-height:32px}',
+      '#staxx-hub-drawer .staxx-snooze-menu{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}#staxx-hub-drawer .staxx-snooze-menu button{background:#174463;border:1px solid #3e7593;border-radius:7px;padding:6px 8px;min-height:32px;font-size:11px}#staxx-hub-drawer .staxx-snooze-menu input{background:#071d32;border:1px solid #527b9b;border-radius:7px;color:#fff;min-width:56px;width:64px;padding:6px;font-size:12px}#staxx-hub-drawer .staxx-snooze-menu label{display:flex;align-items:center;gap:4px;color:#bfd9ec;font-size:11px}#staxx-hub-drawer .staxx-due{font-size:11px;color:#b8e4ff!important;font-weight:700}#staxx-hub-drawer .staxx-spark{display:flex;align-items:end;gap:3px;height:40px;margin:11px 0 4px}#staxx-hub-drawer .staxx-spark span{flex:1;min-width:0;max-width:30px;border-radius:3px 3px 0 0;background:linear-gradient(#50d5f8,#17649c)}#staxx-hub-drawer .staxx-spark span.missing{background:#1e3a52;height:3px!important}#staxx-hub-drawer .staxx-trendnote{font-size:10px!important;color:#9ab5cf!important}#staxx-hub-drawer .staxx-alert-actions button{background:#1c3e5b;border:1px solid #365978;border-radius:8px;padding:6px 9px;font-size:11px;flex:1;min-height:32px}',
       '#staxx-hub-drawer .staxx-empty{color:#9db7cd;background:#0c243e;border:1px dashed #305473;border-radius:10px;font-size:11px;padding:14px 10px}',
       '#staxx-hub-drawer .staxx-overview-card{background:#0d2945;border:1px solid #2d5574;border-radius:11px;padding:11px;margin-bottom:8px}',
       '#staxx-hub-drawer .staxx-overview-card b{color:#83dbfa;font-size:12px}#staxx-hub-drawer .staxx-overview-card p{margin:5px 0;color:#d4eafa;font-size:11px}',
@@ -77,6 +77,7 @@
       {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}
     ];
     const active = Object.create(null), notices = Object.create(null), summaries = Object.create(null), controls = Object.create(null);
+    let trends=Object.create(null), arrangeShown=false;
     const toggle=root.querySelector("#staxx-hub-toggle"),veil=root.querySelector("#staxx-hub-veil"),drawer=root.querySelector("#staxx-hub-drawer");
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
     const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]");
@@ -103,6 +104,15 @@
       }
     }catch(_){}
     for(const e of entries)controls[e.id]=safeRead("staxx-hub-alert-control-"+e.id,{});
+    const savedOrder=safeRead("staxx-hub-order-v3",[]);
+    if(Array.isArray(savedOrder)){
+      entries.sort((a,b)=>{
+        const ai=savedOrder.indexOf(a.id),bi=savedOrder.indexOf(b.id);
+        return (ai<0?1000:ai)-(bi<0?1000:bi);
+      });
+    }
+    const savedTrends=safeRead("staxx-hub-trends-v3",{});
+    if(savedTrends&&typeof savedTrends==="object"&&!Array.isArray(savedTrends))trends=savedTrends;
     const pos=safeRead("staxx-hub-position-v2",0.43);
     function position(value) {
       const height=Math.max(160,window.innerHeight||600),buttonHeight=49;
@@ -140,6 +150,58 @@
       document.dispatchEvent(new CustomEvent("staxx:closeall"));
       document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id}}));
     }
+    function timeUntil(ms) {
+      if(!Number.isFinite(ms)||ms<=0)return "";
+      const diff=ms-Date.now(),minutes=Math.max(1,Math.ceil(Math.abs(diff)/60000));
+      const text=minutes<60?minutes+"m":minutes<1440?Math.ceil(minutes/60)+"h":Math.ceil(minutes/1440)+"d";
+      return diff<=0?"Overdue "+text: "Due in "+text;
+    }
+    function trendValue(value) {
+      const match=String(value??"").replace(/,/g,"").trim().match(/^[$£]?\s*(-?\d+(?:\.\d+)?)\s*([kmb])?/i);
+      if(!match)return null;
+      const multiplier={k:1000,m:1000000,b:1000000000}[String(match[2]||"").toLowerCase()]||1;
+      const n=Number(match[1])*multiplier;
+      return Number.isFinite(n)?n:null;
+    }
+    const trendMetric={profit:"Fresh deals",company:"Star rating",happy:"24h projected gains"};
+    const trendTitle={profit:"Fresh deals",company:"Company stars",happy:"24h projected gains (forecast)"};
+    function dayKey(time){const d=new Date(time);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+    function recordTrend(id,entry) {
+      const key=trendMetric[id];if(!key||!entry||!Array.isArray(entry.metrics))return;
+      const metric=entry.metrics.find(x=>x.label===key);
+      const timestamp=Number(entry.updated)||Date.now(),value=metric?trendValue(metric.value):null;
+      if(value===null||timestamp>Date.now()+60000||Date.now()-timestamp>86400000)return;
+      const list=Array.isArray(trends[id])?trends[id]:[];
+      const day=dayKey(timestamp);
+      const next=list.filter(x=>x&&typeof x.day==="string"&&x.day!==day&&Date.now()-Number(x.timestamp)<8*86400000);
+      next.push({day,value,timestamp});next.sort((a,b)=>a.timestamp-b.timestamp);
+      trends[id]=next.slice(-8);saveLocal("staxx-hub-trends-v3",trends);
+    }
+    function trendCard(id){
+      const list=Array.isArray(trends[id])?trends[id]:[];
+      if(!trendMetric[id])return null;
+      const wrap=node("div","staxx-trend");
+      const title=node("small","staxx-trendnote","7-day trend · "+trendTitle[id]+" · observed snapshots");wrap.append(title);
+      const bar=node("div","staxx-spark");
+      const values=[];
+      for(let offset=6;offset>=0;offset--){
+        const time=new Date();time.setHours(12,0,0,0);time.setDate(time.getDate()-offset);
+        const date=dayKey(time.getTime()),point=list.find(x=>x.day===date);values.push(point?point.value:null);
+      }
+      const max=Math.max(1,...values.filter(x=>x!==null).map(x=>Math.max(0,x)));
+      for(const [i,value] of values.entries()){
+        const b=node("span",value===null?"missing":"");
+        b.style.height=value===null?"3px":Math.max(4,Math.min(40,Math.round(Math.max(0,value)/max*40)))+"px";
+        b.title=(i===6?"Today":"Day "+(i+1))+" · "+(value===null?"Not recorded":String(value));
+        bar.append(b);
+      }
+      wrap.append(bar);
+      const recorded=values.filter(v=>v!==null);
+      wrap.append(node("p","staxx-trendnote",recorded.length>1?
+        "Change: "+(recorded.at(-1)-recorded[0]>0?"+":"")+String(Math.round((recorded.at(-1)-recorded[0])*100)/100)+" · "+recorded.length+"/7 recorded days":
+        recorded.length+"/7 recorded days · comparison appears after two days"));
+      return wrap;
+    }
     function showOverview(){
       overview.replaceChildren();
       for(const e of entries){
@@ -150,6 +212,7 @@
           const group=node("div");group.append(node("dt","",m.label),node("dd","",m.value));d.append(group);
         }
         if(d.childElementCount)card.append(d);
+        const trend=trendCard(e.id);if(trend)card.append(trend);
         const btn=node("button","staxx-overview-switch","Open "+e.label);btn.dataset.openStaxx=e.id;card.append(btn);
         overview.append(card);
       }
@@ -160,14 +223,21 @@
     function render(){
       tools.replaceChildren();alerts.replaceChildren();
       let total=0,maxLevel=0,visible=0,muted=0;
-      for(const e of entries){
+      for(const [index,e] of entries.entries()){
         const n=activeNotice(e.id),count=n?Math.min(99,Number(n.count)||0):0;
         total+=count;visible+=Number(count>0);
         if(n)maxLevel=Math.max(maxLevel,n.level==="urgent"?2:n.level==="warning"?1:0);
         if(!n && notices[e.id]?.count>0)muted++;
         const btn=node("button","staxx-tool");btn.type="button";btn.dataset.openStaxx=e.id;
         const info=node("span","staxx-info");info.append(node("b","",e.label),node("small","",active[e.id]?e.desc:"Enable script to open"));
-        btn.append(node("span","staxx-icon",e.icon),info,node("span","staxx-pill"+(count?" on":""),count||"›"));tools.append(btn);
+        btn.append(node("span","staxx-icon",e.icon),info,node("span","staxx-pill"+(count?" on":""),count||"›"));
+        if(arrangeShown){
+          const row=node("div","staxx-toolrow"),up=node("button","staxx-move","↑"),down=node("button","staxx-move","↓");
+          up.type=down.type="button";up.dataset.moveId=down.dataset.moveId=e.id;up.dataset.moveDir="-1";down.dataset.moveDir="1";
+          up.disabled=index===0;down.disabled=index===entries.length-1;
+          up.title="Move "+e.label+" up";down.title="Move "+e.label+" down";
+          row.append(btn,up,down);tools.append(row);
+        }else tools.append(btn);
       }
       toggle.classList.toggle("staxx-urgent",maxLevel===2);
       toggle.classList.toggle("staxx-warning",maxLevel===1);
@@ -182,10 +252,19 @@
         card.append(node("span","",n.summary||"Needs attention"));
         for(const item of n.items.slice(0,2))card.append(node("small","",item));
         if(n.cached)card.append(node("small","","Last observed on a previous page"));
+        if(n.dueAt){const countdown=node("small","staxx-due",timeUntil(n.dueAt));card.append(countdown);}
         const buttons=node("div","staxx-alert-actions");
-        const dismiss=node("button","","Dismiss"),snooze=node("button","","Snooze 1h");
+        const dismiss=node("button","","Dismiss"),snooze=node("button","","Snooze ▾");
         dismiss.type=snooze.type="button";dismiss.dataset.dismissStaxx=e.id;snooze.dataset.snoozeStaxx=e.id;
-        buttons.append(dismiss,snooze);card.append(buttons);alerts.append(card);
+        buttons.append(dismiss,snooze);card.append(buttons);
+        const menu=node("div","staxx-snooze-menu");menu.hidden=true;
+        for(const [minutes,label] of [[15,"15m"],[60,"1h"],[240,"4h"],[1440,"24h"]]){
+          const option=node("button","",label);option.type="button";option.dataset.snoozeId=e.id;option.dataset.snoozeMinutes=String(minutes);menu.append(option);
+        }
+        const custom=node("label","","Custom");const input=node("input");input.type="number";input.min="1";input.max="10080";input.value="120";input.title="Snooze duration in minutes";
+        const units=node("span","","min");custom.append(input,units);
+        const set=node("button","","Set");set.type="button";set.dataset.snoozeCustom=e.id;menu.append(custom,set);
+        card.append(menu);alerts.append(card);
       }
       if(!visible)alerts.append(node("p","staxx-empty",muted?"Alerts dismissed or snoozed. New alerts will still appear.":"Nothing needs your attention right now."));
       showOverview();
@@ -194,7 +273,24 @@
     root.addEventListener("click",e=>{
       const b=e.target.closest("button");if(!b)return;
       if(b.dataset.dismissStaxx){const id=b.dataset.dismissStaxx,n=notices[id];if(n){controls[id]={...controls[id],dismissed:n.fingerprint,snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();}return;}
-      if(b.dataset.snoozeStaxx){const id=b.dataset.snoozeStaxx;controls[id]={...controls[id],snoozeUntil:Date.now()+3600000};saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();return;}
+      if(b.dataset.snoozeStaxx){const menu=b.parentNode?.nextSibling;if(menu)menu.hidden=!menu.hidden;return;}
+      if(b.dataset.snoozeId || b.dataset.snoozeCustom){
+        const id=b.dataset.snoozeId||b.dataset.snoozeCustom;
+        const minutes=b.dataset.snoozeCustom?Number(b.parentNode?.querySelector("input")?.value):Number(b.dataset.snoozeMinutes);
+        if(!Number.isInteger(minutes)||minutes<1||minutes>10080)return;
+        controls[id]={...controls[id],snoozeUntil:Date.now()+minutes*60000};
+        saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();return;
+      }
+      if(b.dataset.moveId){
+        const from=entries.findIndex(x=>x.id===b.dataset.moveId),to=from+Number(b.dataset.moveDir);
+        if(from>=0&&to>=0&&to<entries.length){
+          const [entry]=entries.splice(from,1);entries.splice(to,0,entry);
+          saveLocal("staxx-hub-order-v3",entries.map(x=>x.id));render();
+        }return;
+      }
+      if(b.hasAttribute("data-arrange")){
+        arrangeShown=!arrangeShown;b.setAttribute("aria-pressed",String(arrangeShown));b.textContent=arrangeShown?"Done":"Reorder";render();return;
+      }
       if(b.dataset.openStaxx){openTool(b.dataset.openStaxx);return;}
       if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;render();return;}
       if(b===toggle){if(Date.now()<suppressClickUntil)return;setExpanded(true);return;}
@@ -243,7 +339,8 @@
       const n={count,summary:String(d.summary||"").slice(0,180),
         items:Array.isArray(d.items)?d.items.slice(0,5).map(x=>String(x).slice(0,160)):[],
         level:["urgent","warning","info"].includes(d.level)?d.level:"info",cached:false};
-      n.fingerprint=JSON.stringify([n.count,n.summary,n.items,n.level]);
+      n.dueAt=Number.isFinite(Number(d.dueAt))&&Number(d.dueAt)>0?Number(d.dueAt):null;
+      n.fingerprint=JSON.stringify([n.count,n.summary,n.items,n.level,n.dueAt]);
       if(JSON.stringify(notices[id])!==JSON.stringify(n)){notices[id]=n;remember();render();}
     });
     document.addEventListener("staxx:summary",e=>{
@@ -251,15 +348,16 @@
       const entry={headline:String(d.headline||"").slice(0,90),
         metrics:Array.isArray(d.metrics)?d.metrics.slice(0,4).map(x=>({label:String(x.label||"").slice(0,36),value:String(x.value??"—").slice(0,45)})):[],
         updated:Number(d.updated)||Date.now()};
-      if(JSON.stringify(summaries[id])!==JSON.stringify(entry)){summaries[id]=entry;remember();if(expanded&&overviewShown)showOverview();}
+      if(JSON.stringify(summaries[id])!==JSON.stringify(entry)){summaries[id]=entry;recordTrend(id,entry);remember();if(expanded&&overviewShown)showOverview();}
     });
-    window.setInterval(()=>{if(!document.hidden&&entries.some(e=>Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now())){for(const e of entries){if(Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now()){controls[e.id]={...controls[e.id],snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+e.id,controls[e.id]);}}render();}},60000);
+    window.setInterval(()=>{if(!document.hidden&&entries.some(e=>Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now())){for(const e of entries){if(Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now()){controls[e.id]={...controls[e.id],snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+e.id,controls[e.id]);}}render();}else if(!document.hidden&&expanded&&entries.some(e=>activeNotice(e.id)?.dueAt)){render();}},60000);
     // Older v1 notifications cannot be trusted for dismiss-state comparisons.
     render();
     document.dispatchEvent(new CustomEvent("staxx:ping"));
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",startHub,{once:true});else startHub();
 })();
+
 
 
 
@@ -1154,7 +1252,7 @@
         {label:'Star rating',value:String(c.profile.rating??'?')+' / 10'},
         {label:'Staff',value:String((c.staff||[]).length)},
         {label:'Daily P/L estimate',value:a&&a.known?money(a.profit):'Unverified'}
-      ],updated:Date.now()}}));}
+      ],updated:c.lastRefresh&&Number.isFinite(Date.parse(c.lastRefresh))?Date.parse(c.lastRefresh):Date.now()}}));}
   }
 
   function employeePenaltyV12(p) {
@@ -1870,7 +1968,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.5.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.6.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
