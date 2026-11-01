@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.2.0
+// @version      1.3.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/companies.php*
@@ -1260,6 +1260,7 @@
   style.textContent += "\n#tch-open{background:#1268a5;box-shadow:0 6px 25px #051326bb}\n#tch-root{background:#0c1626;color:#edf7ff}\n#tch-root .tch-top,#tch-root .tch-bottom{background:#12243a;border-color:#385979}\n#tch-root .tch-hero{background:linear-gradient(130deg,#133f64,#192945 60%,#123754);border-color:#4383ae}\n#tch-root .tch-panel,#tch-root .tch-person,#tch-root .tch-metric{background:#1a2e46;border-color:#3b6182}\n#tch-root .tch-eyebrow,#tch-root .tch-kicker{color:#6cd8ff}\n#tch-root button.primary,#tch-root .tch-switch button.active{background:#1468ad;border-color:#67c7ff}\n#tch-root .tch-bottom{grid-template-columns:repeat(5,minmax(0,1fr))}\n#tch-root .tch-bottom button{font-size:10px;min-width:0;padding:3px 1px}\n#tch-root .tch-radar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:11px 0}\n#tch-root .tch-radar div{background:#24415d;border:1px solid #42698c;border-radius:10px;padding:10px}\n#tch-root .tch-radar small,#tch-root .tch-radar strong{display:block}\n#tch-root .tch-radar small{font-size:10px;color:#c6d8e9}\n#tch-root .tch-radar strong{font-size:22px}\n#tch-root .tch-stockrow{background:#223950;border:1px solid #405f7c;border-radius:12px;padding:13px;margin:11px 0}\n#tch-root .tch-stockrow p{font-size:12px}\n#tch-root .tch-stockrow>strong{color:#83ddff}\n#tch-root .tch-clickable:focus-visible,#tch-root button:focus-visible{outline:3px solid #60cdff}\n#tch-root.theme-light .tch-stockrow,#tch-root.theme-light .tch-radar div{background:#e9f3fc;border-color:#abc5db;color:#162a40}\n#tch-root.theme-light .tch-stockrow>strong{color:#176696}\n";
   style.textContent += "\n#tch-open{display:flex;align-items:center;gap:8px;white-space:nowrap}\n#tch-open .tch-launcherbadge{display:inline-flex;align-items:center;gap:2px;background:#f04458;color:white;border-radius:999px;padding:2px 7px;border:2px solid #0d1b2e;min-width:28px;height:25px;justify-content:center;font-size:11px;font-weight:900}\n#tch-root .tch-starplan .tch-insight{width:100%;text-align:left}\n#tch-root .tch-wagerow{background:#213952;border:1px solid #41617f;border-radius:12px;padding:12px;margin:10px 0}\n#tch-root .tch-wagegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}\n#tch-root .tch-wagegrid span{font-size:11px;color:#b9d2e7;background:#273f59;padding:8px;border-radius:8px}\n#tch-root .tch-wagegrid b{display:block;font-size:16px;color:#f0faff}\n#tch-root .tch-wage-target{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid #496987;padding-top:10px;font-size:12px}\n#tch-root .tch-weekgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;text-align:center;margin:12px 0}\n#tch-root .tch-weekgrid>*{background:#25415c;border-radius:6px;padding:8px 3px;min-width:0}\n#tch-root.theme-light .tch-wagerow{background:#e9f3fc;border-color:#abc5db;color:#142e47}\n#tch-root.theme-light .tch-wagegrid span{background:#dcebf7;color:#153a58}\n#tch-root.theme-light .tch-wagegrid b{color:#152a42}\n";
   style.textContent += "\n#tch-root .tch-wage-risk{border:1px solid #3b6684;background:#213a54;border-radius:12px;margin:10px 0;padding:12px;overflow-wrap:anywhere}\n#tch-root .tch-wage-risk>strong{font-size:14px}\n#tch-root .tch-wage-risk small{display:block;font-size:11px;color:#accfe8}\n#tch-root .tch-wage-risk p{margin:5px 0}\n#tch-root .tch-starplan .tch-insight{text-align:left}\n#tch-root .tch-weekgrid{overflow-x:auto;min-width:0}\n#tch-root.theme-light .tch-wage-risk{background:#e9f3fc;border-color:#9dbbd3;color:#16354e}\n#tch-root.theme-light .tch-wage-risk small{color:#375d78}\n";
+  style.textContent += "\n#tch-root .tch-top{min-height:54px;padding:8px 10px}\n#tch-root .tch-headline strong{font-size:17px}\n#tch-root .tch-eyebrow{font-size:9px;line-height:1.1}\n#tch-root .tch-timestamp{font-size:10px}\n#tch-root .tch-iconbtn{min-width:34px;padding:5px;font-size:18px;border-radius:9px}\n#tch-root .tch-main{padding:9px 10px calc(66px + env(safe-area-inset-bottom));max-width:680px}\n#tch-root .tch-bottom{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));padding:3px 5px calc(3px + env(safe-area-inset-bottom));gap:3px;box-shadow:0 -3px 14px #030c1c77}\n#tch-root .tch-bottom button{min-height:38px;height:38px;display:flex;flex-direction:row;justify-content:center;align-items:center;gap:4px;padding:3px 1px;font-size:10px;border-radius:8px;line-height:1.1}\n#tch-root .tch-navicon{font-size:16px;height:auto;line-height:1}\n#tch-root .tch-bottom button.active{background:#1d5d87;border:1px solid #65caff}\n#tch-root .tch-panel{margin:8px 0;padding:12px;border-radius:12px}\n#tch-root h2{font-size:16px;margin:8px 0 5px}\n#tch-root .tch-section{margin:9px 0}\n#tch-root .tch-homehead{padding:13px 15px;background:linear-gradient(130deg,#173e66,#172b45);border:1px solid #3b85ae;border-radius:13px;display:flex;align-items:center;justify-content:space-between}\n#tch-root .tch-homehead h2{font-size:18px;margin:2px 0}\n#tch-root .tch-homehead small{font-size:10px;color:#9fd9f5}\n#tch-root .tch-home-number{font-size:22px;font-weight:900;color:#74d6ff}\n#tch-root .tch-homekpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0}\n#tch-root .tch-homekpis .tch-metric{padding:10px;min-width:0;min-height:72px}\n#tch-root .tch-homekpis .tch-metric strong{font-size:20px}\n#tch-root .tch-focus-item{display:flex;width:100%;align-items:center;text-align:left;gap:10px;padding:10px 7px;border:0;border-bottom:1px solid #395570;background:transparent;color:inherit}\n#tch-root .tch-focus-item span:nth-child(2){flex:1;min-width:0}\n#tch-root .tch-focus-item strong,#tch-root .tch-focus-item small{display:block}\n#tch-root .tch-focus-item small{font-size:11px;font-weight:400;color:#b7d1e8;margin-top:3px}\n#tch-root .tch-step{display:grid;place-items:center;width:25px;height:25px;border-radius:7px;background:#185d89;color:white;font-weight:900}\n#tch-root .tch-quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 0}\n#tch-root .tch-quick button{padding:9px 4px;font-size:11px;border-radius:9px}\n#tch-root .tch-dense-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;border-bottom:1px solid #33536d;padding:11px 0}\n#tch-root .tch-dense-row small{display:block;color:#b8d3e9;font-size:11px}\n#tch-root .tch-dense-row>div:nth-child(2){text-align:right}\n#tch-root .tch-dense-detail{grid-column:1/-1;display:flex;justify-content:space-between;font-size:11px;color:#75d4fa;gap:8px}\n#tch-root .tch-dense-detail em{font-style:normal;color:#f6c36e}\n#tch-root .tch-advanced{margin:11px 0}\n#tch-root .tch-advanced summary{padding:12px;background:#24435d;border-radius:9px;cursor:pointer;font-weight:700}\n#tch-root.theme-light .tch-homehead{background:#e8f4fc;color:#14344c}\n#tch-root.theme-light .tch-focus-item small,#tch-root.theme-light .tch-dense-row small{color:#36556e}\n";
   style.textContent+="#tch-open{touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab}#tch-open:active{cursor:grabbing}#tch-open[hidden],#tch-root[hidden]{display:none!important}";
 
   style.textContent += "#tch-root{font-family:system-ui,-apple-system,Arial,sans-serif;background:#101923;color:#f4f7fb}#tch-root .tch-main{padding:16px 13px 118px;max-width:760px;margin:0 auto}#tch-root .tch-top{height:auto;min-height:76px;padding:12px 15px;gap:8px}#tch-root .tch-headline{flex:1;min-width:0}#tch-root .tch-headline strong{display:block;font-size:20px;line-height:1.2}#tch-root .tch-eyebrow{letter-spacing:.09em;font-size:10px;color:#6af0d7;font-weight:700}#tch-root .tch-timestamp{font-size:11px;color:#c0d5e5;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}#tch-root .tch-iconbtn{min-width:40px;padding:7px;font-size:21px;border-radius:12px}#tch-root .tch-bottom{position:fixed;bottom:0;left:0;right:0;background:#152639;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));z-index:3;border-top:1px solid #4b6a85;padding:7px 5px calc(env(safe-area-inset-bottom) + 8px);box-shadow:0 -9px 25px #050c1599}#tch-root .tch-bottom button{border:0;display:flex;flex-direction:column;gap:2px;align-items:center;background:transparent;color:#c7d7e5;border-radius:10px;min-height:56px;padding:3px;font-size:11px}#tch-root .tch-bottom button.active{background:#284d57;color:#f0fffc}#tch-root .tch-navicon{font-size:23px;height:27px}#tch-root .tch-hero{background:linear-gradient(128deg,#153d4b,#1b314e 65%,#172a3e);border:1px solid #446f7d;border-radius:17px;padding:18px;margin-bottom:13px}#tch-root .tch-kicker{color:#72f1da;font-size:11px;font-weight:800;letter-spacing:.1em}#tch-root .tch-hero-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 15px}#tch-root .tch-hero-line strong{font-size:22px;line-height:1.2}#tch-root .tch-rating{background:#16736f;border-radius:9px;padding:6px 10px;font-weight:800;white-space:nowrap}#tch-root .tch-progress{height:8px;background:#355368;border-radius:50px;overflow:hidden;margin:0 0 12px}#tch-root .tch-progress b{height:100%;display:block;background:#37dfc1}#tch-root .tch-hero small{color:#cbdce8}#tch-root .tch-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}#tch-root .tch-metric{background:#263b51;border:1px solid #496882;border-radius:13px;padding:14px;min-width:0;display:flex;flex-direction:column;gap:7px}#tch-root .tch-metric>strong{font-size:22px;letter-spacing:-.02em;overflow-wrap:anywhere}#tch-root .tch-metric>small{font-size:11px;color:#c5d7e6}#tch-root .tch-metric.tch-danger{border-color:#ff7979;background:#49353f}#tch-root .tch-metric.tch-positive{border-color:#468b86}#tch-root .tch-panel{background:#203247;border:1px solid #47627b;border-radius:14px;padding:15px;margin:12px 0}#tch-root .tch-panel h2,#tch-root .tch-section h2{font-size:18px;margin:0 0 8px}#tch-root .tch-section{margin:12px 2px 18px}#tch-root .tch-section p{margin:4px 0 12px}#tch-root .tch-sectionhead,#tch-root .tch-personhead{display:flex;align-items:center;justify-content:space-between;gap:9px}#tch-root .tch-mini{font-size:11px;letter-spacing:.02em;color:#c0dbe8;background:#325069;border-radius:7px;padding:5px 8px}#tch-root .tch-priority{display:flex;align-items:center;gap:12px;margin-top:9px;border:1px solid #536980;background:#2b4058;padding:12px;border-radius:11px}#tch-root .tch-priority>span{height:30px;min-width:30px;border-radius:9px;display:grid;place-items:center;background:#385e6a;color:#b5ffe6;font-weight:800}#tch-root .tch-priority.warning>span{background:#846735;color:#fff}#tch-root .tch-priority.danger>span{background:#9c4755;color:#fff}#tch-root .tch-priority>div{flex:1;min-width:0}#tch-root .tch-priority strong,#tch-root .tch-priority small{display:block}#tch-root .tch-priority small{font-size:11px;color:#cad9e7}#tch-root .tch-priority button{font-size:12px;min-height:36px}#tch-root .tch-actiongrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .tch-actiongrid button{text-align:left;min-height:72px;padding:11px;background:#304b64}#tch-root .tch-actiongrid button span{display:block;font-size:11px;color:#c1d6e6}#tch-root .tch-actionrow{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:10px 0}#tch-root .tch-switch{display:flex;gap:5px;padding:4px;background:#1f334a;border:1px solid #405d75;border-radius:12px;overflow-x:auto;scrollbar-width:none}#tch-root .tch-switch button{flex:1;white-space:nowrap;min-height:38px;padding:8px;border:none;background:transparent;font-size:12px}#tch-root .tch-switch button.active{background:#0b8079;color:#fff}#tch-root .tch-person,#tch-root .tch-review{background:#263b50;border:1px solid #476983;border-radius:13px;padding:13px;margin:10px 0}#tch-root .tch-personhead{justify-content:flex-start}#tch-root .tch-personhead>div:nth-child(2){flex:1}#tch-root .tch-personhead strong,#tch-root .tch-personhead small{display:block}#tch-root .tch-personhead small{font-size:12px;color:#c6d8e8}#tch-root .tch-avatar{width:39px;height:39px;border-radius:12px;background:#116963;display:grid;place-items:center;font-weight:800;font-size:17px}#tch-root .tch-eff{background:#344b64;border-radius:8px;padding:6px;font-size:17px;font-weight:800}#tch-root .tch-eff small{font-size:9px;color:#d5e7f2}#tch-root .tch-recommend{display:flex;align-items:center;gap:9px;margin:12px 0;padding:8px;background:#1d3348;border-radius:9px;flex-wrap:wrap}#tch-root .tch-recommend span{font-size:11px;color:#d5e2ec}#tch-root .tch-recommend strong{font-size:14px}#tch-root .tch-recommend.highlight strong{color:#5ce8ce}#tch-root .tch-recommend small{color:#c6d9e6}#tch-root .tch-statstrip{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0;color:#c5d7e5;font-size:11px}#tch-root .tch-statstrip span{padding:5px 7px;background:#304962;border-radius:7px}#tch-root .tch-statstrip b{color:#fff}#tch-root .tch-whatif{display:flex;align-items:center;justify-content:space-between;gap:12px}#tch-root .tch-whatif select{flex:1;max-width:220px}#tch-root .tch-hint{font-size:12px;color:#c4d7e6;margin:12px 0}#tch-root .tch-queueitem,#tch-root .tch-record{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 1px;border-bottom:1px solid #456077}#tch-root .tch-queueitem>div:first-child,#tch-root .tch-record>div:first-child{flex:1}#tch-root .tch-queueitem strong,#tch-root .tch-queueitem small,#tch-root .tch-record strong,#tch-root .tch-record small{display:block}#tch-root .tch-queueitem small,#tch-root .tch-record small{font-size:11px;color:#cbd9e6}#tch-root .tch-queueitem b{font-size:22px;color:#8af1d8}#tch-root .tch-queueitem>div:last-child{text-align:right}#tch-root .tch-record>div:last-child{text-align:right}#tch-root .tch-record button{display:block;margin-left:auto;min-height:34px}#tch-root .tch-fieldrow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}#tch-root .tch-fieldrow>select,#tch-root .tch-fieldrow>input,#tch-root .tch-fieldrow>label{flex:1 1 110px;min-width:0}#tch-root .tch-fieldrow>label input{display:block;width:100%;margin-top:5px}#tch-root .tch-empty{padding:20px;text-align:center;border-radius:9px;background:#2b445b;color:#d6e4ed}#tch-root .tch-minikpis{display:flex;gap:10px;margin:13px 0}#tch-root .tch-minikpis span{background:#37536b;padding:7px 11px;border-radius:7px}#tch-root .tch-highlight-number{font-size:30px;font-weight:800}#tch-root .tch-welcome{padding:24px}#tch-root .tch-welcome h2{font-size:24px}#tch-root.theme-light{background:#f3f6f9;color:#182d43;color-scheme:light}#tch-root.theme-light .tch-panel,#tch-root.theme-light .tch-person,#tch-root.theme-light .tch-review,#tch-root.theme-light .tch-metric{background:#fff;color:#1d3246;border-color:#cbd9e5}#tch-root.theme-light .tch-top,#tch-root.theme-light .tch-bottom{background:#e7eff6;color:#193449}#tch-root.theme-light .tch-bottom button{color:#354c5e}#tch-root.theme-light .tch-bottom button.active{background:#c9eae4;color:#095f58}#tch-root.theme-light .tch-section p,#tch-root.theme-light .tch-panel p,#tch-root.theme-light .muted,#tch-root.theme-light small,#tch-root.theme-light strong,#tch-root.theme-light h2,#tch-root.theme-light .tch-timestamp{color:#263f51}#tch-root.theme-light input,#tch-root.theme-light select,#tch-root.theme-light textarea{background:#fff;color:#12263a;border-color:#7995aa}#tch-root.theme-light .tch-switch{background:#e1ebf3}#tch-root.theme-light .tch-switch button{color:#233b4b}#tch-root.theme-light .tch-switch button.active{background:#167d78;color:#fff}#tch-root.theme-light .tch-priority,#tch-root.theme-light .tch-recommend,#tch-root.theme-light .tch-statstrip span,#tch-root.theme-light .tch-queueitem{background:#eef3f7;color:#193244}#tch-root.theme-light .tch-hero{background:linear-gradient(135deg,#e1f6ef,#dceaf7);color:#193449}#tch-root.theme-light .tch-hero-line strong,#tch-root.theme-light .tch-hero small{color:#163647}#tch-root.theme-light .tch-eyebrow,#tch-root.theme-light .tch-kicker{color:#046b60}#tch-root.theme-light .tch-avatar{background:#a5ded2;color:#13463d}";
@@ -1551,7 +1552,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.2.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.3.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -1632,7 +1633,8 @@
       {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
       {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
-    if(staffView==="wages")return '<div class="tch-section"><h2>Staff · Wage helper</h2>'+buttonsV2("Staff view",options)+'</div>'+wagesPanelV11(c)+wageRiskPanelV12(c);
+    if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+compactWagePanelV13(c)+
+      '<details class="tch-advanced"><summary>Detailed HR values, wage bands & scenarios</summary>'+wagesPanelV11(c)+wageRiskPanelV12(c)+'</details>';
     if(staffView==="simulator")return '<div class="tch-section"><h2>Staff optimiser</h2><p>Explore alternative staffing plans before making decisions.</p>'+buttonsV2("Staff view",options)+'</div>'+scenarioV2(c);
     const roles=roleList(c),sc=scenarioModel(c),suggested=suggestions(c);
     const suggestionById={};
@@ -1696,7 +1698,9 @@
         '<div class="tch-fieldrow"><select id="tch-train-person">'+opts+'</select><input aria-label="Number of trains" id="tch-train-units" type="number" min="1" max="20" value="1">'+
         '<button class="primary" data-act="add-training">Record</button></div></section>';
     } else if(trainingView==="payments"){
-      body='<section class="tch-panel"><h2>Import money received</h2><p>Imports run only when you tap. Sender and amount are matched automatically where possible. Confirm which transfers were actually for training before any trains are credited.</p>'+
+      body='<section class="tch-panel"><h2>Money receipts & purchased trains</h2>'+
+         '<p>On opening, incoming logs are checked. New, exact-price transfers from identifiable employees are locally credited as likely training purchases. Review Records and void any mistaken credit. Other transfers still require approval.</p>'+
+         '<div class="tch-actionrow"><button data-act="toggle-auto-package" class="'+(c.autoPackageMode!==false?"primary":"")+'">Auto-credit packages: '+(c.autoPackageMode!==false?"ON":"OFF")+'</button></div>'+
         (c.logHistoryWarning?'<p class="tch-hint">'+esc(c.logHistoryWarning)+'</p>':"")+
         '<div class="tch-actionrow"><button class="primary" data-act="rescan-logs">Check recent</button><button data-act="import-logs">Load older</button></div>'+
         '<p class="tch-hint">If Torn rejects money logs, set a custom API key for this script in Torn PDA with user/log permission. Your ordinary PDA key can still load company figures.</p></section>'+
@@ -1793,7 +1797,7 @@
       {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"},
       {action:"growth-view",id:"review",name:"Sunday review",active:growthView==="review"}]);
     return '<div class="tch-section"><h2>10-star growth</h2><p>Revenue improvement within your daily loss limit of '+esc(money(c.lossLimit))+'. Estimates are labelled.</p>'+switches+'</div>'+
-      (growthView==="performance"?starGrowthPanelV11(c)+'<div class="tch-metrics">'+
+      (growthView==="performance"?growthMovesPanelV13(c)+'<div class="tch-metrics">'+
          metricV2("Current rating",c.profile.rating+" / 10","Competitive star progression","","growth-performance")+
          metricV2("Daily revenue",money(a.revenue),"Reported by Torn","","growth-accounts")+
          metricV2("Wages",money(a.wages),"Current daily staff wages","","growth-accounts")+
@@ -1827,7 +1831,7 @@
       const c=current();
       let body="";
       if(detailView)body=detailsV2(c);
-      else if(tab==="overview")body=todayV2(c);
+      else if(tab==="overview")body=homeV13(c);
       else if(tab==="employees")body=staffV2(c);
       else if(tab==="training")body=trainingV2(c);
       else if(tab==="growth")body=growthV2(c);
@@ -1869,6 +1873,7 @@
       companyId=String(p.id);
       const c=current();
       if(c && c.payments)migrateAutoPaymentClaims(c);
+      if(c.autoCreditSince===undefined)c.autoCreditSince=stamp(); // Never auto-reclassify old transfers.
       const e=await read("company/employees");
       let st=null;
       try {st=await read("company/stock");c.stockFetchError=null;}catch(e){c.stockFetchError=String(e.message||e);}
@@ -1901,6 +1906,16 @@
           stats:{manual_labor:e.stats&&e.stats.manual_labor,intelligence:e.stats&&e.stats.intelligence,endurance:e.stats&&e.stats.endurance}
         }];}))});
       if (c.snapshots.length>700) c.snapshots=c.snapshots.slice(-700);
+      let newsResult=null,moneyResult=null;
+      try {newsResult=await syncRecentNewsV13(c);c.newsSyncError=null;}
+      catch(err){c.newsSyncError=String(err&&err.message||err);}
+      try {moneyResult=await syncRecentMoneyV13(c);c.moneySyncError=null;}
+      catch(err){c.moneySyncError=String(err&&err.message||err);}
+      c.lastAutoSync={news:newsResult,money:moneyResult,observedAt:c.lastRefresh};
+      message="Company and roster updated."+
+        (newsResult?" Matched "+newsResult.matched+" new training entries.":" Training history unavailable.")+
+        (moneyResult?" Auto-credited "+moneyResult.trains+" trains from "+moneyResult.credited+" new receipt(s).":" Payment logs unavailable.");
+      severity=(!newsResult||!moneyResult)?"warn":"good";
       await persist();
     });
   }
@@ -1968,6 +1983,7 @@
       }
       const page=newest?{next:null,warning:null}:importPageDecision(response,"user/log",c.logTypes,list);
       let added=0,updated=0,minTs=Infinity;
+      const newIds=new Set();
       list.forEach(function(log){
         if(!log || !log.id || !Number.isFinite(Number(log.timestamp)))return;
         const entryId=String(log.id),ts=Number(log.timestamp);
@@ -1981,7 +1997,7 @@
           return;
         }
         c.logs.push({id:entryId,timestamp:ts,title:String(log.details&&log.details.title||"Incoming money").slice(0,160),suggestion:suggestion});
-        added++;
+        newIds.add(entryId);added++;
       });
       if(!newest){
         if(added===0 && list.length>=100)c.logHistoryWarning="This full money-log page contained no new IDs. The API continuation may be repeating; history has NOT advanced.";
@@ -1989,10 +2005,11 @@
         else {c.logNext=page.next;c.logHistoryWarning=null;if(!page.next && Number.isFinite(minTs))c.logCursor=minTs-1;}
       }
       const duplicates=repairImportDuplicates(c);
+      const credits=autoCreditPurchasesV13(c,newIds);
       const classified=applyMatchedPayments(c);
       await persist();
-      message="Imported "+added+" incoming transfers; "+classified.suggested+" have a suggested employee and train count, "+
-        classified.review+" need manual details. Confirm purchases in Training → Payments. Updated "+updated+" older entries."+(c.logHistoryWarning && !newest?" "+c.logHistoryWarning:"");
+      message="Imported "+added+" incoming transfers; auto-credited "+credits.trains+" trains from "+credits.credited+" exact-price new receipt(s). "+classified.suggested+" have suggestions, "+
+        classified.review+" require review. Updated "+updated+" older entries."+(c.logHistoryWarning && !newest?" "+c.logHistoryWarning:"");
       if(c.logHistoryWarning && !newest)severity="bad";
     });
   }
@@ -2103,6 +2120,7 @@
     if(launcherDragged){launcherDragged=false;e.preventDefault();return;}
     if(!isCompanyPage()) return;
     open=true;message="";draw();
+    refresh(); // Opening explicitly triggers a fresh read; no background polling.
   });
   window.addEventListener("resize",syncCompanyVisibility);
   window.addEventListener("popstate",syncCompanyVisibility);
@@ -2132,6 +2150,12 @@
     if (act==="more-payments"){paymentViewLimit+=35;draw();return;}
     if (act==="growth-view"){growthView=el.dataset.view;draw();return;}
     if (act==="scan-peers")return scanPeersV11();
+    if (act==="toggle-auto-package"){
+      if(!c)return notify("Refresh company data first.","bad");
+      c.autoPackageMode=c.autoPackageMode===false?true:false;
+      if(c.autoCreditSince===undefined)c.autoCreditSince=stamp();
+      return work(persist);
+    }
     if (act==="scan-rival-rosters")return scanRivalRostersV12();
     if (act==="mark-change"){
       const select=root.querySelector("#tch-change-kind");
