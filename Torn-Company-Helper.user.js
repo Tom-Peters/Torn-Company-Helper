@@ -3328,9 +3328,9 @@
   })();
   // Auto-read only when Torn PDA is foregrounded and the company page is active.
   // Do not automate any training, wages, stock orders or director actions.
-  setInterval(function(){void autoCompanyRefreshV112();},60000);
+  if(typeof setInterval==="function")setInterval(function(){void autoCompanyRefreshV112();},60000);
   document.addEventListener?.("visibilitychange",function(){
     if(!document.hidden)void autoCompanyRefreshV112();
   });
-  setTimeout(function(){void autoCompanyRefreshV112();},12000);
+  if(typeof setTimeout==="function")setTimeout(function(){void autoCompanyRefreshV112();},12000);
 })();
