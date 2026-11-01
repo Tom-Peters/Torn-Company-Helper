@@ -8,7 +8,7 @@ const vm = require("node:vm");
 const script = fs.readFileSync(path.join(__dirname,"..","Torn-Company-Helper.user.js"),"utf8");
 const marker = '  const style=document.createElement("style");';
 if (!script.includes(marker)) throw new Error("Test model marker not found.");
-const instrumented=script.replace(marker,'  globalThis.__model={esc,score,aggregates,accounting,suggestions,normalizeRoles,companyProfitTrendV191};\n'+marker);
+const instrumented=script.replace(marker,'  globalThis.__model={esc,score,aggregates,accounting,suggestions,normalizeRoles,companyProfitTrendV191,companyDeltaV111};\n'+marker);
 
 function loadModel() {
   let apiRequests=0;
@@ -94,4 +94,35 @@ test('director briefing and per-tab render preservation are present',()=>{
  assert.match(script,/directorBriefPanelV110\(c\)/);
  assert.match(script,/companyScrollPositions\[companyRenderedPage\]/);
  assert.match(script,/focus\(\{preventScroll:true\}\)/);
+});
+
+test('company daily comparison uses distinct UTC dates, wage and effectiveness evidence',()=>{
+ const c={staff:[{id:12,name:'Sample'}],snapshots:[
+  {observedAt:'2026-10-27T20:00:00Z',complete:true,profit:2000,revenue:4000,wages:1000,ad:1000,
+   roster:{'12':{position:'Trainer',effectiveness:90,wage:100}}},
+  {observedAt:'2026-10-28T20:00:00Z',complete:true,profit:500,revenue:3900,wages:2400,ad:1000,
+   roster:{'12':{position:'Trainer',effectiveness:78,wage:250}}}
+ ]};
+ const d=model.companyDeltaV111(c);
+ assert.equal(d.known,true);
+ assert.equal(d.consecutive,true);
+ assert.equal(d.metrics.find(x=>x.key==='profit').delta,-1500);
+ assert.equal(d.metrics.find(x=>x.key==='wages').delta,1400);
+ assert.equal(d.staff[0].effChange,-12);
+ assert.equal(d.staff[0].wageChange,150);
+ assert.ok(d.signals.some(x=>x.includes('effectiveness')));
+});
+test('company comparison needs two complete dates and never invents individual pay',()=>{
+ const a=model.companyDeltaV111({snapshots:[{observedAt:'2026-11-01T01:00:00Z',complete:true,profit:100}]});
+ assert.equal(a.known,false);
+ const c={staff:[],snapshots:[
+   {observedAt:'2026-10-30T23:00:00Z',complete:true,profit:0,revenue:0,wages:0,ad:0,roster:{'6':{effectiveness:90}}},
+   {observedAt:'2026-11-01T02:00:00Z',complete:true,profit:0,revenue:0,wages:0,ad:0,roster:{'6':{effectiveness:90}}}
+ ]};
+ assert.equal(model.companyDeltaV111(c).staff[0].wageChange,null);
+});
+test('company diagnostics provide only status fields and no credentials or employee records',()=>{
+ assert.match(script,/function safeCompanyDiagnosticsV111\(/);
+ assert.match(script,/moneyImportAvailable:Boolean\(c\?\.lastAutoSync\?\.money/);
+ assert.match(script,/function companyDiagnosticsPanelV111\(/);
 });
