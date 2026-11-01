@@ -13,7 +13,8 @@ const staff=[{id:11,name:"ExampleOne"},{id:12,name:"ExampleTwo"}];
 const company=()=>({staff,archived:[],payments:[],training:[],news:[],logs:[],lossLimit:500000});
 const log=(title,data,id="log1")=>({id,timestamp:1600000000,details:{title},data,params:{}});
 test("Company button scope uses company URL only",()=>{
- assert.match(script,/\/\/ @match\s+https:\/\/www\.torn\.com\/companies\.php\*/);
+ assert.match(script,/\/\/ @match\s+https:\/\/www\.torn\.com\/\*/);
+ assert.match(script,/if \(!isCompanyPage\(\)\)/);
  assert.equal(m.isCompanyPage(),true);
  window.location.pathname="/index.php";
  assert.equal(m.isCompanyPage(),false);
