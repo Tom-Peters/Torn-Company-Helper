@@ -1,5 +1,13 @@
 # Torn Company Helper
 
+## v1.10.0 — director briefing and display continuity
+
+- **Director briefing on Today:** A ranked, clearly worded list of checks to perform, including stale company data, unverified accounts, loss-limit guardrails, paid trains due, training receipts, stock shortages and operational growth priorities. Each item opens a relevant internal section. No changes are made in Torn.
+- **More reliable loss alerts:** A three-day operating-loss streak now requires **three consecutive observed UTC dates**. Three scattered negative snapshots do not trigger an inaccurate consecutive-loss warning.
+- **Nonjumping interface:** The Company Helper now preserves scrolling by tab, open disclosure sections and partly entered form values during API refreshes.
+- **Version:** v1.10.0. The remote installer path is unchanged. Company reads still happen only when opening/refreshing on Torn's company page; no scheduled gameplay actions.
+
+
 **Author:** IamEEKY  
 **Platform:** Torn PDA (Android)  
 **Current status:** v1.3.0 mobile sync, purchased trains and practical staff decisions  
