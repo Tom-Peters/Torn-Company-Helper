@@ -964,31 +964,41 @@
       if(name)map[name]=(map[name]||0)+1;
     });return map;
   }
+
   function rosterBenchV12(c){
     const teams=c.rivalTeams&&Array.isArray(c.rivalTeams.rows)?c.rivalTeams.rows:[];
-    const current=positionCountsV12(c.staff),usable=teams.filter(function(x){return x&&x.counts&&Object.keys(x.counts).length>0;});
-    const roles=new Set(Object.keys(current));
-    usable.forEach(function(x){Object.keys(x.counts).forEach(function(k){roles.add(k);});});
+    const current=positionCountsV12(c.staff),usable=teams.filter(function(x){return x&&x.counts&&Object.keys(x.counts).length>0&&x.total>0;});
+    const roles=new Set(Object.keys(current));usable.forEach(function(x){Object.keys(x.counts).forEach(function(k){roles.add(k);});});
     const counts=Array.from(roles).sort().map(function(role){
-      const vals=usable.map(function(t){return Number(t.counts[role]||0);}).sort(function(a,b){return a-b;});
+      const vals=usable.map(function(t){return 100*Number(t.counts[role]||0)/Number(t.total);}).sort(function(a,b){return a-b;});
       const median=vals.length?vals[Math.floor(vals.length/2)]:null;
-      return {role:role,own:current[role]||0,median:median};
+      const target=median===null?null:median*(c.staff||[]).length/100;
+      const own=current[role]||0;
+      return {role:role,own:own,share:median,expected:target,
+        delta:target===null?null:target-own};
     });
-    return {teams:usable,counts:counts,scannedAt:c.rivalTeams&&c.rivalTeams.observedAt};
+    return {teams:usable,counts:counts,scannedAt:c.rivalTeams&&c.rivalTeams.observedAt,
+      tier:usable.length?usable[0].rating:null};
   }
   function rivalRostersPanelV12(c){
-    const m=rosterBenchV12(c);
-    return '<section class="tch-panel"><h2>10-star staffing patterns</h2>'+
-      '<p>Inspect up to five high-income 10-star Fitness Centers. Only public position names and their counts are stored, not individual names or working stats.</p>'+
-      '<button data-act="scan-rival-rosters" '+(busy?"disabled":"")+'>Compare 10-star role layouts</button>'+
-      '<p class="tch-hint">Manual lookup. Roster data is unavailable if the API key lacks access. Correlation does not establish the ideal mix for your current star level.</p>'+
-      (m.teams.length?'<div class="tch-metrics">'+m.teams.map(function(x){
-        return metricV2(x.name,String(x.total||0)+" employees",x.rating+" stars · "+money(x.weekly)+"/week");
-      }).join("")+'</div>'+
-      '<div class="tch-weekgrid"><span>Role</span><span>Yours</span><span>10★ median</span><span>Difference</span>'+
-      m.counts.map(function(x){return '<span>'+esc(x.role)+'</span><b>'+x.own+'</b><b>'+x.median+
-        '</b><b>'+(x.median-x.own>0?"+":"")+(x.median-x.own)+'</b>';}).join("")+'</div>':
-      '<p class="tch-hint">No role layouts collected yet. Scan public rivals first, then compare their rosters.</p>')+'</section>';
+    const m=rosterBenchV12(c),needs=m.counts.filter(function(r){return r.delta!==null&&Math.abs(r.delta)>=0.8;})
+      .sort(function(a,b){return Math.abs(b.delta)-Math.abs(a.delta);}).slice(0,4);
+    return '<section class="tch-panel"><h2>Peer staffing fit</h2>'+
+      '<p>Compare your staff size with the role mix of high-income '+(m.tier===null?'same/next-star':m.tier+'★')+
+      ' companies. Role counts are normalised to your '+(c.staff||[]).length+' staff, rather than blindly copying a ten-star company.</p>'+
+      '<button data-act="scan-rival-rosters" '+(busy?"disabled":"")+'>Compare similar-star staffing</button>'+
+      (needs.length?'<h3>Position gaps to investigate</h3>'+needs.map(function(r){
+        return '<div class="tch-dense-row"><div><strong>'+esc(r.role)+'</strong><small>You: '+r.own+
+          ' · scaled peer benchmark '+r.expected.toFixed(1)+'</small></div><div><b>'+
+          (r.delta>=0?'+':'')+r.delta.toFixed(1)+'</b><small>potential difference</small></div></div>';
+      }).join(""):
+      '<p class="tch-hint">No material staffing gap in the sampled companies, or no public layouts loaded.</p>')+
+      (m.teams.length?'<p class="tch-hint">Based on '+m.teams.length+' public peer rosters. Median role shares, not proof of more stars. Keep Managers, Cleaners and other support roles covered.</p>':
+        '<p class="tch-hint">Run the public rival scan first. This comparison needs readable public employee positions.</p>')+
+      '<details class="tch-advanced"><summary>View peer role mix</summary>'+
+      m.counts.map(function(r){return '<div class="tch-record"><div>'+esc(r.role)+'</div><b>'+
+        r.own+' vs '+(r.expected===null?'?':r.expected.toFixed(1))+'</b></div>';}).join("")+
+      '</details></section>';
   }
   function valueOfMetricV12(p,k){
     const x=p&&p[k];const n=Number(x);
@@ -2019,9 +2029,13 @@
     return work(async function(){
       const c=current();
       if(!c||!c.profile)throw Error("Refresh company first.");
-      const peers=peerModelV11(c).rows.filter(function(x){return x.rating===10&&x.id!==Number(c.profile.id);})
-        .sort(function(a,b){return b.weekly-a.weekly;}).slice(0,5);
-      if(!peers.length)throw Error("Scan same-type public competitors first. No ten-star companies in saved results.");
+      const ownRating=Number(c.profile.rating)||0;
+      const candidates=peerModelV11(c).rows.filter(function(x){return x.rating>=ownRating&&x.id!==Number(c.profile.id);});
+      const next=candidates.filter(function(x){return x.rating===Math.min(10,ownRating+1);});
+      const same=candidates.filter(function(x){return x.rating===ownRating;});
+      const leaders=candidates.filter(function(x){return x.rating===10;});
+      const peers=(next.length?next:same.length?same:leaders).sort(function(a,b){return b.weekly-a.weekly;}).slice(0,5);
+      if(!peers.length)throw Error("Scan public rivals first. No same-star, next-star or ten-star company layouts found.");
       const rows=[],errors=[];
       for(const p of peers){
         try {
@@ -2037,7 +2051,7 @@
       if(!rows.length)throw Error("Torn provided no usable public role layouts. Public employee permissions may differ.");
       c.rivalTeams={rows:rows,observedAt:new Date().toISOString(),failures:errors.length};
       await persist();
-      message="Read "+rows.length+" ten-star role layouts; "+errors.length+" unavailable. Counts only; no private employee data saved.";
+      message="Read "+rows.length+" comparable rival role layouts; "+errors.length+" unavailable. Counts only; no private employee data saved.";
     });
   }
   async function scanPeersV11(){
