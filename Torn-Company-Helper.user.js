@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.16.0
+// @version      1.17.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1021,6 +1021,7 @@
   function companyDataQuality(c) {
     const a=accounting(c),results=[],now=Date.now();
     if(!a)return {status:"unavailable",results:[{label:"Company profile",state:"missing",note:"Refresh company data."}]};
+    if(stockModeV117(c)==="service")results.push({label:"Company model",state:"complete",note:"Service company: physical stock does not apply."});
     if(a.missing.length)results.push({label:"Financial inputs",state:"incomplete",note:"Missing: "+a.missing.join(", ")+". Estimated operating result is withheld."});
     else results.push({label:"Financial inputs",state:"complete",note:"Revenue, staff wages and advertising present. Other operating costs may still be excluded."});
     const refresh=Date.parse(c.lastRefresh||"");
@@ -1107,7 +1108,29 @@
     const queue=eligible.map(function(p){const give=Math.min(left,p.owed);left-=give;return Object.assign({},p,{give:give});});
     return {available:available,base:base,overflow:risk,queue:queue,allocate:queue.reduce(function(n,p){return n+p.give;},0)};
   }
+  // Do not confuse an optional stock API failure with a genuine service company.
+  function stockModeV117(c){
+    const name=String(c?.profile?.type?.name||'').trim().toLowerCase();
+    if(name==='fitness center')return 'service';
+    if(c?.stockModeV117==='products'&&Array.isArray(c.stock)&&c.stock.length)return 'products';
+    if(c?.stockModeV117==='no-products'&&Array.isArray(c.stock)&&!c.stock.length)return 'no-products';
+    return 'unknown';
+  }
+  function serviceOperationsV117(c){
+    const p=c.profile||{},a=accounting(c),members=financialAmount(p.customers?.daily),weekly=valueOfMetricV12(p.income,'weekly');
+    return '<section class="tch-panel"><h2>Service operations · '+esc(p.type?.name||'Company')+'</h2>'+
+      '<p>No physical stock to replenish. Company training capacity is a separate resource and remains fully tracked.</p>'+
+      '<div class="tch-metrics">'+
+      metricV2('Daily customers',members===null?'Unreported':members,'Torn daily customer metric','','growth-performance')+
+      metricV2('Weekly income',weekly===null?'Unreported':money(weekly),'Reported gross income','','growth-accounts')+
+      metricV2('Popularity',p.popularity==null?'Unknown':p.popularity+'%','Relative popularity','','growth-pricing')+
+      metricV2('Estimated daily P/L',a.known?money(a.profit):'Incomplete','Income less wages and advertising','','growth-accounts')+'</div>'+
+      '<div class="tch-actionrow"><button class="primary" data-act="goto" data-target="growth-pricing">Review membership & ads</button>'+
+      '<button data-act="goto" data-target="staff-sim">Optimise staff</button><button data-act="goto" data-target="training-queue">Training queue</button></div>'+
+      '<p class="tch-hint">No customer or income numbers are invented when missing. Non-Fitness-Center companies with an empty official stock response show no reported product lines rather than an assumed permissions error.</p></section>';
+  }
   function stockAdviceV3(c){
+    if(stockModeV117(c)==='service')return [];
     const byDate={};
     (c.snapshots||[]).forEach(function(s){if(s&&s.observedAt&&Array.isArray(s.stock))byDate[String(s.observedAt).slice(0,10)]=s.stock;});
     const history=Object.keys(byDate).sort().slice(-7).map(function(k){return byDate[k];});
@@ -1242,6 +1265,7 @@
   }
   function stockV3(c){
     if(!c||!c.profile)return introV2();
+    if(stockModeV117(c)==='service')return serviceOperationsV117(c);
     const health=riskRadarV3(c),products=health.stock,days=[2,3,5,7].includes(c.stockDays)?c.stockDays:3;
     return '<section class="tch-panel"><h2>Stock & replenishment</h2><p>Manual-refresh sales, price comparisons and simple stock cover. No Torn orders are placed.</p>'+
       '<div class="tch-actionrow">'+[2,3,5,7].map(function(n){return '<button data-act="stock-days" data-days="'+n+
@@ -1260,7 +1284,7 @@
           ' · Sold/day '+esc(p.rate===null?"?":p.rate.toFixed(1))+'</p>'+
           '<p>Price '+esc(money(p.price))+' · '+esc(pct)+' · '+(p.samples>=2?p.samples+" observed days":"provisional one-day rate")+'</p>'+
           '<strong>Order '+esc(p.qty===null?"Unknown":p.qty)+' units · '+esc(p.cost===null?"Unknown":money(p.cost))+'</strong></div>';
-      }).join(""):'<p>No stock returned; a Limited key may be required.</p>')+
+      }).join(""):'<p>'+(c.stockFetchError?'Stock request failed; saved data may be stale.':'No product lines reported in the latest stock response.')+'</p>')+
       '<p class="tch-hint">Suggestions subtract existing orders and assume recent sales repeat. No delivery, storage, demand or cash-flow guarantees.</p></section>';
   }
   function cashPanelV3(c){
@@ -1310,7 +1334,7 @@
       add(3,"Close the next-star revenue gap","Median of "+peers.neighbours.length+" scanned "+peers.target+"★ peers: "+
         money(peers.benchmark)+"/week; your observed shortfall "+money(peers.gap)+"/week. This is not a promotion threshold.","growth-rivals");
     if(!peers.observedAt)
-      add(3,"Scan Fitness Center rivals","Compare the same company type and the next star tier using Torn's public weekly income figures.","growth-rivals");
+      add(3,"Scan "+String(p.type?.name||"company")+" rivals","Compare the same company type and the next star tier using Torn's public weekly income figures.","growth-rivals");
     const hired=financialAmount(p.employees&&p.employees.hired),capacity=financialAmount(p.employees&&p.employees.capacity);
     if(hired!==null&&capacity!==null&&hired<capacity)
       add(4,"Review "+(capacity-hired)+" available employee slot(s)","Recruit for genuine growth needs; leave supporting roles covered.","staff");
@@ -2479,13 +2503,13 @@
   }
 
   function tabsV2(){
-    const tabs=[["overview","⌂","Today"],["alerts","!","Alerts"],["employees","♟","Staff"],["training","◇","Trains"],["growth","▥","Growth"],["stock","▣","Stock"]];
+    const tabs=[["overview","⌂","Today"],["alerts","!","Alerts"],["employees","♟","Staff"],["training","◇","Trains"],["growth","▥","Growth"],["stock","▣",stockModeV117(c)==="service"?"Services":"Stock"]];
     return '<nav class="tch-bottom" aria-label="Company Helper sections">'+tabs.map(function(x){
       return '<button data-act="tab" data-tab="'+x[0]+'" class="'+(tab===x[0]?"active":"")+'"><span class="tch-navicon">'+x[1]+'</span><span>'+x[2]+'</span></button>';
     }).join("")+'</nav>';
   }
   function headV2(c) {
-    const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":tab==="diagnostics"?"Diagnostics":"Settings";
+    const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(stockModeV117(c)==="service"?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
     return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.12.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
@@ -2550,7 +2574,7 @@
       '<button data-act="tab" data-tab="training">Check training queue<span>Paid and outstanding</span></button>'+
       '<button data-act="tab" data-tab="employees">Optimise staff<span>Suggested roles</span></button>'+
       '<button data-act="tab" data-tab="growth">Company performance<span>Costs and membership</span></button>'+
-      '<button data-act="tab" data-tab="stock">Stock priorities<span>Runout and orders</span></button>'+
+      '<button data-act="tab" data-tab="stock">'+(stockModeV117(c)==="service"?"Service performance<span>Members & revenue</span>":"Stock priorities<span>Runout and orders</span>")+"</button>"+
       '<button data-act="refresh" '+(busy?"disabled":"")+'>Refresh Torn data<span>Only when you tap</span></button>'+
       '</div></section>';
   }
@@ -2925,12 +2949,21 @@
       if(c.autoCreditSince===undefined)c.autoCreditSince=stamp(); // Never auto-reclassify old transfers.
       const e=await read("company/employees");
       let st=null;
-      try {st=await read("company/stock");c.stockFetchError=null;}catch(e){c.stockFetchError=String(e.message||e);}
+      if(stockModeV117(c)==='service'){
+        // Fitness Centers sell memberships; avoid repeatedly requesting nonexistent inventory.
+        c.stock=[];c.stockFetchError=null;c.stockModeV117='service';
+      }else{
+        try{
+          st=await read("company/stock");
+          if(!Array.isArray(st?.stock))throw Error("Stock response did not contain a valid stock list");
+          c.stock=st.stock;c.stockModeV117=st.stock.length?'products':'no-products';
+          c.stockFetchError=null;
+        }catch(e){c.stockFetchError=String(e.message||e);}
+      }
       try {const a=await read("company/applications");c.applications=assertArray(a.applications);c.applicationsError=null;}catch(e){c.applicationsError=String(e.message||e);}
       const staff=assertArray(e.employees);
       if (!staff.length && num(p.employees && p.employees.hired)>0) throw Error("Employee data unavailable; check director permissions.");
       c.staff=staff;
-      if(st)c.stock=assertArray(st.stock);
       c.profile=p;
       c.lastRefresh=new Date().toISOString();
       c.archived=c.archived || [];
@@ -2963,7 +2996,7 @@
       catch(err){c.moneySyncError=String(err&&err.message||err);}
       if(newsResult||moneyResult)await autoHistoryBackfillV116(c);
       c.lastAutoSync={news:newsResult,money:moneyResult,observedAt:c.lastRefresh};
-      message="Company and roster updated."+
+      message="Company and roster updated."+(stockModeV117(c)==="service"?" No stock required for this service company.":"")+
         (newsResult?" Matched "+newsResult.matched+" new training entries.":" Training history unavailable.")+
         (moneyResult?" Auto-credited "+moneyResult.trains+" trains from "+moneyResult.credited+" new receipt(s).":" Payment logs unavailable.");
       severity=(!newsResult||!moneyResult)?"warn":"good";
@@ -3181,7 +3214,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.16.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.17.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
