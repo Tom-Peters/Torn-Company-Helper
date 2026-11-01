@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.7.0
+// @version      1.8.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.2 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.3 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -25,7 +25,7 @@
       '<aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>' +
       '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><button type="button" data-hub-close aria-label="Close sidebar">×</button></header>' +
       '<div class="staxx-scroll"><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Combined overview</button>' +
-      '<section id="staxx-hub-overview" hidden></section><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div>' +
+      '<section id="staxx-hub-overview" hidden></section><div class="staxx-label"><h3>WHAT TO DO NEXT</h3><span>Prioritised</span></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div>' +
       '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div>' +
       '<div id="staxx-hub-alerts"></div><p class="staxx-foot">Read-only signals · Alerts use last known data · Drag the S tab vertically to reposition</p>' +
       '</div></aside>';
@@ -68,6 +68,7 @@
       '#staxx-hub-drawer .staxx-overview-card b{color:#83dbfa;font-size:12px}#staxx-hub-drawer .staxx-overview-card p{margin:5px 0;color:#d4eafa;font-size:11px}',
       '#staxx-hub-drawer .staxx-overview-card dl{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0 0}',
       '#staxx-hub-drawer .staxx-overview-card dt{font-size:10px;color:#96b6cf}#staxx-hub-drawer .staxx-overview-card dd{font-size:13px;font-weight:750;margin:0;overflow-wrap:anywhere}',
+      '#staxx-hub-drawer .staxx-task{width:100%;text-align:left;display:block;border:1px solid #315b79;border-radius:10px;background:#102b46;color:#eef8ff;padding:10px;margin-bottom:8px;line-height:1.45}#staxx-hub-drawer .staxx-task.urgent{border-color:#e56785}#staxx-hub-drawer .staxx-task.soon{border-color:#ae8450}#staxx-hub-drawer .staxx-task b{display:block;font-size:12px}#staxx-hub-drawer .staxx-task small{display:block;font-size:10px;color:#8fb7d2;margin-top:4px}#staxx-hub-drawer .staxx-task .staxx-step{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;color:#67dfff;margin-bottom:4px}#staxx-hub-drawer .staxx-task:focus-visible{outline:2px solid #67dfff}',
       '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:17px}'
     ].join("");
     document.documentElement.append(css, root);
@@ -77,11 +78,11 @@
       {id:"company",label:"Company Helper",icon:"CO",desc:"Staff · Training · Growth"},
       {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}
     ];
-    const active = Object.create(null), notices = Object.create(null), summaries = Object.create(null), controls = Object.create(null);
+    const active = Object.create(null), notices = Object.create(null), summaries = Object.create(null), controls = Object.create(null), actionSets=Object.create(null);
     let trends=Object.create(null), arrangeShown=false;
     const toggle=root.querySelector("#staxx-hub-toggle"),veil=root.querySelector("#staxx-hub-veil"),drawer=root.querySelector("#staxx-hub-drawer");
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
-    const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]");
+    const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]"),taskList=root.querySelector("#staxx-hub-tasks");
     let expanded=false, panelOpen=false, overviewShown=false, moving=null, suppressClickUntil=0;
     const openPanels=new Set();
     const idOk = v=>typeof v==="string" && /^[a-z][a-z0-9-]{0,31}$/.test(v);
@@ -89,7 +90,7 @@
     function safeRead(key, fallback) {try {const v=JSON.parse(localStorage.getItem(key)||"null");return v===null?fallback:v;}catch(_){return fallback;}}
     function saveLocal(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch(_){}}
     function remember(){
-      try{sessionStorage.setItem("staxx-hub-state-v2",JSON.stringify({at:Date.now(),notices,summaries}));}catch(_){}
+      try{sessionStorage.setItem("staxx-hub-state-v2",JSON.stringify({at:Date.now(),notices,summaries,actionSets}));}catch(_){}
     }
     try {
       const known=safeRead("staxx-hub-registry-v2",[]);
@@ -102,6 +103,7 @@
       if(old&&Date.now()-old.at<4*3600000){
         for(const id of Object.keys(old.notices||{}))if(idOk(id)){const n=old.notices[id];if(n&&Number(n.count)>=0)notices[id]=Object.assign({},n,{cached:true});}
         for(const id of Object.keys(old.summaries||{}))if(idOk(id)){const d=old.summaries[id];if(d&&typeof d==="object")summaries[id]=d;}
+        for(const id of Object.keys(old.actionSets||{}))if(idOk(id)){const d=old.actionSets[id];if(d&&Array.isArray(d.items))actionSets[id]={items:d.items.slice(0,8),updated:d.updated,cached:true};}
       }
     }catch(_){}
     for(const e of entries)controls[e.id]=safeRead("staxx-hub-alert-control-"+e.id,{});
@@ -221,6 +223,30 @@
       overviewButton.classList.toggle("selected",overviewShown);
       overviewButton.setAttribute("aria-expanded",String(overviewShown));
     }
+    function renderTasks(){
+      if(!taskList)return;
+      taskList.replaceChildren();
+      const rows=[];
+      for(const e of entries){
+        const set=actionSets[e.id],control=controls[e.id]||{};
+        if(!set||!Array.isArray(set.items)||Number(control.snoozeUntil)>Date.now())continue;
+        for(const a of set.items)rows.push({...a,owner:e.id,tool:e.label,cached:Boolean(set.cached),updated:set.updated});
+      }
+      const rank={urgent:4,now:3,soon:2,review:1,optional:0};
+      rows.sort((a,b)=>(rank[b.status]??0)-(rank[a.status]??0)||(Number(a.dueAt)||Infinity)-(Number(b.dueAt)||Infinity)||(Number(b.priority)||0)-(Number(a.priority)||0));
+      for(const item of rows.slice(0,6)){
+        const btn=node("button","staxx-task "+(item.status==="urgent"?"urgent":item.status==="soon"?"soon":""));
+        btn.type="button";btn.dataset.openAlertTool=item.owner;btn.dataset.openAlertId=item.id;
+        btn.append(node("span","staxx-step",(item.cached?"LAST OBSERVED · ":"")+(item.status==="urgent"?"ACT NOW":item.status==="now"?"DO NEXT":item.status==="soon"?"UPCOMING":item.status==="review"?"REVIEW":"OPTIONAL")+" · "+item.tool),
+          node("b","",item.title));
+        if(item.detail)btn.append(node("small","",item.detail));
+        if(item.dueAt)btn.append(node("small","",timeUntil(item.dueAt)));
+        if(item.cached)btn.append(node("small","","Verify current Torn data before acting"));
+        taskList.append(btn);
+      }
+      if(!rows.length)taskList.append(node("p","staxx-empty","No verified next steps yet. Open a tool to refresh its data."));
+      else if(rows.length>6)taskList.append(node("p","staxx-foot",String(rows.length-6)+" more recommendations inside your tools"));
+    }
     function render(){
       tools.replaceChildren();alerts.replaceChildren();
       let total=0,maxLevel=0,visible=0,muted=0;
@@ -277,6 +303,7 @@
         card.append(menu);alerts.append(card);
       }
       if(!visible)alerts.append(node("p","staxx-empty",muted?"Alerts dismissed or snoozed. New alerts will still appear.":"Nothing needs your attention right now."));
+      renderTasks();
       showOverview();
       launcherVisibility();
     }
@@ -354,6 +381,17 @@
       n.dueAt=Number.isFinite(Number(d.dueAt))&&Number(d.dueAt)>0?Number(d.dueAt):null;
       n.fingerprint=JSON.stringify([n.count,n.summary,n.items,n.alerts,n.level,n.dueAt]);
       if(JSON.stringify(notices[id])!==JSON.stringify(n)){notices[id]=n;remember();render();}
+    });
+    document.addEventListener("staxx:actions",e=>{
+      const d=e.detail||{},id=d.id;if(!idOk(id)||!entries.some(x=>x.id===id))return;
+      const items=Array.isArray(d.items)?d.items.slice(0,12).filter(a=>a&&/^[a-z][a-z0-9-]{0,63}$/.test(String(a.id||""))).map(a=>({
+        id:String(a.id),title:String(a.title||"Review action").slice(0,100),detail:String(a.detail||"").slice(0,160),
+        status:["urgent","now","soon","review","optional"].includes(a.status)?a.status:"review",
+        priority:Math.max(0,Math.min(100,Number(a.priority)||0)),
+        dueAt:Number.isFinite(Number(a.dueAt))&&Number(a.dueAt)>0?Number(a.dueAt):null
+      })):[];
+      const next={items,updated:Number(d.updated)||Date.now(),cached:false};
+      if(JSON.stringify(actionSets[id])!==JSON.stringify(next)){actionSets[id]=next;remember();render();}
     });
     document.addEventListener("staxx:summary",e=>{
       const d=e.detail||{},id=d.id;if(!idOk(id)||!entries.some(x=>x.id===id))return;
@@ -1238,6 +1276,8 @@
     if(!c||!c.profile)return {items:[],count:0};
     const items=[],p=trainPlanV3(c),balances=aggregates(c).balance;
     const owed=Object.keys(balances).filter(function(k){return balances[k].owed>0;}).length;
+    const shortage=stockAdviceV3(c).filter(x=>x.qty!==null&&x.qty>0&&x.days!==null&&x.days<1).slice(0,3);
+    if(shortage.length)items.push({id:"stock-shortage",target:"stock",glyph:"!",text:shortage.length+" stock line(s) under one day of cover"});
     if(p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Trains may overflow at next close"});
     else if(p.available!==null&&p.available>=17)items.push({id:"training-capacity",target:"training-queue",glyph:"◇",text:"Train bank near capacity"});
     if(owed>0)items.push({id:"training-owed",target:"training-queue",glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
@@ -1249,11 +1289,35 @@
       items.push({id:"stale-data",target:"refresh",glyph:"↻",text:"Saved company data over 24 hours old"});
     return {items:items,count:items.length};
   }
+  function companyHubActions(c){
+    if(!c||!c.profile)return [{id:'refresh-company',title:'Connect Company Helper and refresh',detail:'Open your company to load the current staffing and financial data.',status:'now',priority:80}];
+    const actions=[],seen=new Set(),fresh=Number.isFinite(Date.parse(c.lastRefresh||''))&&Date.now()-Date.parse(c.lastRefresh)<24*3600000;
+    function add(x){if(!seen.has(x.id)){seen.add(x.id);actions.push(x);}}
+    const p=trainPlanV3(c);
+    if(!fresh)add({id:'stale-data',title:'Refresh company before making changes',detail:'Saved figures are over 24 hours old or unverified.',status:'now',priority:95});
+    for(const a of launcherAlertsV11(c).items){
+      if(a.id==='stale-data')continue;
+      add({id:a.id,title:a.text,detail:a.target==='training-queue'?'Open training queue to review eligible employees and capacity.':'Review current figures and make changes manually.',
+        status:a.id==='loss-guardrail'||a.id==='training-overflow'?'urgent':'now',
+        priority:a.id==='loss-guardrail'?100:a.id==='training-overflow'?95:a.id==='stock-shortage'?90:70});
+    }
+    const first=p.queue.find(x=>x.give>0);
+    if(first&&fresh)add({id:'decision-training-queue',title:'Assign '+first.give+' of '+first.owed+' owed trains to '+first.name,
+      detail:'Oldest eligible purchased commitment; apply the train in Torn, then reconcile it.',status:'now',priority:85});
+    for(const a of companyActionList(c).slice(0,4)){
+      if(a.target==='refresh'&&!fresh)continue;
+      add({id:'decision-'+a.target,title:a.title,detail:a.why,status:a.level==='urgent'?'urgent':a.level==='next'?'soon':'review',priority:a.level==='urgent'?92:a.level==='next'?50:65});
+    }
+    return actions.slice(0,10);
+  }
   function updateLauncherV11(){
     const c=companyId&&data.byCompany&&data.byCompany[companyId];
     let status={items:[],count:0};
     try{status=launcherAlertsV11(c);}catch(e){/* Alerts must never block the launcher. */}
     const n=status.count;
+    try{document.dispatchEvent?.(new CustomEvent('staxx:actions',{detail:{id:'company',items:companyHubActions(c),
+      updated:c?.lastRefresh&&Number.isFinite(Date.parse(c.lastRefresh))?Date.parse(c.lastRefresh):Date.now()}}));}
+    catch(err){console.warn('[Company Helper] Action summary unavailable:',String(err?.message||err));}
     opener.innerHTML='<span>Company Helper</span>'+(n?'<span class="tch-launcherbadge" aria-hidden="true">'+
       esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
@@ -1668,14 +1732,15 @@
     if(!issues.length)html+='<section class="tch-panel"><h3>All clear</h3><p>No urgent or warning issues currently reported.</p></section>';
     for(const x of issues)html+='<section class="tch-panel tch-alert-card" id="tch-alert-'+esc(x.id)+'" '+(x.id===companyAlertFocus?'style="outline:2px solid #54d7fa"':'')+'><h3>'+esc(x.text)+'</h3><p>'+esc(x.target==="refresh"?"Update your saved company data before acting.":"Review the related live figures, then make the change yourself.")+'</p>'+
       '<button class="primary" data-act="goto" data-target="'+esc(x.target)+'">'+(x.target==="refresh"?"Refresh now":"Review this alert ›")+'</button></section>';
-    html+='<section class="tch-panel"><h2>Other recommended actions</h2>'+decisions.map(a=>'<button type="button" class="tch-insight" data-act="goto" data-target="'+esc(a.target)+'"><strong>'+esc(a.title)+'</strong><small>'+esc(a.why)+'</small><span>Review ›</span></button>').join('')+'</section>';
+    html+='<section class="tch-panel"><h2>Other recommended actions</h2>'+decisions.map(a=>'<div class="tch-alert-card" id="tch-alert-decision-'+esc(a.target)+'"><button type="button" class="tch-insight" data-act="goto" data-target="'+esc(a.target)+'"><strong>'+esc(a.title)+'</strong><small>'+esc(a.why)+'</small><small>'+esc(a.confidence)+'</small><span>Review ›</span></button></div>').join('')+'</section>';
+    if(!c.lastRefresh)html+='<section class="tch-panel" id="tch-alert-refresh-company"><h3>Refresh company data</h3><button data-act="refresh">Load latest data</button></section>';
     return html;
   }
   function homeV13(c){
     if(!c||!c.profile)return introV2();
     const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
     const due=Object.values(aggregates(c).balance).reduce(function(n,b){return n+b.owed;},0);
-    return '<section class="tch-panel"><h2>Do this next</h2>'+(companyActionList(c).slice(0,1).map(a=>'<button class="tch-insight" data-act="goto" data-target="'+esc(a.target)+'"><strong>'+esc(a.title)+'</strong><small>'+esc(a.why)+'</small><span>Review ›</span></button>').join('')||'<p>No priority issues reported from saved data.</p>')+'</section>'+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
+    return '<section class="tch-panel"><h2>Top decisions · ranked</h2>'+(companyActionList(c).slice(0,3).map(a=>'<button class="tch-insight" data-act="goto" data-target="'+esc(a.target)+'"><strong>'+esc(a.title)+'</strong><small>'+esc(a.why)+'</small><span>Review ›</span></button>').join('')||'<p>No priority issues reported from saved data.</p>')+'</section>'+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
       '<span class="tch-mini">'+star+' ★ / 10</span></div><div class="tch-home-number">'+star+' ★</div></section>'+
       '<div class="tch-homekpis">'+
         metricV2("Efficiency",c.profile.efficiency==null?"?":c.profile.efficiency+"%","Daily report","","staff")+
@@ -1990,7 +2055,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.7.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.8.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
