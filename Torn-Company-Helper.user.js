@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.10.0
+// @version      1.11.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1904,6 +1904,78 @@
 
 
   // Evidence-backed director briefing: actionable, ordered and never inferred from missing API values.
+
+  function companyDeltaV111(c){
+    const observations=new Map();
+    for(const snapshot of c?.snapshots||[]){
+      if(!snapshot?.observedAt||snapshot.complete!==true)continue;
+      const day=String(snapshot.observedAt).slice(0,10);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
+      if(!observations.has(day)||snapshot.observedAt>observations.get(day).observedAt)observations.set(day,snapshot);
+    }
+    const dates=[...observations.keys()].sort(),latest=observations.get(dates.at(-1)),prior=observations.get(dates.at(-2));
+    if(!latest||!prior)return {known:false,why:'Need two complete observations on separate UTC days. Multiple refreshes on one day are not two daily reports.'};
+    const metrics=[['Revenue','revenue'],['Wages','wages'],['Advertising','ad'],['Operating P/L','profit'],
+      ['Efficiency','efficiency'],['Popularity','popularity'],['Environment','environment'],['Star rating','rating']];
+    const results=metrics.map(([label,key])=>{
+      const a=prior[key],b=latest[key],valid=a!==null&&a!==undefined&&b!==null&&b!==undefined&&
+        Number.isFinite(Number(a))&&Number.isFinite(Number(b));
+      return {label,key,before:valid?Number(a):null,after:valid?Number(b):null,
+        delta:valid?Number(b)-Number(a):null,percent:valid&&Number(a)!==0?100*(Number(b)-Number(a))/Math.abs(Number(a)):null};
+    });
+    const before=prior.roster||{},after=latest.roster||{},staff=[];
+    for(const [id,next] of Object.entries(after)){
+      const prev=before[id];if(!prev||!next)continue;
+      const oldEff=prev.effectiveness,newEff=next.effectiveness;
+      const hasEff=oldEff!==null&&oldEff!==undefined&&newEff!==null&&newEff!==undefined&&
+        Number.isFinite(Number(oldEff))&&Number.isFinite(Number(newEff));
+      const oldWage=prev.wage,newWage=next.wage;
+      const hasWage=oldWage!==null&&oldWage!==undefined&&newWage!==null&&newWage!==undefined&&
+        Number.isFinite(Number(oldWage))&&Number.isFinite(Number(newWage));
+      if(!hasEff&&!hasWage&&prev.position===next.position)continue;
+      staff.push({id,name:String((c.staff||[]).find(p=>String(p.id)===id)?.name||'Employee #'+id),
+        role:next.position||'Unknown',oldRole:prev.position||'Unknown',
+        effChange:hasEff?Number(newEff)-Number(oldEff):null,
+        wageChange:hasWage?Number(newWage)-Number(oldWage):null});
+    }
+    const p=results.find(x=>x.key==='profit'),w=results.find(x=>x.key==='wages'),r=results.find(x=>x.key==='revenue');
+    const signals=[];
+    if(p?.delta!==null&&p?.delta<0)signals.push('Modelled operating P/L fell by '+money(-p.delta)+'.');
+    if(w?.delta!==null&&w?.delta>0)signals.push('Observed total daily wages increased '+money(w.delta)+'.');
+    if(r?.delta!==null&&r?.delta<0)signals.push('Reported daily revenue declined '+money(-r.delta)+'.');
+    const weak=staff.filter(x=>x.effChange!==null&&x.effChange<=-5);
+    if(weak.length)signals.push(weak.length+' employee(s) lost at least 5 effectiveness points.');
+    if(!signals.length)signals.push('No major adverse movement detected in comparable recorded fields.');
+    return {known:true,previousDay:dates.at(-2),latestDay:dates.at(-1),consecutive:
+      Date.parse(dates.at(-1)+'T00:00:00Z')-Date.parse(dates.at(-2)+'T00:00:00Z')===86400000,
+      metrics:results,staff:staff.sort((a,b)=>Math.abs(b.effChange||0)-Math.abs(a.effChange||0)),signals};
+  }
+  function companyDeltaPanelV111(c){
+    const d=companyDeltaV111(c);
+    if(!d.known)return '<section class="tch-panel"><h2>Daily company performance comparison</h2><p>'+esc(d.why)+'</p><button data-act="refresh">Refresh observations</button></section>';
+    const signed=(n,unit)=>n===null?'Not recorded':(n>=0?'+':'')+(unit==='percent'?n.toFixed(1):money(n));
+    let h='<section class="tch-panel"><h2>What changed since the previous recorded day?</h2>'+
+      '<p class="tch-hint">Comparing '+esc(d.previousDay)+' with '+esc(d.latestDay)+'. '+(d.consecutive?'Consecutive UTC observations.':'There is a gap between recorded days, so changes are not necessarily one-day moves.')+' Correlation does not prove that a staff or budget change caused profit movement.</p>';
+    for(const x of d.metrics){
+      const isRate=['efficiency','popularity','environment','rating'].includes(x.key);
+      h+='<div class="tch-roleline"><span>'+esc(x.label)+'<small>'+(
+        x.before===null?' · previous unavailable':' · from '+(isRate?x.before.toFixed(1):money(x.before)))+
+        '</small></span><strong class="'+(x.delta===null?'':x.key==='wages'||x.key==='ad'?(x.delta>0?'warn':'good'):
+          x.delta<0?'bad':x.delta>0?'good':'')+'">'+
+        esc(x.after===null?'Unverified':isRate?x.after.toFixed(1):money(x.after))+
+        ' ('+esc(signed(x.delta,isRate?'percent':'money'))+(isRate?' pp':'')+')</strong></div>';
+    }
+    h+='<h3>Possible contributors to investigate</h3>'+d.signals.map(x=>'<p>• '+esc(x)+'</p>').join('')+
+      '<details><summary>Employee effectiveness and recorded wage movements ('+d.staff.length+')</summary>';
+    for(const x of d.staff.slice(0,25))h+='<div class="tch-roleline"><span>'+esc(x.name)+'<small>'+esc(x.oldRole)+' → '+esc(x.role)+'</small></span><b>'+
+      (x.effChange===null?'EFF unverified':'EFF '+signed(x.effChange,'percent')+' pp')+
+      (x.wageChange===null?'':' · wage '+signed(x.wageChange,'money'))+'</b></div>';
+    h+='</details><p class="tch-hint">Individual pay comparisons require wage values in both daily snapshots; older records may not contain them. No payroll changes are applied automatically.</p>'+
+      '<button class="primary" data-act="goto" data-target="staff-wages">Review wage efficiency</button> '+
+      '<button data-act="goto" data-target="growth-review">Review growth history</button></section>';
+    return h;
+  }
+
   function directorBriefV110(c){
     if(!c||!c.profile)return {items:[],ageHours:null,ready:false};
     const parsed=Date.parse(c.lastRefresh||''),ageHours=Number.isFinite(parsed)?Math.max(0,(Date.now()-parsed)/3600000):null;
@@ -1960,7 +2032,7 @@
         metricV2("Popularity",c.profile.popularity==null?"?":c.profile.popularity+"%","Daily report","","growth-pricing")+
         metricV2("Trains available",train.available===null?"?":train.available,"Paid owed "+due,"","training-queue")+
         metricV2("Estimated P/L",a.known?money(a.profit):"Unknown","Excludes unreported costs","","growth-accounts")+
-      '</div>'+starMomentumPanelV14(c)+growthMovesPanelV13(c)+profitBridgePanelV191(c)+
+      '</div>'+starMomentumPanelV14(c)+growthMovesPanelV13(c)+companyDeltaPanelV111(c)+profitBridgePanelV191(c)+
       '<div class="tch-quick"><button data-act="goto" data-target="training-queue">Training queue ›</button>'+
       '<button data-act="goto" data-target="staff-wages">Wage analysis ›</button>'+
       '<button data-act="goto" data-target="growth-review">Weekly review ›</button></div>'+
@@ -2268,7 +2340,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.10.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.11.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2656,6 +2728,7 @@
         weekly:valueOfMetricV12(p.income,"weekly"),customers:p.customers && p.customers.daily,price:c.stock[0] && c.stock[0].price,stock:(c.stock||[]).map(function(x){return {id:x.id,sold_amount:x.sold_amount,price:x.price};}),
         roster:Object.fromEntries(c.staff.map(function(e){return [String(e.id),{
           position:e.position&&e.position.name||null,effectiveness:e.effectiveness&&e.effectiveness.total!=null?Number(e.effectiveness.total):null,
+          wage:typeof e.wage==='number'&&Number.isFinite(e.wage)?e.wage:null,
           stats:{manual_labor:e.stats&&e.stats.manual_labor,intelligence:e.stats&&e.stats.intelligence,endurance:e.stats&&e.stats.endurance}
         }];}))});
       if (c.snapshots.length>700) c.snapshots=c.snapshots.slice(-700);
