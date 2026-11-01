@@ -154,3 +154,22 @@ test("Compact mobile navigation has constrained height and five concise destinat
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
+
+test("New receipt never double-credits a manually entered matching purchase",()=>{
+ const {app}=fixture(),c=company();app.seed(c);
+ c.payments.push({id:"manual-1",source:"manual",playerId:11,amount:250000,
+   trains:1,ts:now(),confirmed:true});
+ const out=app.mergeIncomingLogsV13(c,{log:[log(9001,11,250000)]});
+ assert.equal(out.credited,0);
+ assert.equal(c.payments.length,1);
+ assert.match(c.logs[0].matchReason,/duplicate/i);
+});
+test("Torn news near a manually recorded train attaches to existing row and does not double-count",()=>{
+ const {app}=fixture(),c=company();app.seed(c);
+ c.training.push({id:"manual-training-1",source:"manual",playerId:11,units:1,ts:now(),confirmed:true});
+ const out=app.mergeTrainingNewsV13(c,{news:[{id:"n-manual",timestamp:now(),text:"Director trained Alice"}]});
+ assert.equal(out.matched,1);
+ assert.equal(c.training.length,1);
+ assert.equal(c.training[0].sourceId,"news:n-manual");
+ assert.equal(c.news[0].matchStatus,"matched-manual");
+});
