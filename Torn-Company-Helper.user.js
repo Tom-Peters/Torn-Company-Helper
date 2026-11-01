@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.3 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.4 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -25,7 +25,7 @@
       '<aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>' +
       '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><button type="button" data-hub-close aria-label="Close sidebar">×</button></header>' +
       '<div class="staxx-scroll"><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Combined overview</button>' +
-      '<section id="staxx-hub-overview" hidden></section><div class="staxx-label"><h3>WHAT TO DO NEXT</h3><span>Prioritised</span></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div>' +
+      '<section id="staxx-hub-overview" hidden></section><button class="staxx-context-control" type="button" data-context-toggle>On-page guidance: On</button><div class="staxx-label"><h3>WHAT TO DO NEXT</h3><span>Prioritised</span></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div>' +
       '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div>' +
       '<div id="staxx-hub-alerts"></div><p class="staxx-foot">Read-only signals · Alerts use last known data · Drag the S tab vertically to reposition</p>' +
       '</div></aside>';
@@ -71,6 +71,10 @@
       '#staxx-hub-drawer .staxx-task{width:100%;text-align:left;display:block;border:1px solid #315b79;border-radius:10px;background:#102b46;color:#eef8ff;padding:10px;margin-bottom:8px;line-height:1.45}#staxx-hub-drawer .staxx-task.urgent{border-color:#e56785}#staxx-hub-drawer .staxx-task.soon{border-color:#ae8450}#staxx-hub-drawer .staxx-task b{display:block;font-size:12px}#staxx-hub-drawer .staxx-task small{display:block;font-size:10px;color:#8fb7d2;margin-top:4px}#staxx-hub-drawer .staxx-task .staxx-step{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;color:#67dfff;margin-bottom:4px}#staxx-hub-drawer .staxx-task:focus-visible{outline:2px solid #67dfff}',
       '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:17px}'
     ].join("");
+    css.textContent += '#staxx-hub-drawer .staxx-context-control{display:block;width:100%;background:#0b314e;color:#8bdffc;border:1px solid #315775;border-radius:9px;padding:8px;margin:7px 0 14px;text-align:left}' +
+      '#staxx-page-tip{box-sizing:border-box;display:flex;flex-wrap:wrap;gap:7px;align-items:center;background:#0c2944;color:#e9f5ff;border:1px solid #345f7d;border-left:4px solid #54d7fa;border-radius:9px;padding:10px 12px;margin:10px 0;font:13px/1.4 system-ui,Arial,sans-serif;max-width:100%}' +
+      '#staxx-page-tip strong{color:#84e0fb}#staxx-page-tip small{color:#a9cce5;flex-basis:100%}' +
+      '#staxx-page-tip button{background:#0879bd;color:#fff;border:1px solid #69cef5;border-radius:8px;padding:7px 10px;font:inherit;font-weight:700;cursor:pointer}';
     document.documentElement.append(css, root);
 
     const entries = [
@@ -223,6 +227,46 @@
       overviewButton.classList.toggle("selected",overviewShown);
       overviewButton.setAttribute("aria-expanded",String(overviewShown));
     }
+
+    // Contextual, non-invasive Torn page tip. It never fills fields or performs gameplay.
+    function currentContext(){
+      const path=String(location.pathname||"").toLowerCase();
+      if(path==="/gym.php")return {id:"happy",name:"Gym"};
+      if(path==="/companies.php")return {id:"company",name:"Company"};
+      if(path==="/page.php"&&/\bsid=itemmarket\b/i.test(String(location.search||"")))return {id:"profit",name:"Item Market"};
+      return null;
+    }
+    function contextEnabled(){return safeRead("staxx-hub-context-v1",true)!==false;}
+    function renderContext(){
+      const old=document.getElementById("staxx-page-tip");
+      const control=root.querySelector("[data-context-toggle]");
+      if(control){control.textContent="On-page guidance: "+(contextEnabled()?"On":"Off");
+        control.setAttribute("aria-pressed",String(contextEnabled()));}
+      const ctx=currentContext();
+      if(!ctx||!contextEnabled()||!active[ctx.id]||openPanels.size||expanded){
+        if(old)old.remove();return;
+      }
+      const anchor=document.querySelector?.("#gymroot h1, #mainContainer h1, .content-wrapper h1, h1");
+      if(!anchor||typeof anchor.insertAdjacentElement!=="function"){if(old)old.remove();return;}
+      const set=actionSets[ctx.id],fresh=set&&!set.cached&&Date.now()-Number(set.updated)<(ctx.id==="company"?86400000:ctx.id==="happy"?900000:480000);
+      const ranks={urgent:5,now:4,soon:3,review:2,optional:1};
+      const items=fresh&&Array.isArray(set.items)?set.items.slice().sort((a,b)=>(ranks[b.status]||0)-(ranks[a.status]||0)||(b.priority||0)-(a.priority||0)):[];
+      const first=items[0];
+      const title=first?first.title:"Check "+ctx.name+" recommendations";
+      const detail=first?first.detail:"Open the tool to verify current data before taking action.";
+      // Reuse existing element to avoid mutating Torn's DOM during every heartbeat.
+      const fingerprint=ctx.id+"|"+title+"|"+detail+"|"+String(first?.id||"");
+      if(old&&old.dataset.fingerprint===fingerprint&&old.previousElementSibling===anchor)return;
+      if(old)old.remove();
+      const bar=node("div");bar.id="staxx-page-tip";bar.dataset.fingerprint=fingerprint;
+      bar.setAttribute("role","region");bar.setAttribute("aria-label","Staxx contextual guidance");
+      const heading=node("strong","",ctx.name+" · "+(first?"NEXT ACTION":"STAXX"));
+      const message=node("span","",title),sub=node("small","",detail);
+      const button=node("button","",first?"Review action ›":"Open "+ctx.name+" tool ›");
+      button.type="button";button.addEventListener("click",()=>openTool(ctx.id,first?.id||null));
+      bar.append(heading,message,button,sub);
+      anchor.insertAdjacentElement("afterend",bar);
+    }
     function renderTasks(){
       if(!taskList)return;
       taskList.replaceChildren();
@@ -306,9 +350,11 @@
       renderTasks();
       showOverview();
       launcherVisibility();
+      renderContext();
     }
     root.addEventListener("click",e=>{
       const b=e.target.closest("button");if(!b)return;
+      if(b.dataset.contextToggle!==undefined){saveLocal("staxx-hub-context-v1",!contextEnabled());renderContext();return;}
       if(b.dataset.dismissStaxx){const id=b.dataset.dismissStaxx,n=notices[id];if(n){controls[id]={...controls[id],dismissed:n.fingerprint,snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();}return;}
       if(b.dataset.snoozeStaxx){const menu=b.parentNode?.nextSibling;if(menu)menu.hidden=!menu.hidden;return;}
       if(b.dataset.snoozeId || b.dataset.snoozeCustom){
@@ -401,12 +447,16 @@
       if(JSON.stringify(summaries[id])!==JSON.stringify(entry)){summaries[id]=entry;recordTrend(id,entry);remember();if(expanded&&overviewShown)showOverview();}
     });
     window.setInterval(()=>{if(!document.hidden&&entries.some(e=>Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now())){for(const e of entries){if(Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now()){controls[e.id]={...controls[e.id],snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+e.id,controls[e.id]);}}render();}else if(!document.hidden&&expanded&&entries.some(e=>activeNotice(e.id)?.dueAt)){render();}},60000);
+    window.addEventListener?.("hashchange",renderContext);
+    window.addEventListener?.("popstate",renderContext);
+    window.setInterval?.(()=>{if(!document.hidden)renderContext();},15000);
     // Older v1 notifications cannot be trusted for dismiss-state comparisons.
     render();
     document.dispatchEvent(new CustomEvent("staxx:ping"));
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",startHub,{once:true});else startHub();
 })();
+
 
 
 
