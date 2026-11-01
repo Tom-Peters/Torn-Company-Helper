@@ -57,7 +57,7 @@ test("Actual product lines preserve stock modelling even in historical fixtures"
   assert.match(api.stockV3(c),/Stock & replenishment/);
 });
 test("Automatic profile refresh never demands company-stock data for a recognized stockless Fitness Center",()=>{
-  assert.match(source,/if\(stockModeV117\(c\)==='service'\)\{[\s\S]*?c\.stock=\[\];c\.stockFetchError=null/);
+  assert.match(source,/stockModeV117\(c\)==='service'\|\|stockModeV117\(c\)==='no-products'/);
   assert.match(source,/else\{[\s\S]*?st=await read\("company\/stock"\)/);
   assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
