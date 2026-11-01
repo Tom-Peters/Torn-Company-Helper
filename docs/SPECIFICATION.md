@@ -1,4 +1,4 @@
-# Torn Company Helper — Product specification V6 and implementation status
+# Torn Company Helper — Product specification V7 and implementation status
 
 Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** (design baseline; other company types where data supports it).
 
@@ -14,7 +14,18 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - Archive departed employees.
 - Growth, profit and effectiveness comparisons with stability preference when full optimiser is delivered.
 
-## Shipped: v1.0.0
+## Shipped: v1.1.0
+
+- [x] Star-growth decision priorities from observed effectiveness, environment, popularity and peer income
+- [x] Manual public company directory read, bounded to five 100-item pages, explicit incomplete-sample labelling
+- [x] Weekly gross income comparison by same/next-star tiers; no guaranteed star-up threshold
+- [x] HR/Secretary employee value and wages, optional share-of-direct-contribution scenario and support-role protections
+- [x] Revenue-prioritised staffing weights when usable HR observations exist, preserved role-count constraints and stability penalty
+- [x] Lightweight seven-day baseline training forecast with assumptions and no automatic gameplay
+- [x] Floating launcher displays only saved-data warnings, without API polling
+- [x] In-place original URL and schema-1 data preservation
+
+## Shipped previously: v1.0.0
 
 - [x] Five-section mobile command centre, with one unchanged userscript URL
 - [x] Train-cap risk radar, oldest eligible paid-train allocation and baseline per-close gain
@@ -47,7 +58,7 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - [ ] Reviewable opening-balance wizard when API history is incomplete
 - [~] Global role assignment optimiser shipped; exact revenue/effectiveness model and scenario mode switching are still unverified
 - [ ] Reliable marketing and membership experiment recommendations based on longer controlled comparisons
-- [ ] Competitor weekly benchmarks, rankings and trend comparisons
+- [~] Manual same-company-type benchmarks shipped; verified longitudinal competitor histories and comprehensive ranking remain future work
 - [ ] Accurate historical P/L matched to Torn's settlement day when data exists
 - [ ] Confidence-calibrated star and queue timing projections
 - [ ] More robust automated tests, performance profiling and in-app onboarding
