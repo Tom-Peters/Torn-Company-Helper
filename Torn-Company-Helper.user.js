@@ -2556,15 +2556,15 @@
     }
     if(!open)return;
     const pageKey=detailView?'detail:'+detailView:tab;
-    const oldMain=root.querySelector('.tch-main'),oldNav=root.querySelector('.tch-topnav, .tch-bottom, .tch-switch'),oldFocused=document.activeElement;
+    const oldMain=root.querySelector?.('.tch-main'),oldFocused=document.activeElement;
     if(companyRenderedPage)companyScrollPositions[companyRenderedPage]={root:root.scrollTop,main:oldMain?.scrollTop||0};
     let savedForm=null;
-    if(oldFocused&&root.contains(oldFocused)&&/^(INPUT|TEXTAREA|SELECT)$/.test(oldFocused.tagName)){
+    if(oldFocused&&root.contains?.(oldFocused)&&/^(INPUT|TEXTAREA|SELECT)$/.test(oldFocused.tagName)){
       const form=oldFocused.closest('form,.tch-panel');
       const values=form?[...form.querySelectorAll('input,select,textarea')].map(x=>({id:x.id,name:x.name,value:x.value,checked:x.type==='checkbox'?x.checked:null})):[];
       savedForm={id:oldFocused.id,name:oldFocused.name,values,page:companyRenderedPage};
     }
-    const detailsOpen=[...root.querySelectorAll('details[open]')].map((x,i)=>x.id||String(i));
+    const detailsOpen=[...(root.querySelectorAll?.('details[open]')||[])].map((x,i)=>x.id||String(i));
     try {
       const c=current();
       let body="";
@@ -2581,19 +2581,19 @@
         (message?'<div class="notice '+esc(severity)+'">'+esc(message)+'</div>':"")+
         (busy?'<div class="notice">Reading Torn API after your request…</div>':"")+body+'</main></div>';
       companyRenderedPage=pageKey;
-      const newMain=root.querySelector('.tch-main');
+      const newMain=root.querySelector?.('.tch-main');
       const pos=companyScrollPositions[pageKey];
       root.scrollTop=pos?.root||0;
       if(newMain)newMain.scrollTop=pos?.main||0;
       if(savedForm?.page===pageKey){
         for(const row of savedForm.values){
-          const field=[...root.querySelectorAll('input,select,textarea')].find(x=>row.id?x.id===row.id:x.name===row.name);
+          const field=[...(root.querySelectorAll?.('input,select,textarea')||[])].find(x=>row.id?x.id===row.id:x.name===row.name);
           if(field){field.value=row.value;if(row.checked!==null)field.checked=row.checked;}
         }
-        const focus=[...root.querySelectorAll('input,select,textarea')].find(x=>savedForm.id?x.id===savedForm.id:x.name===savedForm.name);
+        const focus=[...(root.querySelectorAll?.('input,select,textarea')||[])].find(x=>savedForm.id?x.id===savedForm.id:x.name===savedForm.name);
         if(focus)focus.focus({preventScroll:true});
       }
-      for(const [i,detail] of [...root.querySelectorAll('details')].entries())if(detailsOpen.includes(detail.id||String(i)))detail.open=true;
+      for(const [i,detail] of [...(root.querySelectorAll?.('details')||[])].entries())if(detailsOpen.includes(detail.id||String(i)))detail.open=true;
     } catch (error) {
       // Render a usable, non-destructive fallback instead of a blank screen.
       // Never clear or reset local storage in response to a rendering error.
