@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.11.0
+// @version      1.12.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -2300,7 +2300,7 @@
       '<div class="card"><h3>Payment imports</h3><p>There is no money-log filter to configure. Open Training and tap Import older payments or Rescan recent payments. The script detects the incoming-money types itself, matches identifiable employees and amounts, and asks you only about unclear records.</p><p class="muted">Your dedicated Torn API key must permit the relevant personal user/log types. Only manual taps cause API reads; no money is ever moved.</p><p class="muted">Detected incoming log types: '+esc(c?c.logTypes||"Not loaded yet":"Not loaded yet")+'</p></div>'+
       '<div class="card"><h3>Financial guardrail</h3><label>Maximum daily operating loss ($)</label><input id="tch-limit" type="number" min="0" step="50000" value="'+esc(c?c.lossLimit:500000)+'"><button data-act="save-limit">Save limit</button></div>'+
       '<div class="card"><h3>Local backups</h3><p>Export contains actual company and employee records. Keep the file private. It contains no API key.</p><button data-act="backup">Export JSON backup</button><label>Restore a backup (replaces all local company records)</label><textarea id="tch-restore" rows="3" placeholder="Paste a previously exported JSON backup here"></textarea><button data-act="restore">Restore backup</button></div>'+
-      '<div class="card"><h3>Safety contract</h3><p>Read-only Torn API GET requests on your tap only; no game interactions, auto-refresh timers, forms, money transfers, employee changes or background scraping. All scenario and ledger buttons change local records only.</p><p class="muted">Author: IamEEKY · Repository: Torn-Company-Helper</p></div>';
+      '<div class="card"><h3>Safety contract</h3><p>Read-only Torn API GET requests automatically refresh company intelligence on a foreground Torn company page, no more than once every 15 minutes. No gameplay interactions, money transfers, staff changes or background scraping. All scenario and ledger buttons change local records only.</p><p class="muted">Author: IamEEKY · Repository: Torn-Company-Helper</p></div>';
   }
 
 
@@ -2804,6 +2804,17 @@
     try {await task();if(!message)message="Completed.";if(!severity)severity="good";}
     catch (e) {message=String(e && e.message || e);severity="bad";}
     finally {busy=false;draw();}
+  }
+  let lastAutoCompanyAttemptV112=0;
+  async function autoCompanyRefreshV112(){
+    if(document.hidden||!isCompanyPage()||busy||typeof PDA_storage==="undefined")return;
+    if(!activeApiKey())return; // Missing permissions remain visible in Settings; no blind retries.
+    const last=Date.parse(current()?.lastRefresh||"");
+    const now=Date.now();
+    if(Number.isFinite(last)&&now-last<15*60000)return;
+    if(now-lastAutoCompanyAttemptV112<15*60000)return; // Back off even on API failure.
+    lastAutoCompanyAttemptV112=now;
+    await refresh(); // Already syncs training news and incoming money with de-duplication.
   }
   async function refresh() {
     await work(async function () {
@@ -3313,6 +3324,13 @@
       }
       updateLauncherV11();
       try{if(sessionStorage.getItem("staxx-open-company")==="1"){sessionStorage.removeItem("staxx-open-company");const f=sessionStorage.getItem("staxx-open-company-alert");sessionStorage.removeItem("staxx-open-company-alert");if(f){tab="alerts";companyAlertFocus=f;}opener.click();focusCompanyAlert();}}catch(_){}
-    } catch (_) { /* Do not read API or silently overwrite damaged storage. */ }
+    } catch (_) { /* Do not silently overwrite damaged storage. */ }
   })();
+  // Auto-read only when Torn PDA is foregrounded and the company page is active.
+  // Do not automate any training, wages, stock orders or director actions.
+  setInterval(function(){void autoCompanyRefreshV112();},60000);
+  document.addEventListener?.("visibilitychange",function(){
+    if(!document.hidden)void autoCompanyRefreshV112();
+  });
+  setTimeout(function(){void autoCompanyRefreshV112();},12000);
 })();
