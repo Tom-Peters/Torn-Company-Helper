@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.1.0
+// @version      1.2.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/companies.php*
@@ -768,7 +768,7 @@
       (leaders.length?leaders.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p class="tch-hint">No comparable rivals loaded. Tap Scan public competitors.</p>')+
       '<h2>Your star tier · examples</h2>'+
       (same.length?same.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p>No same-star companies in the current sample.</p>')+
-      '<p class="tch-hint">Income ratios are observational. A larger sample is needed before claiming any league position. Company data refreshes on Torn’s own schedule.</p></section>';
+      '<p class="tch-hint">Income ratios are observational. A larger sample is needed before claiming any league position. Company data refreshes on Torn own schedule.</p></section>';
   }
   function rivalRowV11(p,own){
     const delta=own!==null&&own>0?((p.weekly/own-1)*100):null;
@@ -797,7 +797,7 @@
   function wagesPanelV11(c){
     const w=wageModelV11(c);
     return '<section class="tch-panel"><h2>HR-informed wage helper</h2>'+
-      '<p>Uses each employee’s Torn-reported <strong>Value</strong> (direct contribution, revealed by an effective Secretary/HR Officer) plus their wage and effectiveness. It does <strong>not</strong> treat supporting roles as worthless.</p>'+
+      '<p>Uses each employee Torn-reported <strong>Value</strong> (direct contribution, revealed by an effective Secretary/HR Officer) plus their wage and effectiveness. It does <strong>not</strong> treat supporting roles as worthless.</p>'+
       '<div class="tch-actionrow">'+[10,15,20,25,30,35,40,50].map(function(n){
         return '<button data-act="wage-share" data-share="'+n+'" class="'+(w.share===n?'primary':'')+'">'+n+'%</button>';}).join("")+'</div>'+
       '<p class="tch-hint">Scenario: target wage '+w.share+'% of reported direct value, rounded to nearest $1,000. This is a budget scenario, NOT a proven market salary. Adjust for retention, special duties and competition.</p>'+
@@ -822,7 +822,7 @@
               'Value unavailable: no salary target inferred.')+'</p>')+
         '</article>';
       }).join("")+
-      '<p class="tch-hint">The secretary’s own effectiveness can affect the reliability of these values. Zero and null are distinct. A higher wage does not directly affect a company star-up.</p></section>';
+      '<p class="tch-hint">The secretary own effectiveness can affect the reliability of these values. Zero and null are distinct. A higher wage does not directly affect a company star-up.</p></section>';
   }
   function trainingWeekV11(c){
     const p=trainPlanV3(c),base=p.base,starting=p.available,now=Date.now();
@@ -849,7 +849,7 @@
       '<p>Illustration if you use existing trains on <strong>currently eligible</strong> paid commitments each day, then generate the baseline '+f.base+'★ trains at each company close.</p>'+
       '<div class="tch-weekgrid"><span>Day</span><span>Give</span><span>Bank</span><span>Overflow</span>'+
       f.days.map(function(d){return '<span>'+d.day+'</span><b>'+d.given+'</b><b>'+d.stored+'</b><b class="'+(d.minimumLost?'bad':'')+'">'+d.minimumLost+'</b>';}).join("")+'</div>'+
-      '<p class="tch-hint">Assumes no star changes, new purchases, new hires or other training; excludes trainers’ extra trains. It is not an automatic schedule or confirmed future event.</p></section>';
+      '<p class="tch-hint">Assumes no star changes, new purchases, new hires or other training; excludes trainer extra trains. It is not an automatic schedule or confirmed future event.</p></section>';
   }
   function launcherAlertsV11(c){
     if(!c||!c.profile)return {items:[],count:0};
@@ -1174,7 +1174,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.1.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.2.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
