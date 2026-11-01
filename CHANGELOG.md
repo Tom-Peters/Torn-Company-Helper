@@ -1,3 +1,9 @@
+## 1.20.0 — Paid-training alerts require available trains
+
+- Outstanding confirmed paid-training purchases remain in the employee ledger, but generate a badge, Alerts card or StaxxHub action only when Torn reports available company trains **and** an eligible employee can actually receive at least one under the oldest-first allocation plan.
+- With zero or unknown train availability, or only ineligible employees, paid-training alerts disappear automatically. The Training view says that the obligation is waiting; it never deletes the confirmed debt.
+- Storage-overflow/near-capacity warnings and unverified incoming payment reviews are independent and remain actionable. No training action is performed automatically.
+
 ## 1.17.0 — stockless service companies and automatic decline alerts
 
 - **Fitness Centers are service businesses:** refresh skips the optional `company/stock` read, avoids irrelevant missing-stock warnings, and shows real customers, popularity, weekly income and operating-cost estimates instead of product replenishment.
