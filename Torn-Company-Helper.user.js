@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.4 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.5 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -24,7 +24,8 @@
       '<div id="staxx-hub-veil" hidden></div>' +
       '<aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>' +
       '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><button type="button" data-hub-close aria-label="Close sidebar">×</button></header>' +
-      '<div class="staxx-scroll"><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Combined overview</button>' +
+      '<div class="staxx-scroll"><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Daily dashboard · all tools</button>' +
+      '<button class="staxx-overview-switch" type="button" data-diagnostics>⚙ &nbsp; Tool diagnostics</button><section id="staxx-hub-diagnostics" hidden></section>' +
       '<section id="staxx-hub-overview" hidden></section><button class="staxx-context-control" type="button" data-context-toggle>On-page guidance: On</button><div class="staxx-label"><h3>WHAT TO DO NEXT</h3><span>Prioritised</span></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div>' +
       '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div>' +
       '<div id="staxx-hub-alerts"></div><p class="staxx-foot">Read-only signals · Alerts use last known data · Drag the S tab vertically to reposition</p>' +
@@ -69,7 +70,7 @@
       '#staxx-hub-drawer .staxx-overview-card dl{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0 0}',
       '#staxx-hub-drawer .staxx-overview-card dt{font-size:10px;color:#96b6cf}#staxx-hub-drawer .staxx-overview-card dd{font-size:13px;font-weight:750;margin:0;overflow-wrap:anywhere}',
       '#staxx-hub-drawer .staxx-task{width:100%;text-align:left;display:block;border:1px solid #315b79;border-radius:10px;background:#102b46;color:#eef8ff;padding:10px;margin-bottom:8px;line-height:1.45}#staxx-hub-drawer .staxx-task.urgent{border-color:#e56785}#staxx-hub-drawer .staxx-task.soon{border-color:#ae8450}#staxx-hub-drawer .staxx-task b{display:block;font-size:12px}#staxx-hub-drawer .staxx-task small{display:block;font-size:10px;color:#8fb7d2;margin-top:4px}#staxx-hub-drawer .staxx-task .staxx-step{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;color:#67dfff;margin-bottom:4px}#staxx-hub-drawer .staxx-task:focus-visible{outline:2px solid #67dfff}',
-      '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:17px}'
+      '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:17px}#staxx-hub-drawer .staxx-diagnostic-actions{display:flex;gap:8px;margin-bottom:12px}#staxx-hub-drawer .staxx-diagnostic-actions button{flex:1;background:#17496d;border:1px solid #3e789f;border-radius:8px;padding:9px;font-size:11px}#staxx-hub-drawer #staxx-safe-report{width:100%;min-height:130px;white-space:pre;color:#cfeeff;background:#091f34;border:1px solid #5182a3;border-radius:8px;font-size:10px}'
     ].join("");
     css.textContent += '#staxx-hub-drawer .staxx-context-control{display:block;width:100%;background:#0b314e;color:#8bdffc;border:1px solid #315775;border-radius:9px;padding:8px;margin:7px 0 14px;text-align:left}' +
       '#staxx-page-tip{box-sizing:border-box;display:flex;flex-wrap:wrap;gap:7px;align-items:center;background:#0c2944;color:#e9f5ff;border:1px solid #345f7d;border-left:4px solid #54d7fa;border-radius:9px;padding:10px 12px;margin:10px 0;font:13px/1.4 system-ui,Arial,sans-serif;max-width:100%}' +
@@ -82,12 +83,13 @@
       {id:"company",label:"Company Helper",icon:"CO",desc:"Staff · Training · Growth"},
       {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}
     ];
-    const active = Object.create(null), notices = Object.create(null), summaries = Object.create(null), controls = Object.create(null), actionSets=Object.create(null);
+    const active = Object.create(null), notices = Object.create(null), summaries = Object.create(null), controls = Object.create(null), actionSets=Object.create(null), healthReports=Object.create(null);
+    const registeredAt=Object.create(null);
     let trends=Object.create(null), arrangeShown=false;
     const toggle=root.querySelector("#staxx-hub-toggle"),veil=root.querySelector("#staxx-hub-veil"),drawer=root.querySelector("#staxx-hub-drawer");
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
-    const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]"),taskList=root.querySelector("#staxx-hub-tasks");
-    let expanded=false, panelOpen=false, overviewShown=false, moving=null, suppressClickUntil=0;
+    const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]"),taskList=root.querySelector("#staxx-hub-tasks"),diagnostics=root.querySelector("#staxx-hub-diagnostics"),diagnosticButton=root.querySelector("[data-diagnostics]");
+    let expanded=false, panelOpen=false, overviewShown=false, diagnosticsShown=false, moving=null, suppressClickUntil=0;
     const openPanels=new Set();
     const idOk = v=>typeof v==="string" && /^[a-z][a-z0-9-]{0,31}$/.test(v);
     function node(tag,cls,value) {const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e;}
@@ -174,7 +176,8 @@
     const trendTitle={profit:"Fresh deals",company:"Company stars",happy:"24h projected gains (forecast)"};
     function dayKey(time){const d=new Date(time);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
     function recordTrend(id,entry) {
-      const key=trendMetric[id];if(!key||!entry||!Array.isArray(entry.metrics))return;
+      const own=entries.find(x=>x.id===id);const key=own?.trendMetric||trendMetric[id]||entry?.metrics?.find(x=>trendValue(x.value)!==null)?.label;
+      if(!key||!entry||!Array.isArray(entry.metrics))return;
       const metric=entry.metrics.find(x=>x.label===key);
       const timestamp=Number(entry.updated)||Date.now(),value=metric?trendValue(metric.value):null;
       if(value===null||timestamp>Date.now()+60000||Date.now()-timestamp>86400000)return;
@@ -186,9 +189,9 @@
     }
     function trendCard(id){
       const list=Array.isArray(trends[id])?trends[id]:[];
-      if(!trendMetric[id])return null;
+      if(!trendMetric[id]&&!entries.find(x=>x.id===id)?.trendMetric&&!(summaries[id]?.metrics||[]).some(x=>trendValue(x.value)!==null))return null;
       const wrap=node("div","staxx-trend");
-      const title=node("small","staxx-trendnote","7-day trend · "+trendTitle[id]+" · observed snapshots");wrap.append(title);
+      const title=node("small","staxx-trendnote","7-day trend · "+(entries.find(x=>x.id===id)?.trendMetric||trendTitle[id]||"first numeric summary metric")+" · observed snapshots");wrap.append(title);
       const bar=node("div","staxx-spark");
       const values=[];
       for(let offset=6;offset>=0;offset--){
@@ -209,8 +212,76 @@
         recorded.length+"/7 recorded days · comparison appears after two days"));
       return wrap;
     }
+
+    // V2.5: everything registered through the normal Staxx event protocol joins the dashboard.
+    // Never promote old or cross-page cached observations to a verified urgent instruction.
+    function freshnessMs(id){
+      const entry=entries.find(x=>x.id===id);
+      return Math.max(60000,Math.min(86400000,Number(entry?.freshnessMs)||({profit:600000,company:86400000,happy:900000}[id]||3600000)));
+    }
+    function taskRowsV25(){
+      const rows=[];
+      for(const e of entries){
+        const set=actionSets[e.id],control=controls[e.id]||{};
+        if(!set||!Array.isArray(set.items)||Number(control.snoozeUntil)>Date.now())continue;
+        const old=Boolean(set.cached)||!Number.isFinite(Number(set.updated))||Date.now()-Number(set.updated)>freshnessMs(e.id);
+        for(const a of set.items)rows.push({...a,owner:e.id,tool:e.label,cached:old,updated:set.updated});
+      }
+      const rank={urgent:4,now:3,soon:2,review:1,optional:0};
+      return rows.sort((a,b)=>Number(a.cached)-Number(b.cached)||
+        (rank[b.status]??0)-(rank[a.status]??0)||
+        (Number(a.dueAt)||Infinity)-(Number(b.dueAt)||Infinity)||
+        (Number(b.priority)||0)-(Number(a.priority)||0));
+    }
+    function diagnosticReportV25(){
+      const time=Date.now();
+      return {hub:"2.5",capturedAt:new Date(time).toISOString(),page:String(location.pathname||""),
+        connectedCount:entries.filter(x=>active[x.id]).length,knownCount:entries.length,tools:entries.map(e=>{
+          const sum=summaries[e.id],actions=actionSets[e.id],notice=notices[e.id],h=healthReports[e.id];
+          const age=Number(sum?.updated),lastAction=Number(actions?.updated);
+          return {id:e.id,label:e.label,connected:Boolean(active[e.id]),registeredSecondsAgo:
+            registeredAt[e.id]?Math.max(0,Math.floor((time-registeredAt[e.id])/1000)):null,
+            summaryAgeMinutes:age>0?Math.max(0,Math.floor((time-age)/60000)):null,
+            actionAgeMinutes:lastAction>0?Math.max(0,Math.floor((time-lastAction)/60000)):null,
+            actionCount:Array.isArray(actions?.items)?actions.items.length:0,
+            alertCount:Number(notice?.count)||0,
+            stale:!actions||Boolean(actions.cached)||time-lastAction>freshnessMs(e.id),
+            health:h?{version:h.version,api:h.api,storage:h.storage,ui:h.ui,detail:h.detail,observedAt:h.observedAt}:null};
+        })};
+    }
+    function showDiagnosticsV25(){
+      if(!diagnostics)return;
+      diagnostics.replaceChildren();
+      if(!diagnosticsShown){diagnostics.hidden=true;diagnosticButton.classList.remove("selected");return;}
+      diagnostics.hidden=false;diagnosticButton.classList.add("selected");
+      diagnostics.append(node("p","staxx-trendnote","Local health indicators only. No API keys, financial records, employee names, battle stats or personal IDs are collected in this report."));
+      const buttons=node("div","staxx-diagnostic-actions"),check=node("button","","Check installed tools"),copy=node("button","","Copy safe report");
+      check.type=copy.type="button";check.dataset.checkDiagnostics="1";copy.dataset.copyDiagnostics="1";
+      buttons.append(check,copy);diagnostics.append(buttons);
+      for(const row of diagnosticReportV25().tools){
+        const card=node("div","staxx-overview-card");
+        card.append(node("b","",row.label+" · "+(row.connected?"connected":"not running on this page")),
+          node("p","",row.health?.version?"Version "+row.health.version:"Version not reported"),
+          node("p","",row.health?"API "+row.health.api+" · Storage "+row.health.storage+" · UI "+row.health.ui:
+            "No recent health response; open this tool or check whether it is enabled in TornPDA."),
+          node("p","",row.stale?"Last action data stale or unverified":"Last action data within declared freshness window"),
+          node("p","",row.actionCount+" recommendations · "+row.alertCount+" alerts"));
+        if(row.health?.detail)card.append(node("small","staxx-trendnote",row.health.detail));
+        diagnostics.append(card);
+      }
+      const output=node("textarea");output.id="staxx-safe-report";output.readOnly=true;output.hidden=true;
+      output.value=JSON.stringify(diagnosticReportV25(),null,2);diagnostics.append(output);
+    }
+
     function showOverview(){
       overview.replaceChildren();
+      overview.append(node("p","staxx-trendnote","All registered tools automatically appear here, including future Staxx scripts. Stale suggestions are labelled and sorted after current data."));
+      for(const [i,item] of taskRowsV25().slice(0,5).entries()){
+        const row=node("button","staxx-task "+(!item.cached&&item.status==="urgent"?"urgent":""));
+        row.dataset.openAlertTool=item.owner;row.dataset.openAlertId=item.id;
+        row.append(node("span","staxx-step",(i+1)+" · "+item.tool+(item.cached?" · CHECK FRESHNESS":"")),node("b","",item.title));
+        if(item.detail)row.append(node("small","",item.detail));overview.append(row);
+      }
       for(const e of entries){
         const s=summaries[e.id],card=node("article","staxx-overview-card");
         card.append(node("b","",e.label),node("p","",s?.headline || (active[e.id]?"No verified figures yet":"Open tool for the latest figures")));
@@ -271,16 +342,9 @@
     function renderTasks(){
       if(!taskList)return;
       taskList.replaceChildren();
-      const rows=[];
-      for(const e of entries){
-        const set=actionSets[e.id],control=controls[e.id]||{};
-        if(!set||!Array.isArray(set.items)||Number(control.snoozeUntil)>Date.now())continue;
-        for(const a of set.items)rows.push({...a,owner:e.id,tool:e.label,cached:Boolean(set.cached),updated:set.updated});
-      }
-      const rank={urgent:4,now:3,soon:2,review:1,optional:0};
-      rows.sort((a,b)=>(rank[b.status]??0)-(rank[a.status]??0)||(Number(a.dueAt)||Infinity)-(Number(b.dueAt)||Infinity)||(Number(b.priority)||0)-(Number(a.priority)||0));
+      const rows=taskRowsV25();
       for(const item of rows.slice(0,6)){
-        const btn=node("button","staxx-task "+(item.status==="urgent"?"urgent":item.status==="soon"?"soon":""));
+        const btn=node("button","staxx-task "+(!item.cached&&item.status==="urgent"?"urgent":!item.cached&&item.status==="soon"?"soon":""));
         btn.type="button";btn.dataset.openAlertTool=item.owner;btn.dataset.openAlertId=item.id;
         btn.append(node("span","staxx-step",(item.cached?"LAST OBSERVED · ":"")+(item.status==="urgent"?"ACT NOW":item.status==="now"?"DO NEXT":item.status==="soon"?"UPCOMING":item.status==="review"?"REVIEW":"OPTIONAL")+" · "+item.tool),
           node("b","",item.title));
@@ -350,6 +414,7 @@
       if(!visible)alerts.append(node("p","staxx-empty",muted?"Alerts dismissed or snoozed. New alerts will still appear.":"Nothing needs your attention right now."));
       renderTasks();
       showOverview();
+      showDiagnosticsV25();
       launcherVisibility();
       renderContext();
     }
@@ -377,7 +442,16 @@
       }
       if(b.dataset.openAlertTool){openTool(b.dataset.openAlertTool,b.dataset.openAlertId);return;}
       if(b.dataset.openStaxx){openTool(b.dataset.openStaxx);return;}
-      if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;render();return;}
+      if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;if(overviewShown)diagnosticsShown=false;render();return;}
+       if(b.hasAttribute("data-diagnostics")){diagnosticsShown=!diagnosticsShown;if(diagnosticsShown){overviewShown=false;
+         document.dispatchEvent(new CustomEvent("staxx:diagnostics-request"));}render();return;}
+       if(b.dataset.checkDiagnostics){document.dispatchEvent(new CustomEvent("staxx:ping"));
+         document.dispatchEvent(new CustomEvent("staxx:diagnostics-request"));showDiagnosticsV25();return;}
+       if(b.dataset.copyDiagnostics){const report=JSON.stringify(diagnosticReportV25(),null,2);
+         const clipboard=window.navigator?.clipboard;
+         if(clipboard?.writeText){clipboard.writeText(report).catch(()=>{const box=diagnostics.querySelector("#staxx-safe-report");if(box){box.hidden=false;box.value=report;}});}
+         else{const box=diagnostics.querySelector("#staxx-safe-report");if(box){box.hidden=false;box.value=report;box.select?.();}}
+         return;}
       if(b===toggle){if(Date.now()<suppressClickUntil)return;setExpanded(true);return;}
       if(b.hasAttribute("data-hub-close"))setExpanded(false);
     });
@@ -417,7 +491,26 @@
         entries.push(entry);controls[id]=safeRead("staxx-hub-alert-control-"+id,{});
         saveLocal("staxx-hub-registry-v2",entries.slice(3));
       }
-      if(entry){active[id]=true;render();}
+      if(entry){
+        if(d.label)entry.label=String(d.label).slice(0,40);
+        if(d.icon)entry.icon=String(d.icon).slice(0,3);
+        if(d.desc)entry.desc=String(d.desc).slice(0,70);
+        if(typeof d.trendMetric==='string')entry.trendMetric=d.trendMetric.slice(0,36);
+        if(Number(d.freshnessMs)>=60000&&Number(d.freshnessMs)<=86400000)entry.freshnessMs=Number(d.freshnessMs);
+        if(!registeredAt[id])registeredAt[id]=Date.now();
+        active[id]=true;render();}
+    });
+
+    document.addEventListener("staxx:diagnostics",e=>{
+      const d=e.detail||{},id=d.id;if(!idOk(id)||!entries.some(x=>x.id===id))return;
+      const allow=(value,valid)=>valid.includes(value)?value:"unknown";
+      healthReports[id]={version:String(d.version||"not-reported").slice(0,20),
+        api:allow(d.api,["ready","stale","missing","error","unknown"]),
+        storage:allow(d.storage,["ready","missing","error","unknown"]),
+        ui:allow(d.ui,["ready","missing","error","unknown"]),
+        detail:String(d.detail||"").replace(/[A-Za-z0-9]{20,}/g,"[redacted]").slice(0,110),
+        observedAt:Date.now()};
+      if(diagnosticsShown)showDiagnosticsV25();
     });
     document.addEventListener("staxx:notice",e=>{
       const d=e.detail||{},id=d.id;if(!idOk(id)||!entries.some(x=>x.id===id))return;
@@ -471,8 +564,8 @@
   const STORE = "company-helper-v1";
   const isCompanyPage = function () {return /^\/companies\.php$/i.test(window.location.pathname);};
   if (!isCompanyPage()) {
-    document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}})));
-    document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}}));
+    document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}})));
+    document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}}));
     return; // Company UI and API only run on companies.php.
   }
   const API = "https://api.torn.com/v2/";
@@ -2954,8 +3047,15 @@
   });
   document.addEventListener?.("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){if(e.detail.alertId){tab="alerts";detailView="";companyAlertFocus=String(e.detail.alertId);}if(!open)opener.click();else draw();focusCompanyAlert();}else if(open){open=false;draw();}});
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
-  document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}})));
-  document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}}));
+  document.addEventListener?.("staxx:diagnostics-request",function(){
+    const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.11.0",
+      api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
+      storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
+      detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
+  });
+  document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}})));
+  document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}}));
   window.addEventListener("resize",syncCompanyVisibility);
   window.addEventListener("popstate",syncCompanyVisibility);
   window.addEventListener("hashchange",syncCompanyVisibility);
