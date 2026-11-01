@@ -1109,6 +1109,26 @@
     });
     return result;
   }
+
+  function backfillTrainingReceiptsV13(c) {
+    let added=0,skipped=0;
+    (c.logs||[]).forEach(function(n){
+      if(!n || n.matchStatus==="ignored" || isApprovedLog(c,n.id))return;
+      const m=exactPaidTrainingV13(c,n),source="log:"+String(n.id);
+      if(!m)return;
+      if((c.payments||[]).some(function(p){
+        return p.sourceId===source || (!p.voided&&Number(p.playerId)===m.playerId&&Number(p.amount)===m.amount&&
+          Math.abs(Number(p.ts)-Number(n.timestamp))<=86400);
+      })){skipped++;return;}
+      c.payments.push({id:"log:backfill:"+n.id,playerId:m.playerId,
+        amount:m.amount,trains:m.trains,ts:Number(n.timestamp),source:"log-package-backfill",
+        sourceId:source,confirmed:true,assumed:true,
+        note:"User-requested historical classification of exact-size employee transfer; reversible."});
+      n.matchStatus="credited-backfill";
+      added++;
+    });
+    return {credited:added,skipped:skipped};
+  }
   function mergeTrainingNewsV13(c,response) {
     const list=normaliseNewsResponse(response&&response.news),seen=new Set((c.news||[]).map(function(n){return String(n.id);}));
     let added=0;
@@ -1699,7 +1719,7 @@
     let body="";
     if(trainingView==="queue"){
       body='<section class="tch-panel"><div class="tch-sectionhead"><h2>Oldest commitments first</h2><span class="tch-mini">'+due.length+' waiting</span></div>'+
-        '<p>Ineligible employees are temporarily skipped without losing their original priority. Training credits reduce future purchases.</p>'+
+        '<p>Paid purchases include directly confirmed receipts and labelled, inferred exact-price transfers. Ineligible employees are skipped until their first 72 hours pass. Training credits offset later purchases.</p>'+
         (due.length?due.map(function(e){
           const id=e[0],p=c.staff.find(function(x){return String(x.id)===id;}),locked=p&&num(p.days_in_company)<3;
           return '<button type="button" data-act="employee-detail" data-id="'+esc(id)+'" class="tch-queueitem tch-taprow"><div><strong>'+esc(people[id]||"#"+id)+'</strong><small>'+esc(e[1].oldest?day(e[1].oldest):"Historical opening balance")+(locked?" · Not yet eligible":"")+'</small></div><div><b>'+e[1].owed+'</b><small>owed</small></div><span class="tch-tilearrow">↗</span></button>';
@@ -1710,7 +1730,10 @@
     } else if(trainingView==="payments"){
       body='<section class="tch-panel"><h2>Money receipts & purchased trains</h2>'+
          '<p>On opening, incoming logs are checked. New, exact-price transfers from identifiable employees are locally credited as likely training purchases. Review Records and void any mistaken credit. Other transfers still require approval.</p>'+
-         '<div class="tch-actionrow"><button data-act="toggle-auto-package" class="'+(c.autoPackageMode!==false?"primary":"")+'">Auto-credit packages: '+(c.autoPackageMode!==false?"ON":"OFF")+'</button></div>'+
+         '<div class="tch-actionrow"><button data-act="toggle-auto-package" class="'+(c.autoPackageMode!==false?"primary":"")+'">Auto-credit new packages: '+(c.autoPackageMode!==false?"ON":"OFF")+'</button>'+
+         '<button data-act="backfill-packages">Review & credit old matches</button></div>'+
+         (c.moneySyncError?'<p class="tch-hint">Recent money-log sync could not complete: '+esc(c.moneySyncError)+'</p>':'')+
+         (c.newsSyncError?'<p class="tch-hint">Recent training-history sync could not complete: '+esc(c.newsSyncError)+'</p>':'')+
         (c.logHistoryWarning?'<p class="tch-hint">'+esc(c.logHistoryWarning)+'</p>':"")+
         '<div class="tch-actionrow"><button class="primary" data-act="rescan-logs">Check recent</button><button data-act="import-logs">Load older</button></div>'+
         '<p class="tch-hint">If Torn rejects money logs, set a custom API key for this script in Torn PDA with user/log permission. Your ordinary PDA key can still load company figures.</p></section>'+
@@ -1743,13 +1766,13 @@
         }).join(""):'<div class="tch-empty">Every imported record with a recognised recipient has been matched.</div>')+
         '</section>';
     } else {
-      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,unverified:p.source==="log-auto"&&!p.voided};})
+      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,inferred:p.assumed,unverified:p.source==="log-auto"&&!p.voided};})
         .concat(c.training.map(function(t){return {id:t.id,ts:t.ts,type:"Training",person:t.playerId,units:t.units,money:null,voided:t.voided};}))
         .sort(function(a,b){return b.ts-a.ts;});
-      body='<section class="tch-panel"><h2>Audit records</h2><p>Previous corrections remain traceable. Re-imported Torn records cannot increase balances twice.</p>'+
+      body='<section class="tch-panel"><h2>Audit records</h2><p>Automatic package classifications are inferred, not guaranteed. Void a mistaken credit here. Duplicate Torn IDs cannot increase balances twice.</p>'+
         '<button data-act="repair-duplicates">Check duplicate imports</button>'+
         logs.slice(0,70).map(function(e){
-          return '<div class="tch-record"><div><strong>'+esc(e.type)+(e.voided?" · VOID":e.unverified?" · NOT VERIFIED":"")+'</strong><small>'+esc(people[e.person]||"#"+e.person)+' · '+esc(day(e.ts))+'</small></div>'+
+          return '<div class="tch-record"><div><strong>'+esc(e.type)+(e.voided?" · VOID":e.unverified?" · NOT VERIFIED":e.inferred?" · INFERRED":"")+'</strong><small>'+esc(people[e.person]||"#"+e.person)+' · '+esc(day(e.ts))+'</small></div>'+
             '<div><b>'+esc(e.type==="Payment"?money(e.money):e.units+" trains")+'</b>'+
             (!e.voided?'<button data-act="void-entry" data-id="'+esc(e.id)+'">Void</button>':"")+'</div></div>';
         }).join("")+'</section>';
@@ -2164,6 +2187,14 @@
     if (act==="more-payments"){paymentViewLimit+=35;draw();return;}
     if (act==="growth-view"){growthView=el.dataset.view;draw();return;}
     if (act==="scan-peers")return scanPeersV11();
+    if (act==="backfill-packages"){
+      if(!c)return notify("Refresh first.","bad");
+      if(!window.confirm("Classify historic exact-price employee transfers as training purchases? Entries already in your payment ledger or manually voided are skipped. Review the audit Records afterwards."))return;
+      const out=backfillTrainingReceiptsV13(c);
+      await work(persist);
+      notify("Backfilled "+out.credited+" older inferred purchase(s); skipped "+out.skipped+" potential duplicates. All are reversible in Records.","good");
+      return;
+    }
     if (act==="toggle-auto-package"){
       if(!c)return notify("Refresh company data first.","bad");
       c.autoPackageMode=c.autoPackageMode===false?true:false;
