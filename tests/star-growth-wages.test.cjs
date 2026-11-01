@@ -91,7 +91,7 @@ test("Seven-day plan uses current paid debt and flags possible overflow, without
  assert.equal(f.days[0].stored,17);
  assert.equal(f.days[1].minimumLost,0);
  assert.ok(f.days[2].minimumLost>0);
- assert.match(app.weekPanelV11(c),/excludes trainers/);
+ assert.match(app.weekPanelV11(c),/excludes trainer/);
 });
 test("Floating-button alerts are derived only from saved data and include overdue trains",()=>{
  const {app,nodes}=fixture(),c=example();app.seed(c);app.updateLauncherV11();
