@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.14.0
+// @version      1.15.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -2124,11 +2124,35 @@
       '</section>';
   }
 
+
+  // Local, interactive scenarios: revenue changes only, never actual wages or advertising.
+  let companyStressPctV115=10;
+  function companyStressLabV115(c){
+    const a=accounting(c),limit=Number(c?.lossLimit);
+    if(!a?.known||!Number.isFinite(limit)||limit<0)return '<section class="tch-panel"><h2>Growth Stress Lab</h2><p class="tch-hint">Refresh the complete income, wages, advertising and loss-limit figures before comparing company scenarios.</p><button data-act="refresh">Refresh company figures</button></section>';
+    const shocked=a.profit-a.revenue*companyStressPctV115/100;
+    const headroom=shocked+limit,buffer=Math.max(0,headroom)*0.75;
+    const plus=a.profit+a.revenue*.05;
+    let h='<section class="tch-panel"><div class="tch-sectionhead"><h2>Growth Stress Lab</h2><span class="tch-mini">What-if · no changes applied</span></div>'+
+      '<p class="tch-hint">Test a revenue dip while holding staff wages and advertising constant. The game can behave differently; this is arithmetic from the latest company daily report, not a star-promotion predictor.</p>'+
+      '<div class="tch-actionrow">'+[5,10,20].map(n=>'<button data-act="stress-shock" data-shock="'+n+'" class="'+(companyStressPctV115===n?'primary':'')+'">−'+n+'% revenue</button>').join('')+'</div>'+
+      '<div class="tch-metrics">'+
+      metricV2('Current daily P/L',money(a.profit),'Reported income less wages & ads','','growth-accounts')+
+      metricV2('After −'+companyStressPctV115+'% revenue',money(shocked),'Hypothetical · same staff and ads','','growth-accounts')+
+      metricV2('After +5% revenue',money(plus),'Hypothetical · same staff and ads','','growth-accounts')+
+      metricV2('Shock-safe spending room',money(buffer),'75% of remaining loss-limit headroom','','growth-pricing')+'</div>'+
+      '<p class="tch-hint">'+(headroom<0?'⚠ Revenue shock would exceed your saved daily operating-loss limit by '+esc(money(-headroom))+'. Review wage, staffing and advertising assumptions before spending.':
+        'At this hypothetical income, the saved loss limit leaves '+esc(money(headroom))+' of headroom; the 25% haircut provides a modelling buffer, not a guaranteed safe budget.')+'</p>'+
+      '<div class="tch-actionrow"><button data-act="goto" data-target="growth-pricing" class="primary">Review advertising ›</button>'+
+      '<button data-act="goto" data-target="staff-wages">Review wages ›</button></div></section>';
+    return h;
+  }
+
   function homeV13(c){
     if(!c||!c.profile)return introV2();
     const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
     const due=Object.values(aggregates(c).balance).reduce(function(n,b){return n+b.owed;},0);
-    return directorBriefPanelV110(c)+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
+    return directorBriefPanelV110(c)+companyStressLabV115(c)+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
       '<span class="tch-mini">'+star+' ★ / 10</span></div><div class="tch-home-number">'+star+' ★</div></section>'+
       '<div class="tch-homekpis">'+
         metricV2("Efficiency",c.profile.efficiency==null?"?":c.profile.efficiency+"%","Daily report","","staff")+
@@ -2691,7 +2715,7 @@
       {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"},
       {action:"growth-view",id:"review",name:"Sunday review",active:growthView==="review"}]);
     return '<div class="tch-section"><h2>10-star growth</h2><p>Revenue improvement within your daily loss limit of '+esc(money(c.lossLimit))+'. Estimates are labelled.</p>'+switches+'</div>'+
-      (growthView==="performance"?starMomentumPanelV14(c)+growthMovesPanelV13(c)+'<div class="tch-metrics">'+
+      (growthView==="performance"?starMomentumPanelV14(c)+growthMovesPanelV13(c)+companyStressLabV115(c)+'<div class="tch-metrics">'+
          metricV2("Current rating",c.profile.rating+" / 10","Competitive star progression","","growth-performance")+
          metricV2("Daily revenue",money(a.revenue),"Reported by Torn","","growth-accounts")+
          metricV2("Wages",money(a.wages),"Current daily staff wages","","growth-accounts")+
@@ -3134,6 +3158,7 @@
     if (act==="training-view"){trainingView=el.dataset.view;draw();return;}
     if (act==="more-payments"){paymentViewLimit+=35;draw();return;}
     if (act==="growth-view"){growthView=el.dataset.view;draw();return;}
+    if (act==="stress-shock"){const n=Number(el.dataset.shock);if([5,10,20].includes(n)){companyStressPctV115=n;draw();}return;}
     if (act==="scan-peers")return scanPeersV11();
     if (act==="backfill-packages"){
       if(!c)return notify("Refresh first.","bad");
