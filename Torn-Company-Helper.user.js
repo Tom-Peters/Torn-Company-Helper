@@ -390,6 +390,7 @@
     (c.logs||[]).forEach(function(n){
       if(n.matchStatus==="ignored" || isApprovedLog(c,n.id))return;
       const guess=n.suggestion||{status:"review",reason:"Re-import to identify the sender and amount."};
+      if(n.matchReason && /Possible duplicate of a manually recorded purchase/.test(n.matchReason)) {n.matchStatus="review";review++;return;}
       n.matchStatus="review";
       if(guess.status==="matched") {
         n.matchReason="Sender and amount identified; training purpose unverified.";
