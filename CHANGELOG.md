@@ -1,3 +1,10 @@
+## 1.16.0 — foreground company sync and automatic history catch-up
+
+- The Company Helper updates from **any visible TornPDA page**, with its existing 15-minute check interval and required API permissions; the company panel does not need to be open.
+- Recent training news and incoming-transfer logs now initialise safe official Torn continuation cursors. One additional verified historical page is processed per eligible update, alternating data streams. Cursor faults halt that stream with a warning rather than skipping same-second records.
+- Existing deduplication, training-recipient reconciliation and manual review for ambiguous transfers remain in force; old payments cannot be automatically assigned a training purpose.
+- All director gameplay decisions remain player-confirmed; scans stop while TornPDA is hidden.
+
 ## 1.15.0 — Growth Stress Lab
 
 - Added interactive 5%, 10% and 20% revenue-shock scenarios to Company Overview and Growth Overview, calculated from confirmed reported income, wages and advertising costs.
