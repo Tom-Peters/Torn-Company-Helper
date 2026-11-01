@@ -155,6 +155,19 @@
       if(c.training.some(function(t){return canonicalTrainingSource(t)==="news:"+n.id;}))return;
       const result=matchTrainingNews(n,c);
       if(result.status!=="matched"){n.matchStatus="review";n.matchReason=result.reason;review++;return;}
+      // If the director manually recorded a train within 15 minutes of Torn news,
+      // bind its existing ledger row to the source rather than counting a second train.
+      const manual=(c.training||[]).find(function(t){
+        return !t.voided && !canonicalTrainingSource(t) &&
+          Number(t.playerId)===Number(result.playerId) &&
+          Number(t.units)===Number(result.units) &&
+          Number.isFinite(Number(t.ts)) &&
+          Math.abs(Number(t.ts)-Number(n.timestamp))<=900;
+      });
+      if(manual){
+        manual.sourceId="news:"+n.id;
+        n.matchStatus="matched-manual";n.matchedPlayerId=result.playerId;matched++;return;
+      }
       c.training.push({id:"news:auto:"+n.id,playerId:result.playerId,units:result.units,ts:n.timestamp,
         sourceId:"news:"+n.id,source:"company-news-auto",confirmed:true});
       n.matchStatus="matched";n.matchedPlayerId=result.playerId;matched++;
@@ -1100,6 +1113,12 @@
       if(!Number.isFinite(Number(c.autoCreditSince)) || Number(n.timestamp)<Number(c.autoCreditSince))return;
       const match=exactPaidTrainingV13(c,n);
       if(!match){result.review++;return;}
+      const manualOverlap=(c.payments||[]).some(function(p){
+        return !p.voided && !p.sourceId && p.source!=="log-auto" &&
+          Number(p.playerId)===match.playerId && Number(p.amount)===match.amount &&
+          Math.abs(Number(p.ts)-Number(n.timestamp))<=86400;
+      });
+      if(manualOverlap){n.matchStatus="review";n.matchReason="Possible duplicate of a manually recorded purchase on the same day.";result.review++;return;}
       c.payments.push({id:"log:package:"+String(n.id),playerId:match.playerId,
         amount:match.amount,trains:match.trains,ts:Number(n.timestamp),
         source:"log-package-auto",sourceId:source,confirmed:true,assumed:true,
