@@ -1,20 +1,118 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.3.0
+// @version      1.4.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
-// @match        https://www.torn.com/companies.php*
-// @match        https://torn.com/companies.php*
+// @match        https://www.torn.com/*
+// @match        https://torn.com/*
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
+/* Shared Staxx Hub v1 · bundled into each Torn PDA script · IamEEKY */
+(function(){
+  "use strict";
+  if(!/^(www\.)?torn\.com$/i.test(location.hostname)||window.top!==window.self)return;
+  function boot(){
+    if(document.getElementById("staxx-hub-root"))return;
+    const root=document.createElement("div");
+    root.id="staxx-hub-root";
+    root.innerHTML='<button id="staxx-hub-toggle" aria-expanded="false" aria-label="Open Staxx tools and notifications"><b>S</b><span id="staxx-hub-count" hidden></span></button>'+
+      '<div id="staxx-hub-veil" hidden></div><aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>'+
+      '<header><div><strong>Staxx<span>Hub</span></strong><small>TORN COMMAND CENTRE</small></div><button data-hub-close aria-label="Close menu">×</button></header>'+
+      '<div class="staxx-scroll"><h3>YOUR TOOLS</h3><div id="staxx-hub-tools"></div>'+
+      '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div><div id="staxx-hub-alerts"></div>'+
+      '<p class="staxx-foot">Read-only alerts · No automatic game actions</p></div></aside>';
+    const css=document.createElement("style");
+    css.id="staxx-hub-css";
+    css.textContent=[
+      '#staxx-hub-root{position:fixed!important;inset:0!important;z-index:2147483647!important;pointer-events:none!important;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif!important;color:#e7f2ff!important}',
+      '#staxx-hub-root *{box-sizing:border-box}#staxx-hub-root button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}',
+      '#staxx-hub-root [hidden]{display:none!important}#staxx-hub-root button:focus-visible{outline:2px solid #73dfff;outline-offset:2px}',
+      '#staxx-hub-toggle{position:fixed;left:5px;top:43%;width:47px;height:54px;pointer-events:auto;display:flex;align-items:center;justify-content:center;border:1px solid #69dfff99;border-radius:0 15px 15px 0;background:linear-gradient(150deg,#0b74ba,#082a4a);box-shadow:0 6px 24px #000b}',
+      '#staxx-hub-toggle b{font-weight:900;font-size:24px;color:#baf1ff}#staxx-hub-count{position:absolute;top:-8px;right:-8px;background:#36d3a7;color:#052c25;border:2px solid #08192d;border-radius:20px;font-size:11px;font-weight:900;padding:2px 5px}',
+      '#staxx-hub-veil{position:fixed;inset:0;pointer-events:auto;background:#020a17b9}',
+      '#staxx-hub-drawer{position:fixed;inset:0 auto 0 0;width:min(360px,calc(100vw - 24px));height:100dvh;max-height:100vh;pointer-events:auto;background:#08192d;border-right:1px solid #28506e;box-shadow:10px 0 45px #000b;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}',
+      '#staxx-hub-drawer header{display:flex;align-items:center;justify-content:space-between;padding:16px;background:linear-gradient(120deg,#0c3358,#0b203b);border-bottom:1px solid #28506e}',
+      '#staxx-hub-drawer header strong{display:block;font-size:22px;font-weight:850;letter-spacing:-.5px}#staxx-hub-drawer header strong span{color:#54d7fa}',
+      '#staxx-hub-drawer header small{font-size:10px;letter-spacing:1.4px;color:#8fabca}#staxx-hub-drawer [data-hub-close]{background:#1c3b59;border:0;border-radius:9px;width:36px;height:36px;font-size:24px}',
+      '#staxx-hub-drawer .staxx-scroll{flex:1;overflow:auto;overscroll-behavior:contain;padding:14px 12px 30px}',
+      '#staxx-hub-drawer h3{color:#8faec9;font-size:11px;letter-spacing:1px;margin:5px 3px 10px}',
+      '#staxx-hub-drawer .staxx-tool{display:flex;align-items:center;gap:10px;text-align:left;width:100%;background:#102844;border:1px solid #284b6b;border-radius:12px;padding:12px 10px;min-height:67px;margin-bottom:9px}',
+      '#staxx-hub-drawer .staxx-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(135deg,#0b79b9,#123c65);border:1px solid #4f9dc8;color:#cff6ff;font-weight:900;flex-shrink:0}',
+      '#staxx-hub-drawer .staxx-info{flex:1;min-width:0}#staxx-hub-drawer .staxx-info b{display:block;font-size:14px}#staxx-hub-drawer .staxx-info small{display:block;font-size:11px;color:#94b1c9;margin-top:3px}',
+      '#staxx-hub-drawer .staxx-pill{border-radius:14px;background:#1b486c;padding:2px 7px;font-size:11px;font-weight:800;color:#bdeaff}#staxx-hub-drawer .staxx-pill.on{background:#145f58;color:#89edca}',
+      '#staxx-hub-drawer .staxx-label{display:flex;align-items:center;justify-content:space-between;margin-top:18px}#staxx-hub-drawer .staxx-label span{color:#a4c1d8;font-size:11px}',
+      '#staxx-hub-drawer .staxx-alert{display:block;width:100%;text-align:left;background:#0e2945;border:1px solid #315977;border-radius:11px;padding:12px;margin-bottom:8px}',
+      '#staxx-hub-drawer .staxx-alert b{display:block;color:#81dbfa;font-size:12px}#staxx-hub-drawer .staxx-alert span{display:block;color:#daecf9;font-size:12px;margin:5px 0}#staxx-hub-drawer .staxx-alert small{display:block;color:#91aec6;font-size:11px;margin-top:3px}',
+      '#staxx-hub-drawer .staxx-empty{color:#9db7cd;background:#0c243e;border:1px dashed #305473;border-radius:10px;font-size:12px;padding:17px 12px}',
+      '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:20px}'
+    ].join("");
+    document.documentElement.append(css,root);
+    const catalog=[{id:"profit",label:"ProfitStaxx",icon:"PS",desc:"Market · Museum · Ledger"},
+      {id:"company",label:"Company Helper",icon:"CO",desc:"Staff · Training · Growth"},
+      {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}];
+    const active=Object.create(null),notices=Object.create(null);
+    const toggle=root.querySelector("#staxx-hub-toggle"),veil=root.querySelector("#staxx-hub-veil"),drawer=root.querySelector("#staxx-hub-drawer");
+    const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
+    let expanded=false;
+    function el(tag,cls,value){const n=document.createElement(tag);if(cls)n.className=cls;if(value!==undefined)n.textContent=String(value);return n;}
+    function expand(value){expanded=!!value;veil.hidden=drawer.hidden=!expanded;toggle.hidden=expanded;toggle.setAttribute("aria-expanded",String(expanded));}
+    function openTool(id){
+      if(id==="company"&&!/^\/companies\.php$/i.test(location.pathname)){
+        try{sessionStorage.setItem("staxx-open-company","1");}catch(_){}
+        location.assign(location.origin+"/companies.php");return;
+      }
+      if(!active[id]){const info=catalog.find(x=>x.id===id);alerts.replaceChildren(el("p","staxx-empty",(info?info.label:"Script")+" is not running. Enable it in Torn PDA, then reload this page."));return;}
+      expand(false);
+      document.dispatchEvent(new CustomEvent("staxx:closeall"));
+      document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id:id}}));
+    }
+    function render(){
+      tools.replaceChildren();alerts.replaceChildren();
+      let total=0;
+      for(const info of catalog){
+        const n=Math.min(99,Math.max(0,Number(notices[info.id]?.count)||0));total+=n;
+        const btn=el("button","staxx-tool");btn.type="button";btn.dataset.openStaxx=info.id;
+        const txt=el("span","staxx-info");txt.append(el("b","",info.label),el("small","",active[info.id]?info.desc:"Not loaded · enable in Torn PDA"));
+        btn.append(el("span","staxx-icon",info.icon),txt,el("span","staxx-pill"+(n?" on":""),n||"›"));tools.append(btn);
+      }
+      bubble.hidden=total<1;bubble.textContent=total>=100?"99+":String(total);
+      root.querySelector("#staxx-hub-total").textContent=total?total+" active":"All clear";
+      let any=false;
+      for(const info of catalog){
+        const d=notices[info.id];if(!d||!(d.count>0))continue;any=true;
+        const btn=el("button","staxx-alert");btn.type="button";btn.dataset.openStaxx=info.id;
+        btn.append(el("b","",info.label+" · "+d.count+" alert"+(d.count===1?"":"s")),el("span","",d.summary||"Needs attention"));
+        for(const item of d.items.slice(0,3))btn.append(el("small","",item));alerts.append(btn);
+      }
+      if(!any)alerts.append(el("p","staxx-empty","Nothing needs your attention right now."));
+    }
+    root.addEventListener("click",e=>{const target=e.target.closest("button[data-open-staxx]");if(target)openTool(target.dataset.openStaxx);else if(e.target.closest("#staxx-hub-toggle"))expand(true);else if(e.target===veil||e.target.closest("[data-hub-close]"))expand(false);});
+    document.addEventListener("keydown",e=>{if(e.key==="Escape"&&expanded)expand(false);});
+    document.addEventListener("staxx:register",e=>{const id=e.detail?.id;if(catalog.some(x=>x.id===id)){active[id]=true;render();}});
+    document.addEventListener("staxx:notice",e=>{const d=e.detail||{},id=d.id;if(!catalog.some(x=>x.id===id))return;
+      const clean={count:Math.min(99,Math.max(0,Math.floor(Number(d.count)||0))),summary:String(d.summary||"").slice(0,160),
+        items:Array.isArray(d.items)?d.items.slice(0,5).map(v=>String(v).slice(0,160)):[]};
+      if(JSON.stringify(clean)!==JSON.stringify(notices[id])){notices[id]=clean;render();}
+    });
+    render();
+    document.dispatchEvent(new CustomEvent("staxx:ping"));
+  }
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
+})();
+
 
 (function () {
   "use strict";
   if (window.top !== window.self || document.getElementById("tch-open")) return;
   const STORE = "company-helper-v1";
   const isCompanyPage = function () {return /^\/companies\.php$/i.test(window.location.pathname);};
+  if (!isCompanyPage()) {
+    document.addEventListener("staxx:ping",()=>document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}})));
+    document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}}));
+    return; // Company UI and API only run on companies.php.
+  }
   const API = "https://api.torn.com/v2/";
   const rolesFallback = [
     ["Personal Trainer",31000,15500,"manual_labor","endurance"],
@@ -889,6 +987,7 @@
       esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
     opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
+    document.dispatchEvent(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text)}}));
   }
 
   function employeePenaltyV12(p) {
@@ -1318,6 +1417,7 @@
   style.textContent += "#tch-root .tch-clickable{cursor:pointer;text-align:left;position:relative;transition:transform .12s,border-color .12s;min-height:110px}#tch-root .tch-clickable:active{transform:scale(.98)}#tch-root .tch-clickable:focus-visible,#tch-root .tch-person-button:focus-visible{outline:3px solid #78efda;outline-offset:3px}#tch-root .tch-tilearrow{position:absolute;top:9px;right:11px;color:#8ff5de;font-size:16px}#tch-root .tch-metric.tch-clickable{display:flex;align-items:stretch;flex-direction:column;gap:7px;padding:14px;background:#263b51;color:#f5fbfc;border:1px solid #496882;white-space:normal}#tch-root .tch-metric.tch-clickable:hover{border-color:#4cdbc1}#tch-root .tch-metric.tch-clickable strong{font-size:22px}#tch-root .tch-hero.tch-hero-button{width:100%;display:block;border:1px solid #446f7d;color:#fff;padding:18px}#tch-root .tch-person-button{display:block;text-align:left;width:100%;border:0;background:transparent;padding:0;min-height:0}#tch-root .tch-person-button .tch-personhead{width:100%}#tch-root .tch-fitpair,#tch-root .tch-comparison{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:12px 0}#tch-root .tch-fitpair>div,#tch-root .tch-comparison>div{background:#1b3346;border:1px solid #3d6473;border-radius:10px;padding:11px;min-width:0}#tch-root .tch-fitpair small,#tch-root .tch-comparison span{display:block;font-size:11px;color:#bed6e4}#tch-root .tch-fitpair strong,#tch-root .tch-comparison strong{display:block;font-size:23px;color:#73eacb;overflow-wrap:anywhere}#tch-root .tch-linkhint{font-size:12px;color:#7cedd2;display:block;margin-top:6px}#tch-root .tch-simrow{display:flex;gap:12px;align-items:center;justify-content:space-between;border-bottom:1px solid #426279;padding:13px 0}#tch-root .tch-simrow>button{background:transparent;text-align:left;flex:1;min-width:0;border:0;padding:7px;font-size:13px}#tch-root .tch-simrow>div{flex:2;min-width:0}#tch-root .tch-simrow select{width:100%}#tch-root .tch-fitcaption{display:block;color:#cbdfe8;font-size:11px}#tch-root .tch-change{padding:11px 0;border-bottom:1px solid #45677b;display:flex;flex-wrap:wrap;gap:7px;align-items:center}#tch-root .tch-change strong{flex:1;min-width:100px}#tch-root .tch-change span{font-size:12px;color:#c5dce6}#tch-root .tch-change b{white-space:nowrap}#tch-root .tch-roleline{display:flex;justify-content:space-between;gap:8px;padding:11px 0;border-bottom:1px solid #44677e}#tch-root .tch-roleline span{color:#cfe0e9}#tch-root .tch-requirement{margin:12px 0}#tch-root .tch-requirement>div:first-child{display:flex;justify-content:space-between;gap:8px;font-size:12px}#tch-root .tch-requirement small{color:#c5dce8}#tch-root .tch-fitbar{height:9px;border-radius:20px;background:#365269;overflow:hidden;margin-top:6px}#tch-root .tch-fitbar b{display:block;height:100%;background:#55e9c9;border-radius:20px}#tch-root.theme-light .tch-metric.tch-clickable,#tch-root.theme-light .tch-fitpair>div,#tch-root.theme-light .tch-comparison>div{background:#fff;color:#183448;border-color:#b7cedb}#tch-root.theme-light .tch-person-button{color:#183448}#tch-root.theme-light .tch-fitpair strong,#tch-root.theme-light .tch-comparison strong{color:#056b64}#tch-root.theme-light .tch-fitpair small,#tch-root.theme-light .tch-comparison span{color:#33586f}#tch-root.theme-light .tch-hero.tch-hero-button{color:#173d43}#tch-root.theme-light .tch-roleline span,#tch-root.theme-light .tch-change span{color:#28485a}";
   style.textContent += "#tch-root .tch-insight{display:grid;grid-template-columns:1fr auto;gap:5px 12px;width:100%;text-align:left;border:1px solid #4d6b7d;border-radius:12px;background:#294254;color:#f6fafb;padding:14px;margin:8px 0}#tch-root .tch-insight strong,#tch-root .tch-insight small{grid-column:1}#tch-root .tch-insight small{color:#cce0e9;font-size:12px}#tch-root .tch-insight span{grid-column:2;grid-row:1/3;font-size:20px;color:#74efdc;align-self:center}#tch-root.theme-light .tch-insight{background:#f3f8fc;color:#153649}#tch-root.theme-light .tch-insight small{color:#35586b}";
   style.textContent+="#tch-root .tch-taprow{position:relative;width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;background:transparent;border:0;padding:13px 4px}#tch-root .tch-taprow .tch-tilearrow{position:static;margin-left:8px}#tch-root.theme-light .tch-taprow{background:transparent;color:#15394c}";
+  style.textContent += "#tch-open{display:none!important}#tch-root:not(.theme-light){background:#08192d!important;color:#e7f2ff!important}#tch-root:not(.theme-light) header,#tch-root:not(.theme-light) .tch-top{background:linear-gradient(120deg,#0c3358,#0b203b)!important;border-color:#28506e!important}#tch-root:not(.theme-light) .tch-bottom,#tch-root:not(.theme-light) .nav{background:#0b223b!important;border-color:#284b6b!important}#tch-root:not(.theme-light) .card,#tch-root:not(.theme-light) .tch-panel,#tch-root:not(.theme-light) .tch-person,#tch-root:not(.theme-light) .tch-wagerow,#tch-root:not(.theme-light) .tch-wage-risk{background:#0d2945!important;border:1px solid #284b6b!important;border-radius:12px!important;box-shadow:none!important}#tch-root:not(.theme-light) .tch-hero{background:linear-gradient(130deg,#103d61,#0c2945)!important;border-color:#3f7ea6!important}#tch-root:not(.theme-light) .tch-metric,#tch-root:not(.theme-light) .tch-radar>div{background:#102844!important;border-color:#294661!important}#tch-root:not(.theme-light) .tch-eyebrow,#tch-root:not(.theme-light) .tch-kicker{color:#75ddff!important}#tch-root:not(.theme-light) button.primary,#tch-root:not(.theme-light) button.active{background:#1c5080!important;border-color:#67c7ff!important}#tch-root:not(.theme-light) button{border-radius:9px;border-color:#356181;color:#edf7ff}#tch-root:not(.theme-light) input,#tch-root:not(.theme-light) select,#tch-root:not(.theme-light) textarea{background:#061b31;border-color:#325c79;color:#fff}#tch-root:not(.theme-light) .tch-bottom{padding-bottom:calc(4px + env(safe-area-inset-bottom))!important}#tch-root:not(.theme-light) .tch-bottom button{font-size:10px!important;height:40px!important;min-height:40px!important}";
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
   const root=document.createElement("div");root.id="tch-root";root.hidden=true;document.body.appendChild(root);
@@ -1602,7 +1702,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.3.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.4.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2179,6 +2279,10 @@
     open=true;message="";draw();
     refresh(); // Opening explicitly triggers a fresh read; no background polling.
   });
+  document.addEventListener("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){opener.click();}else if(open){open=false;draw();}});
+  document.addEventListener("staxx:closeall",function(){if(open){open=false;draw();}});
+  document.addEventListener("staxx:ping",()=>document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}})));
+  document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}}));
   window.addEventListener("resize",syncCompanyVisibility);
   window.addEventListener("popstate",syncCompanyVisibility);
   window.addEventListener("hashchange",syncCompanyVisibility);
@@ -2406,6 +2510,7 @@
         positionLauncher();
       }
       updateLauncherV11();
+      try{if(sessionStorage.getItem("staxx-open-company")==="1"){sessionStorage.removeItem("staxx-open-company");opener.click();}}catch(_){}
     } catch (_) { /* Do not read API or silently overwrite damaged storage. */ }
   })();
 })();
