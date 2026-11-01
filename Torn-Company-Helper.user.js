@@ -65,8 +65,8 @@
       }
       if(!active[id]){const info=catalog.find(x=>x.id===id);alerts.replaceChildren(el("p","staxx-empty",(info?info.label:"Script")+" is not running. Enable it in Torn PDA, then reload this page."));return;}
       expand(false);
-      document.dispatchEvent(new CustomEvent("staxx:closeall"));
-      document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id:id}}));
+      document.dispatchEvent?.(new CustomEvent("staxx:closeall"));
+      document.dispatchEvent?.(new CustomEvent("staxx:open",{detail:{id:id}}));
     }
     function render(){
       tools.replaceChildren();alerts.replaceChildren();
@@ -90,14 +90,14 @@
     }
     root.addEventListener("click",e=>{const target=e.target.closest("button[data-open-staxx]");if(target)openTool(target.dataset.openStaxx);else if(e.target.closest("#staxx-hub-toggle"))expand(true);else if(e.target===veil||e.target.closest("[data-hub-close]"))expand(false);});
     document.addEventListener("keydown",e=>{if(e.key==="Escape"&&expanded)expand(false);});
-    document.addEventListener("staxx:register",e=>{const id=e.detail?.id;if(catalog.some(x=>x.id===id)){active[id]=true;render();}});
-    document.addEventListener("staxx:notice",e=>{const d=e.detail||{},id=d.id;if(!catalog.some(x=>x.id===id))return;
+    document.addEventListener?.("staxx:register",e=>{const id=e.detail?.id;if(catalog.some(x=>x.id===id)){active[id]=true;render();}});
+    document.addEventListener?.("staxx:notice",e=>{const d=e.detail||{},id=d.id;if(!catalog.some(x=>x.id===id))return;
       const clean={count:Math.min(99,Math.max(0,Math.floor(Number(d.count)||0))),summary:String(d.summary||"").slice(0,160),
         items:Array.isArray(d.items)?d.items.slice(0,5).map(v=>String(v).slice(0,160)):[]};
       if(JSON.stringify(clean)!==JSON.stringify(notices[id])){notices[id]=clean;render();}
     });
     render();
-    document.dispatchEvent(new CustomEvent("staxx:ping"));
+    document.dispatchEvent?.(new CustomEvent("staxx:ping"));
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
 })();
@@ -109,8 +109,8 @@
   const STORE = "company-helper-v1";
   const isCompanyPage = function () {return /^\/companies\.php$/i.test(window.location.pathname);};
   if (!isCompanyPage()) {
-    document.addEventListener("staxx:ping",()=>document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}})));
-    document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}}));
+    document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}})));
+    document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}}));
     return; // Company UI and API only run on companies.php.
   }
   const API = "https://api.torn.com/v2/";
@@ -987,7 +987,7 @@
       esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
     opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
-    document.dispatchEvent(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text)}}));
+    document.dispatchEvent?.(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text)}}));
   }
 
   function employeePenaltyV12(p) {
@@ -2279,10 +2279,10 @@
     open=true;message="";draw();
     refresh(); // Opening explicitly triggers a fresh read; no background polling.
   });
-  document.addEventListener("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){opener.click();}else if(open){open=false;draw();}});
-  document.addEventListener("staxx:closeall",function(){if(open){open=false;draw();}});
-  document.addEventListener("staxx:ping",()=>document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}})));
-  document.dispatchEvent(new CustomEvent("staxx:register",{detail:{id:"company"}}));
+  document.addEventListener?.("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){opener.click();}else if(open){open=false;draw();}});
+  document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
+  document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}})));
+  document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}}));
   window.addEventListener("resize",syncCompanyVisibility);
   window.addEventListener("popstate",syncCompanyVisibility);
   window.addEventListener("hashchange",syncCompanyVisibility);
