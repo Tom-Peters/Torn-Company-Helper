@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.9.1
+// @version      1.10.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -2494,6 +2494,8 @@
   }
 
   let staxxCompanyPanelState=null,companyAlertFocus='';
+  const companyScrollPositions=Object.create(null);
+  let companyRenderedPage='';
   function focusCompanyAlert(){if(!companyAlertFocus)return;const el=root.querySelector('#tch-alert-'+companyAlertFocus);if(el)el.scrollIntoView?.({block:'nearest'});companyAlertFocus='';}
   function draw() {
     updateLauncherV11();
@@ -2505,6 +2507,16 @@
       document.dispatchEvent?.(new CustomEvent('staxx:panel',{detail:{id:'company',open:visible}}));
     }
     if(!open)return;
+    const pageKey=detailView?'detail:'+detailView:tab;
+    const oldMain=root.querySelector('.tch-main'),oldNav=root.querySelector('.tch-topnav, .tch-bottom, .tch-switch'),oldFocused=document.activeElement;
+    if(companyRenderedPage)companyScrollPositions[companyRenderedPage]={root:root.scrollTop,main:oldMain?.scrollTop||0};
+    let savedForm=null;
+    if(oldFocused&&root.contains(oldFocused)&&/^(INPUT|TEXTAREA|SELECT)$/.test(oldFocused.tagName)){
+      const form=oldFocused.closest('form,.tch-panel');
+      const values=form?[...form.querySelectorAll('input,select,textarea')].map(x=>({id:x.id,name:x.name,value:x.value,checked:x.type==='checkbox'?x.checked:null})):[];
+      savedForm={id:oldFocused.id,name:oldFocused.name,values,page:companyRenderedPage};
+    }
+    const detailsOpen=[...root.querySelectorAll('details[open]')].map((x,i)=>x.id||String(i));
     try {
       const c=current();
       let body="";
@@ -2520,6 +2532,20 @@
       root.innerHTML='<div class="tch-staxx-panel" role="dialog" aria-label="Company Helper">'+headV2(c)+tabsV2()+'<main class="tch-main">'+
         (message?'<div class="notice '+esc(severity)+'">'+esc(message)+'</div>':"")+
         (busy?'<div class="notice">Reading Torn API after your request…</div>':"")+body+'</main></div>';
+      companyRenderedPage=pageKey;
+      const newMain=root.querySelector('.tch-main');
+      const pos=companyScrollPositions[pageKey];
+      root.scrollTop=pos?.root||0;
+      if(newMain)newMain.scrollTop=pos?.main||0;
+      if(savedForm?.page===pageKey){
+        for(const row of savedForm.values){
+          const field=[...root.querySelectorAll('input,select,textarea')].find(x=>row.id?x.id===row.id:x.name===row.name);
+          if(field){field.value=row.value;if(row.checked!==null)field.checked=row.checked;}
+        }
+        const focus=[...root.querySelectorAll('input,select,textarea')].find(x=>savedForm.id?x.id===savedForm.id:x.name===savedForm.name);
+        if(focus)focus.focus({preventScroll:true});
+      }
+      for(const [i,detail] of [...root.querySelectorAll('details')].entries())if(detailsOpen.includes(detail.id||String(i)))detail.open=true;
     } catch (error) {
       // Render a usable, non-destructive fallback instead of a blank screen.
       // Never clear or reset local storage in response to a rendering error.
