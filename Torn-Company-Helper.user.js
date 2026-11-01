@@ -2807,7 +2807,7 @@
   }
   let lastAutoCompanyAttemptV112=0;
   async function autoCompanyRefreshV112(){
-    if(document.hidden||!isCompanyPage()||busy||typeof PDA_storage==="undefined")return;
+    if(document.hidden||(!isCompanyPage()&&!open)||busy||typeof PDA_storage==="undefined")return;
     if(!activeApiKey())return; // Missing permissions remain visible in Settings; no blind retries.
     const last=Date.parse(current()?.lastRefresh||"");
     const now=Date.now();
