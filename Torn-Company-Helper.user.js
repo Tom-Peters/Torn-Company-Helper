@@ -1069,6 +1069,189 @@
       '<p class="tch-hint">Only recorded daily snapshots count. Income comparisons use Torn reported rolling weekly values, not fabricated weekly settlements.</p></section>';
   }
   function sundaysNeedV12(c){const days=new Set((c.snapshots||[]).filter(function(s){return s&&s.observedAt&&new Date(String(s.observedAt).slice(0,10)+"T12:00:00Z").getUTCDay()===0;}).map(function(s){return String(s.observedAt).slice(0,10);}));return days.size<2;}
+
+  // v1.3: explicit, reversible local receipt classification. Never makes a Torn action.
+  function exactPaidTrainingV13(c,log) {
+    const g=log&&log.suggestion;
+    if(!log || !g || g.status!=="matched" || !Number.isSafeInteger(Number(g.playerId)) ||
+       !Number.isSafeInteger(Number(g.amount)) || Number(g.amount)<=0)return null;
+    const staff=(c.staff||[]).find(function(p){return String(p.id)===String(g.playerId);});
+    if(!staff || !Number.isSafeInteger(Number(g.trains)) || Number(g.trains)!==priceTrains(Number(g.amount)))return null;
+    if(/refund|gift|donation|repay|loan|borrow/i.test(String(log.title||"")))return null;
+    return {playerId:Number(g.playerId),amount:Number(g.amount),trains:Number(g.trains)};
+  }
+  function autoCreditPurchasesV13(c,onlyNew) {
+    const result={credited:0,trains:0,review:0};
+    if(c.autoPackageMode===false)return result;
+    (c.logs||[]).forEach(function(n){
+      if(!n || (onlyNew && !onlyNew.has(String(n.id))) || n.matchStatus==="ignored" || isApprovedLog(c,n.id))return;
+      const source="log:"+String(n.id);
+      if((c.payments||[]).some(function(p){return p.sourceId===source && (p.voided || isApprovedLogPayment(p));}))return;
+      if(!Number.isFinite(Number(c.autoCreditSince)) || Number(n.timestamp)<Number(c.autoCreditSince))return;
+      const match=exactPaidTrainingV13(c,n);
+      if(!match){result.review++;return;}
+      c.payments.push({id:"log:package:"+String(n.id),playerId:match.playerId,
+        amount:match.amount,trains:match.trains,ts:Number(n.timestamp),
+        source:"log-package-auto",sourceId:source,confirmed:true,assumed:true,
+        note:"Automatically inferred from exact package-price receipt; can be voided."});
+      n.matchStatus="credited-auto";n.matchReason="Exact-size employee transfer credited as a likely training purchase (reversible).";
+      result.credited++;result.trains+=match.trains;
+    });
+    return result;
+  }
+  function mergeTrainingNewsV13(c,response) {
+    const list=normaliseNewsResponse(response&&response.news),seen=new Set((c.news||[]).map(function(n){return String(n.id);}));
+    let added=0;
+    list.forEach(function(n){
+      if(seen.has(String(n.id)))return;
+      seen.add(String(n.id));
+      c.news.push({id:String(n.id),timestamp:Number(n.timestamp),text:String(n.text||"").slice(0,700)});
+      added++;
+    });
+    repairImportDuplicates(c);
+    const result=reconcileTraining(c);
+    c.newsSyncAt=new Date().toISOString();
+    return {added:added,matched:result.matched,review:result.review};
+  }
+  async function syncRecentNewsV13(c){
+    const result=await read("company/news",{cat:"training",limit:"100",sort:"DESC"});
+    return mergeTrainingNewsV13(c,result);
+  }
+  function mergeIncomingLogsV13(c,response){
+    const list=Array.isArray(response&&response.log)?response.log:Object.entries(response&&response.log||{}).map(function(pair){
+      return Object.assign({id:pair[0]},pair[1]);
+    });
+    let added=0;
+    const newlySeen=new Set();
+    list.forEach(function(log){
+      if(!log || log.id==null || !Number.isFinite(Number(log.timestamp)))return;
+      const k=String(log.id),guess=parseIncomingLog(log,c);
+      const existing=(c.logs||[]).find(function(x){return String(x.id)===k;});
+      if(existing){
+        if(!existing.suggestion || existing.suggestion.status==="review")existing.suggestion=guess;
+        return;
+      }
+      newlySeen.add(k);added++;
+      c.logs.push({id:k,timestamp:Number(log.timestamp),
+        title:String(log.details&&log.details.title||log.title||"Incoming money").slice(0,160),
+        suggestion:guess});
+    });
+    repairImportDuplicates(c);
+    const credited=autoCreditPurchasesV13(c,newlySeen);
+    const classified=applyMatchedPayments(c);
+    c.moneySyncAt=new Date().toISOString();
+    return {added:added,credited:credited.credited,trains:credited.trains,review:classified.review};
+  }
+  async function syncRecentMoneyV13(c){
+    if(!c.incomingTypesVerified && !/^\d+(,\d+){0,9}$/.test(String(c.logTypes||""))){
+      const raw=await read("torn/logtypes");
+      const options=findMoneyTypes(raw).slice(0,10);
+      if(!options.length)throw Error("No incoming money log types available");
+      c.logTypes=options.map(function(x){return x.id;}).join(",");
+      c.incomingTypesVerified=true;
+    }
+    if(!/^\d+(,\d+){0,9}$/.test(String(c.logTypes||"")))throw Error("Incoming-money log types not configured");
+    const response=await read("user/log",{log:c.logTypes,limit:"100",sort:"DESC"});
+    return mergeIncomingLogsV13(c,response);
+  }
+  function supportWageModelV13(c){
+    const wages=(c.staff||[]).map(function(p){
+      const wage=financialAmount(p.wage),eff=financialAmount(p.effectiveness&&p.effectiveness.total);
+      return {p:p,wage:wage,eff:eff,role:String(p.position&&p.position.name||""),value:financialAmount(p.value)};
+    });
+    const ratios=wages.filter(function(x){return x.wage!==null && x.eff!==null&&x.eff>0;})
+      .map(function(x){return x.wage/x.eff;}).sort(function(a,b){return a-b;});
+    const median=function(vals){if(!vals.length)return null;const middle=Math.floor(vals.length/2);
+      return vals.length%2?vals[middle]:(vals[middle-1]+vals[middle])/2;};
+    const med=median(ratios);
+    return wages.map(function(x){
+      const same=wages.filter(function(y){return y.p.id!==x.p.id&&y.role===x.role&&y.wage!==null&&y.eff!==null&&y.eff>0;});
+      const sameRate=median(same.map(function(y){return y.wage/y.eff;}).sort(function(a,b){return a-b;}));
+      const baseline=sameRate===null?med:sameRate;
+      const estimate=baseline!==null&&x.eff!==null&&x.eff>0?
+        Math.min(25000000,Math.round((baseline*x.eff)/1000)*1000):null;
+      const tenure=financialAmount(x.p.days_in_company);
+      const p=x.p.effectiveness||{};
+      const adjustment=[p.addiction,p.inactivity].map(function(v){return typeof v==="number"?v:0;});
+      const min=estimate===null?null:Math.max(0,Math.round(estimate*(tenure>=90?0.9:0.85)/1000)*1000);
+      const max=estimate===null?null:Math.min(25000000,Math.round(estimate*(tenure>=90?1.25:1.15)/1000)*1000);
+      return Object.assign({},x,{estimate:estimate,min:min,max:max,peerCount:same.length,
+        basis:sameRate!==null?"Same-role EFF rate":"Team median wage per EFF",
+        penalty:adjustment[0]+adjustment[1],
+        ratio:x.value!==null&&x.value>0&&x.wage!==null?x.wage/x.value:null});
+    });
+  }
+  function compactWagePanelV13(c){
+    const rows=supportWageModelV13(c),support=rows.filter(function(r){return r.value===null||r.value===0;});
+    return '<section class="tch-panel"><h2>Pay decisions · every employee</h2>'+
+      '<p>For direct-income roles, HR value remains available in the detailed wage breakdown. Support employees get an <strong>estimated pay band</strong> from comparable wage per effectiveness, not a fictional sales value.</p>'+
+      '<div class="tch-dense-list">'+rows.map(function(x){
+        const estimate=x.estimate===null?'Insufficient data':money(x.min)+' - '+money(x.max);
+        const below=x.min!==null&&x.wage!==null&&x.wage<x.min;
+        const above=x.max!==null&&x.wage!==null&&x.wage>x.max;
+        return '<div class="tch-dense-row"><div><strong>'+esc(x.p.name)+'</strong>'+
+          '<small>'+esc(x.role)+' · EFF '+esc(x.eff===null?'?':x.eff)+
+          (x.penalty<0?' · Penalty '+x.penalty:'')+'</small></div>'+
+          '<div><b>'+esc(money(x.wage))+'</b><small>'+esc(x.value===0||x.value===null?'Support proxy':"HR value "+money(x.value))+'</small></div>'+
+          '<div class="tch-dense-detail"><span>'+esc(x.basis)+': '+esc(estimate)+'</span>'+
+            (below?'<em>Below band</em>':above?'<em>Above band</em>':'')+'</div></div>';
+      }).join("")+'</div>'+
+      '<p class="tch-hint">'+support.length+' employees have zero or unavailable direct-value figures. Estimates use internal wage/EFF comparisons; loyalty, recruitment competition and position-specific benefits are not mathematically captured. No wages are changed automatically.</p></section>';
+  }
+  function growthMovesV13(c){
+    if(!c||!c.profile)return [];
+    const p=c.profile,rows=[],a=accounting(c),staff=(c.staff||[]);
+    function push(rank,title,detail,target){rows.push({rank:rank,title:title,detail:detail,target:target});}
+    const weak=staff.filter(function(x){return x&&x.effectiveness&&Number.isFinite(Number(x.effectiveness.total));})
+      .sort(function(x,y){return Number(x.effectiveness.total)-Number(y.effectiveness.total);});
+    if(p.efficiency!=null&&Number(p.efficiency)<100) {
+      const worst=weak[0],effect=worst&&worst.effectiveness;
+      push(1,"Fix efficiency: "+Number(p.efficiency)+"%",
+        worst?"Review "+worst.name+" ("+effect.total+" EFF), "+(effect.addiction<0?"addiction "+effect.addiction:"role fit/inactivity")+
+          ". Confirm the lowest performers before changing positions.":"Inspect lowest effectiveness first.","staff");
+    }
+    if(p.environment!=null&&Number(p.environment)<100)
+      push(2,"Recover environment: "+Number(p.environment)+"%",
+        "Check Cleaner coverage, effectiveness and activity before making other changes.","staff");
+    const peer=peerModelV11(c);
+    if(p.popularity!=null&&Number(p.popularity)<100)
+      push(3,"Grow popularity: "+Number(p.popularity)+"%",
+        "Compare advertising/membership settings against the next full daily report; test one change at a time.","growth-pricing");
+    if(peer.neighbours.length>=3&&peer.gap!==null&&peer.gap>0)
+      push(4,"Close observed weekly income gap",
+        money(peer.gap)+"/week below "+peer.target+"-star peer median ("+peer.neighbours.length+" companies). This is not a star threshold.","growth-rivals");
+    if(a.known&&a.headroom<0)push(0,"Protect daily loss allowance",
+      "Estimated operating loss exceeds the configured cap by "+money(-a.headroom)+".","growth-accounts");
+    const training=trainPlanV3(c);
+    if(training.overflow>0)push(0,"Use company trains before capacity",
+      "Possible overflow of "+training.overflow+" at the next company close. Review the oldest eligible paid obligations.","training-queue");
+    if(!rows.length)push(5,"Track one controlled change","No urgent weakness found. Record one change then compare after daily close.","growth-review");
+    return rows.sort(function(x,y){return x.rank-y.rank;}).slice(0,4);
+  }
+  function growthMovesPanelV13(c){
+    const moves=growthMovesV13(c);
+    return '<section class="tch-panel tch-focus"><div class="tch-sectionhead"><h2>Priority moves</h2><span class="tch-mini">Star growth</span></div>'+
+      moves.map(function(r,i){return '<button data-act="goto" data-target="'+esc(r.target)+'" class="tch-focus-item">'+
+        '<span class="tch-step">'+(i+1)+'</span><span><strong>'+esc(r.title)+'</strong><small>'+esc(r.detail)+'</small></span><b>›</b></button>';}).join("")+
+      '</section>';
+  }
+  function homeV13(c){
+    if(!c||!c.profile)return introV2();
+    const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
+    const due=Object.values(aggregates(c).balance).reduce(function(n,b){return n+b.owed;},0);
+    return '<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
+      '<span class="tch-mini">'+star+' ★ / 10</span></div><div class="tch-home-number">'+star+' ★</div></section>'+
+      '<div class="tch-homekpis">'+
+        metricV2("Efficiency",c.profile.efficiency==null?"?":c.profile.efficiency+"%","Daily report","","staff")+
+        metricV2("Popularity",c.profile.popularity==null?"?":c.profile.popularity+"%","Daily report","","growth-pricing")+
+        metricV2("Trains available",train.available===null?"?":train.available,"Paid owed "+due,"","training-queue")+
+        metricV2("Estimated P/L",a.known?money(a.profit):"Unknown","Excludes unreported costs","","growth-accounts")+
+      '</div>'+growthMovesPanelV13(c)+
+      '<div class="tch-quick"><button data-act="goto" data-target="training-queue">Training queue ›</button>'+
+      '<button data-act="goto" data-target="staff-wages">Wage analysis ›</button>'+
+      '<button data-act="goto" data-target="growth-review">Weekly review ›</button></div>'+
+      '<p class="tch-hint">Comparisons are advisory, and every data refresh is read-only.</p>';
+  }
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
 
