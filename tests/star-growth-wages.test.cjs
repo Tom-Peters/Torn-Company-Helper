@@ -13,7 +13,7 @@ function fixture(reply){
  const window={location:{pathname:"/companies.php"},innerWidth:390,innerHeight:810,addEventListener(){}};
  window.top=window;window.self=window;
  const hook='  const style=document.createElement("style");';
- const script=source.replace(hook,'  globalThis.__v11={peerModelV11,starGrowthV11,starGrowthPanelV11,rivalsPanelV11,'+
+ const script=source.replace('const PDA_APP_KEY = "###PDA-APIKEY###";', 'const PDA_APP_KEY = "AAAAAAAAAAAAAAAA";').replace(hook,'  globalThis.__v11={peerModelV11,starGrowthV11,starGrowthPanelV11,rivalsPanelV11,'+
    'wageModelV11,wagesPanelV11,trainingWeekV11,weekPanelV11,launcherAlertsV11,updateLauncherV11,'+
    'scanPeersV11,staffV2,trainingV2,growthV2,seed(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;},draw};\n'+hook);
  const scope={window,document,URL,URLSearchParams,Date,Number,Math,JSON,Set,Map,Blob,console,
