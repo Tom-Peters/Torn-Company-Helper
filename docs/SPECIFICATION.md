@@ -1,4 +1,4 @@
-# Torn Company Helper — Product specification V7 and implementation status
+# Torn Company Helper — Product specification V8 and implementation status
 
 Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** (design baseline; other company types where data supports it).
 
@@ -14,7 +14,18 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - Archive departed employees.
 - Growth, profit and effectiveness comparisons with stability preference when full optimiser is delivered.
 
-## Shipped: v1.1.0
+## Shipped: v1.2.0
+
+- [x] Torn PDA apostrophe-normalisation safe startup and full launcher smoke regression
+- [x] HR value pay bands with tenure, addiction, inactivity and indirect-role confidence guards
+- [x] Conservative applicant replacement comparisons for existing non-special positions, read only
+- [x] Manual lookup of up to five publicly visible 10-star company position layouts and median role counts
+- [x] Manual company-change markers with before/after local observations and strict non-causality
+- [x] Sunday retrospective using distinct days, weekly metrics and comparable competitor scan history
+- [x] Append popularity, environment, efficiency and weekly gross income to manual-refresh snapshots
+- [x] No stored API keys, no gameplay POSTs, same URL and schema-1 history
+
+## Shipped previously: v1.1.0
 
 - [x] Star-growth decision priorities from observed effectiveness, environment, popularity and peer income
 - [x] Manual public company directory read, bounded to five 100-item pages, explicit incomplete-sample labelling

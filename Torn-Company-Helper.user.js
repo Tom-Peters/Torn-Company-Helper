@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.1.0
+// @version      1.2.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/companies.php*
@@ -63,7 +63,7 @@
     if (!requestKey) throw Error("No API key is available. Configure Torn PDA's app API key or enter a session-only custom key in Settings.");
     if (typeof PDA_httpGet !== "function") throw Error("PDA_httpGet is unavailable. Run this in Torn PDA.");
     // Never accept an arbitrary URL or a path returned by remote data.
-    if (!/^(company\/(profile|employees|stock|news|applications|[0-9]+\/companies)|torn\/[0-9]+\/companies|torn\/logtypes|user\/log)$/.test(path)) throw Error("Blocked API route.");
+    if (!/^(company\/(profile|employees|stock|news|applications|[0-9]+\/(?:companies|employees))|torn\/[0-9]+\/companies|torn\/logtypes|user\/log)$/.test(path)) throw Error("Blocked API route.");
     const q = new URLSearchParams(params || {});
     const response = await PDA_httpGet(API + path + (q.toString() ? "?" + q : ""), {Authorization:"ApiKey " + requestKey});
     if (!response || response.status !== 200) throw Error("Torn API request failed (HTTP " + (response && response.status) + ").");
@@ -768,7 +768,7 @@
       (leaders.length?leaders.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p class="tch-hint">No comparable rivals loaded. Tap Scan public competitors.</p>')+
       '<h2>Your star tier · examples</h2>'+
       (same.length?same.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p>No same-star companies in the current sample.</p>')+
-      '<p class="tch-hint">Income ratios are observational. A larger sample is needed before claiming any league position. Company data refreshes on Torn’s own schedule.</p></section>';
+      '<p class="tch-hint">Income ratios are observational. A larger sample is needed before claiming any league position. Company data refreshes on Torn own schedule.</p></section>';
   }
   function rivalRowV11(p,own){
     const delta=own!==null&&own>0?((p.weekly/own-1)*100):null;
@@ -797,7 +797,7 @@
   function wagesPanelV11(c){
     const w=wageModelV11(c);
     return '<section class="tch-panel"><h2>HR-informed wage helper</h2>'+
-      '<p>Uses each employee’s Torn-reported <strong>Value</strong> (direct contribution, revealed by an effective Secretary/HR Officer) plus their wage and effectiveness. It does <strong>not</strong> treat supporting roles as worthless.</p>'+
+      '<p>Uses each employee Torn-reported <strong>Value</strong> (direct contribution, revealed by an effective Secretary/HR Officer) plus their wage and effectiveness. It does <strong>not</strong> treat supporting roles as worthless.</p>'+
       '<div class="tch-actionrow">'+[10,15,20,25,30,35,40,50].map(function(n){
         return '<button data-act="wage-share" data-share="'+n+'" class="'+(w.share===n?'primary':'')+'">'+n+'%</button>';}).join("")+'</div>'+
       '<p class="tch-hint">Scenario: target wage '+w.share+'% of reported direct value, rounded to nearest $1,000. This is a budget scenario, NOT a proven market salary. Adjust for retention, special duties and competition.</p>'+
@@ -822,7 +822,7 @@
               'Value unavailable: no salary target inferred.')+'</p>')+
         '</article>';
       }).join("")+
-      '<p class="tch-hint">The secretary’s own effectiveness can affect the reliability of these values. Zero and null are distinct. A higher wage does not directly affect a company star-up.</p></section>';
+      '<p class="tch-hint">The secretary own effectiveness can affect the reliability of these values. Zero and null are distinct. A higher wage does not directly affect a company star-up.</p></section>';
   }
   function trainingWeekV11(c){
     const p=trainPlanV3(c),base=p.base,starting=p.available,now=Date.now();
@@ -849,7 +849,7 @@
       '<p>Illustration if you use existing trains on <strong>currently eligible</strong> paid commitments each day, then generate the baseline '+f.base+'★ trains at each company close.</p>'+
       '<div class="tch-weekgrid"><span>Day</span><span>Give</span><span>Bank</span><span>Overflow</span>'+
       f.days.map(function(d){return '<span>'+d.day+'</span><b>'+d.given+'</b><b>'+d.stored+'</b><b class="'+(d.minimumLost?'bad':'')+'">'+d.minimumLost+'</b>';}).join("")+'</div>'+
-      '<p class="tch-hint">Assumes no star changes, new purchases, new hires or other training; excludes trainers’ extra trains. It is not an automatic schedule or confirmed future event.</p></section>';
+      '<p class="tch-hint">Assumes no star changes, new purchases, new hires or other training; excludes trainer extra trains. It is not an automatic schedule or confirmed future event.</p></section>';
   }
   function launcherAlertsV11(c){
     if(!c||!c.profile)return {items:[],count:0};
@@ -876,6 +876,199 @@
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
     opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
   }
+
+  function employeePenaltyV12(p) {
+    const e=p&&p.effectiveness||{},n=Number(e.addiction),i=Number(e.inactivity),settled=Number(e.settled_in);
+    return {addiction:Number.isFinite(n)?n:null,inactivity:Number.isFinite(i)?i:null,
+      settled:Number.isFinite(settled)?settled:null,days:financialAmount(p.days_in_company)};
+  }
+  function wageRiskModelV12(c) {
+    const base=wageModelV11(c),rows=base.rows.map(function(row){
+      const p=(c.staff||[]).find(function(x){return String(x.id)===String(row.id);})||{};
+      const pen=employeePenaltyV12(p),notes=[];
+      if(pen.days!==null && pen.days>=90)notes.push("Long-tenure retention factor: review before reducing pay");
+      if(pen.days!==null && pen.days<10)notes.push("Still settling in: effectiveness may rise");
+      if(pen.addiction!==null && pen.addiction<=-5)notes.push("Addiction penalty "+pen.addiction+" EFF: discuss recovery before relying on value estimates");
+      if(pen.inactivity!==null && pen.inactivity<=-5)notes.push("Inactivity penalty "+pen.inactivity+" EFF: check recent activity");
+      if(row.value===0)notes.push("Indirect contribution: avoid wage cuts based on zero direct value");
+      if(row.value===null)notes.push("HR value missing: cannot calculate a contribution-based pay band");
+      const unit=row.value!==null&&row.value>0&&row.target!==null?row.target:null;
+      const tenure=pen.days!==null&&pen.days>=90?1.1:1;
+      const lo=unit===null?null:Math.max(0,Math.round(unit*.85/1000)*1000);
+      const hi=unit===null?null:Math.min(25000000,Math.round(unit*1.15*tenure/1000)*1000);
+      const label=lo===null||row.wage===null?"Insufficient value data":
+        row.wage<lo?"Below planning band":row.wage>hi?"Above planning band":"Within planning band";
+      return Object.assign({},row,{pen:pen,notes:notes,lo:lo,hi:hi,label:label});
+    });
+    return {rows:rows,share:base.share,atRisk:rows.filter(function(x){return x.pen.addiction!==null&&x.pen.addiction<=-5||x.pen.inactivity!==null&&x.pen.inactivity<=-5;}).length};
+  }
+  function wageRiskPanelV12(c) {
+    const m=wageRiskModelV12(c);
+    return '<section class="tch-panel"><h2>Retention, addiction & wage bands</h2>'+
+      '<p>Indicative band: 85-115% of the selected value-share budget, with a 10% upper retention allowance after 90 days. This is a planning assumption, not an official Torn wage formula.</p>'+
+      '<div class="tch-metrics">'+metricV2("Effectiveness concerns",m.atRisk,"Significant addiction / inactivity penalties","","staff-wages")+
+      metricV2("Missing HR values",m.rows.filter(function(x){return x.value===null;}).length,"Salary band deliberately withheld","","staff-wages")+'</div>'+
+      m.rows.map(function(x){return '<div class="tch-wage-risk"><div class="tch-sectionhead"><strong>'+esc(x.name)+'</strong>'+
+        '<span class="tch-mini">'+esc(x.label)+'</span></div>'+
+        '<p>Planning range: '+(x.lo===null?"Unavailable":money(x.lo)+" - "+money(x.hi))+
+        ' / day · Tenure '+esc(x.pen.days===null?"Unknown":x.pen.days+" days")+'</p>'+
+        (x.notes.length?'<small>'+x.notes.map(esc).join(" · ")+'</small>':"")+
+        '</div>';}).join("")+
+      '<p class="tch-hint">Retain special-role staffing even when its direct value is low. Never infer that wages increase star rating; all suggestions require judgement.</p></section>';
+  }
+  function candidateStatsV12(a) {
+    const p=a&&a.player||{};
+    const stats=p.stats||a.stats||{};
+    const readNum=function(k){return financialAmount(stats[k]!==undefined?stats[k]:p[k]);};
+    const man=readNum("manual_labor"),intel=readNum("intelligence"),end=readNum("endurance");
+    if(man===null||intel===null||end===null)return null;
+    return {manual_labor:man,intelligence:intel,endurance:end};
+  }
+  function replacementsV12(c){
+    const roles=roleList(c),staff=c.staff||[],apps=c.applications||[];
+    const protectedNames=/manager|marketer|cleaner|human resources|secretary|trainer/i;
+    const output=[];
+    apps.forEach(function(a){
+      const stats=candidateStatsV12(a);
+      if(!stats)return;
+      const person=a.player||{}, candidate={stats:stats};
+      staff.forEach(function(p){
+        const name=p.position&&p.position.name||"",role=roleByName(roles,name);
+        if(!role||protectedNames.test(name))return;
+        const before=score(p,role),after=score(candidate,role);
+        if(before===null||after===null)return;
+        const points=(after-before)*roleGrowthWeightV11(c,name);
+        if(points<12)return;
+        output.push({applicantId:person.id,name:String(person.name||"Applicant"),employeeId:p.id,
+          current:p.name,role:name,before:before,after:after,points:points,
+          days:financialAmount(p.days_in_company)});
+      });
+    });
+    return output.sort(function(a,b){return b.points-a.points;}).slice(0,8);
+  }
+  function replacementPanelV12(c){
+    const rows=replacementsV12(c);
+    return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Hiring impact simulator</h2><span class="tch-mini">'+rows.length+' comparisons</span></div>'+
+      '<p>Compares applicants with the employee occupying the same revenue-facing role. Shows potential working-stat fit improvement, not future revenue. Special roles are deliberately excluded from replacement suggestions.</p>'+
+      (rows.length?rows.map(function(r){return '<div class="tch-wage-risk"><strong>'+esc(r.name)+' for '+esc(r.role)+'</strong>'+
+        '<p>Compare with '+esc(r.current)+': '+fitText(r.before)+' → '+fitText(r.after)+
+        ' · Weighted improvement +'+r.points.toFixed(1)+' pp</p>'+
+        '<small>Read-only comparison. Consider loyalty, absence, paid training commitments and retention before making staffing decisions.</small></div>';}).join(""):
+        '<p class="tch-hint">No candidate clears the conservative +12-point fit threshold, or applicant working stats are unavailable.</p>')+
+      '</section>';
+  }
+  function positionCountsV12(items){
+    const map={};
+    (items||[]).forEach(function(p){
+      const name=typeof p==="string"?p:String(p&&p.position&&(typeof p.position==="string"?p.position:p.position.name)||"");
+      if(name)map[name]=(map[name]||0)+1;
+    });return map;
+  }
+  function rosterBenchV12(c){
+    const teams=c.rivalTeams&&Array.isArray(c.rivalTeams.rows)?c.rivalTeams.rows:[];
+    const current=positionCountsV12(c.staff),usable=teams.filter(function(x){return x&&x.counts&&Object.keys(x.counts).length>0;});
+    const roles=new Set(Object.keys(current));
+    usable.forEach(function(x){Object.keys(x.counts).forEach(function(k){roles.add(k);});});
+    const counts=Array.from(roles).sort().map(function(role){
+      const vals=usable.map(function(t){return Number(t.counts[role]||0);}).sort(function(a,b){return a-b;});
+      const median=vals.length?vals[Math.floor(vals.length/2)]:null;
+      return {role:role,own:current[role]||0,median:median};
+    });
+    return {teams:usable,counts:counts,scannedAt:c.rivalTeams&&c.rivalTeams.observedAt};
+  }
+  function rivalRostersPanelV12(c){
+    const m=rosterBenchV12(c);
+    return '<section class="tch-panel"><h2>10-star staffing patterns</h2>'+
+      '<p>Inspect up to five high-income 10-star Fitness Centers. Only public position names and their counts are stored, not individual names or working stats.</p>'+
+      '<button data-act="scan-rival-rosters" '+(busy?"disabled":"")+'>Compare 10-star role layouts</button>'+
+      '<p class="tch-hint">Manual lookup. Roster data is unavailable if the API key lacks access. Correlation does not establish the ideal mix for your current star level.</p>'+
+      (m.teams.length?'<div class="tch-metrics">'+m.teams.map(function(x){
+        return metricV2(x.name,String(x.total||0)+" employees",x.rating+" stars · "+money(x.weekly)+"/week");
+      }).join("")+'</div>'+
+      '<div class="tch-weekgrid"><span>Role</span><span>Yours</span><span>10★ median</span><span>Difference</span>'+
+      m.counts.map(function(x){return '<span>'+esc(x.role)+'</span><b>'+x.own+'</b><b>'+x.median+
+        '</b><b>'+(x.median-x.own>0?"+":"")+(x.median-x.own)+'</b>';}).join("")+'</div>':
+      '<p class="tch-hint">No role layouts collected yet. Scan public rivals first, then compare their rosters.</p>')+'</section>';
+  }
+  function valueOfMetricV12(p,k){
+    const x=p&&p[k];const n=Number(x);
+    return x===null||x===undefined||!Number.isFinite(n)?null:n;
+  }
+  function statsAtV12(p){
+    return {rating:valueOfMetricV12(p,"rating"),efficiency:valueOfMetricV12(p,"efficiency"),
+      environment:valueOfMetricV12(p,"environment"),popularity:valueOfMetricV12(p,"popularity"),
+      weekly:valueOfMetricV12(p.income,"weekly")};
+  }
+  function changeImpactV12(c){
+    return (c.changeNotes||[]).slice(-8).reverse().map(function(evt){
+      const latest=statsAtV12(c.profile||{}),changes={};
+      Object.keys(latest).forEach(function(k){
+        changes[k]=latest[k]!==null&&evt.baseline&&evt.baseline[k]!==null&&evt.baseline[k]!==undefined?
+          latest[k]-evt.baseline[k]:null;
+      });
+      const days=Math.max(0,(Date.now()-Date.parse(evt.observedAt))/86400000);
+      return {evt:evt,changes:changes,days:days,hasLater:Date.parse(c.lastRefresh||"")>Date.parse(evt.observedAt)};
+    });
+  }
+  function markChangeV12(c,label){
+    if(!c||!c.profile)throw Error("Refresh the company before recording a change.");
+    if(!["Positions changed","Employee hired/left","Wages changed","Advertising or prices changed","Other change"].includes(label))
+      throw Error("Unsupported change label.");
+    c.changeNotes=c.changeNotes||[];
+    c.changeNotes.push({id:id(),observedAt:new Date().toISOString(),label:label,baseline:statsAtV12(c.profile)});
+    c.changeNotes=c.changeNotes.slice(-40);
+  }
+  function changeTrackingPanelV12(c){
+    const changes=changeImpactV12(c);
+    return '<section class="tch-panel"><h2>Before & after company changes</h2>'+
+      '<p>Record an action after you make it manually in Torn. Future manual refreshes then compare company performance with this baseline.</p>'+
+      '<div class="tch-actionrow"><select id="tch-change-kind">'+
+      ["Positions changed","Employee hired/left","Wages changed","Advertising or prices changed","Other change"].map(function(k){return '<option>'+esc(k)+'</option>';}).join("")+
+      '</select><button class="primary" data-act="mark-change">Mark change now</button></div>'+
+      (changes.length?changes.map(function(x){return '<div class="tch-wage-risk"><strong>'+esc(x.evt.label)+
+        '</strong><small>Recorded '+esc(new Date(x.evt.observedAt).toLocaleDateString())+' · '+x.days.toFixed(1)+' days ago</small>'+
+        (x.hasLater?'<p>Efficiency '+deltaV12(x.changes.efficiency,' pp')+
+          ' · Environment '+deltaV12(x.changes.environment,' pp')+
+          ' · Popularity '+deltaV12(x.changes.popularity,' pp')+
+          ' · Weekly income '+deltaV12(x.changes.weekly,' dollars')+'</p>':
+          '<p>Refresh after the next company report to measure observed changes.</p>')+
+        '<small>Other changes and weekly rollover may contribute; not a causal attribution.</small></div>';}).join(""):
+        '<p class="tch-hint">No marked changes yet. All records stay private in Torn PDA storage.</p>')+'</section>';
+  }
+  function deltaV12(n,unit){
+    if(n===null||!Number.isFinite(n))return "Unknown";
+    return (n>=0?"+":"")+n.toLocaleString("en-US")+unit;
+  }
+  function sundayReviewV12(c){
+    const snapshots=(c.snapshots||[]).filter(function(s){return s&&s.observedAt&&s.rating!==null&&s.rating!==undefined;});
+    const byDay={};snapshots.forEach(function(s){byDay[String(s.observedAt).slice(0,10)]=s;});
+    const dates=Object.keys(byDay).sort();
+    const week=dates.slice(-7).map(function(d){return byDay[d];}),sundays=dates.filter(function(d){return new Date(d+"T12:00:00Z").getUTCDay()===0;});
+    const current=sundays.length?byDay[sundays[sundays.length-1]]:null;
+    const prior=sundays.length>=2?byDay[sundays[sundays.length-2]]:null;
+    const average=function(rows,k){const vals=rows.map(function(x){return valueOfMetricV12(x,k);}).filter(function(x){return x!==null;});return vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null;};
+    const peers=Array.isArray(c.peerHistory)?c.peerHistory:[],now=peers[peers.length-1],before=peers.length>=2?peers[peers.length-2]:null;
+    return {latest:current,previous:prior,days:week.length,averageEfficiency:average(week,"efficiency"),
+      averageEnvironment:average(week,"environment"),averagePopularity:average(week,"popularity"),
+      peerGap:now&&now.gap!=null?now.gap:null,previousPeerGap:before&&before.gap!=null?before.gap:null,
+      peerComparability:!!(now&&before&&now.target===before.target&&now.competitors===before.competitors)};
+  }
+  function sundayPanelV12(c){
+    const s=sundayReviewV12(c),rating=Number(c.profile.rating);
+    return '<section class="tch-panel"><h2>Sunday star review</h2><p>Compare actual star ratings and observed performance. This is a retrospective report, not a predicted promotion date.</p>'+
+      '<div class="tch-metrics">'+metricV2("Current stars",rating+"/10","Torn reported","","growth-review")+
+        metricV2("Change since saved Sunday",s.latest&&s.previous?deltaV12(s.latest.rating-s.previous.rating," ★"):"Not enough Sundays",
+          "Two Sunday snapshots required","","growth-review")+
+        metricV2("Observed days",s.days,"Latest seven distinct dates","","growth-review")+
+        metricV2("Weekly peer gap change",s.peerComparability&&s.peerGap!==null&&s.previousPeerGap!==null?
+          deltaV12(s.peerGap-s.previousPeerGap," dollars"):"Insufficient comparable scans","Manual rival snapshots","","growth-rivals")+'</div>'+
+      '<div class="tch-radar">'+[["Avg efficiency",s.averageEfficiency],["Avg environment",s.averageEnvironment],["Avg popularity",s.averagePopularity]].map(function(x){
+        return '<div><small>'+x[0]+'</small><strong>'+esc(x[1]===null?"Unknown":x[1].toFixed(1)+"%")+'</strong></div>';
+      }).join("")+'</div>'+
+      (sundaysNeedV12(c)?'<p class="tch-hint">Save manual observations on two different Sundays to show week-over-week star changes.</p>':"")+
+      '<p class="tch-hint">Only recorded daily snapshots count. Income comparisons use Torn reported rolling weekly values, not fabricated weekly settlements.</p></section>';
+  }
+  function sundaysNeedV12(c){const days=new Set((c.snapshots||[]).filter(function(s){return s&&s.observedAt&&new Date(String(s.observedAt).slice(0,10)+"T12:00:00Z").getUTCDay()===0;}).map(function(s){return String(s.observedAt).slice(0,10);}));return days.size<2;}
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
 
@@ -883,6 +1076,7 @@
   style.textContent += "#tch-open{bottom:auto;right:auto;left:16px;top:calc(100dvh - 125px);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}#tch-open:active{cursor:grabbing}";
   style.textContent += "\n#tch-open{background:#1268a5;box-shadow:0 6px 25px #051326bb}\n#tch-root{background:#0c1626;color:#edf7ff}\n#tch-root .tch-top,#tch-root .tch-bottom{background:#12243a;border-color:#385979}\n#tch-root .tch-hero{background:linear-gradient(130deg,#133f64,#192945 60%,#123754);border-color:#4383ae}\n#tch-root .tch-panel,#tch-root .tch-person,#tch-root .tch-metric{background:#1a2e46;border-color:#3b6182}\n#tch-root .tch-eyebrow,#tch-root .tch-kicker{color:#6cd8ff}\n#tch-root button.primary,#tch-root .tch-switch button.active{background:#1468ad;border-color:#67c7ff}\n#tch-root .tch-bottom{grid-template-columns:repeat(5,minmax(0,1fr))}\n#tch-root .tch-bottom button{font-size:10px;min-width:0;padding:3px 1px}\n#tch-root .tch-radar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:11px 0}\n#tch-root .tch-radar div{background:#24415d;border:1px solid #42698c;border-radius:10px;padding:10px}\n#tch-root .tch-radar small,#tch-root .tch-radar strong{display:block}\n#tch-root .tch-radar small{font-size:10px;color:#c6d8e9}\n#tch-root .tch-radar strong{font-size:22px}\n#tch-root .tch-stockrow{background:#223950;border:1px solid #405f7c;border-radius:12px;padding:13px;margin:11px 0}\n#tch-root .tch-stockrow p{font-size:12px}\n#tch-root .tch-stockrow>strong{color:#83ddff}\n#tch-root .tch-clickable:focus-visible,#tch-root button:focus-visible{outline:3px solid #60cdff}\n#tch-root.theme-light .tch-stockrow,#tch-root.theme-light .tch-radar div{background:#e9f3fc;border-color:#abc5db;color:#162a40}\n#tch-root.theme-light .tch-stockrow>strong{color:#176696}\n";
   style.textContent += "\n#tch-open{display:flex;align-items:center;gap:8px;white-space:nowrap}\n#tch-open .tch-launcherbadge{display:inline-flex;align-items:center;gap:2px;background:#f04458;color:white;border-radius:999px;padding:2px 7px;border:2px solid #0d1b2e;min-width:28px;height:25px;justify-content:center;font-size:11px;font-weight:900}\n#tch-root .tch-starplan .tch-insight{width:100%;text-align:left}\n#tch-root .tch-wagerow{background:#213952;border:1px solid #41617f;border-radius:12px;padding:12px;margin:10px 0}\n#tch-root .tch-wagegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}\n#tch-root .tch-wagegrid span{font-size:11px;color:#b9d2e7;background:#273f59;padding:8px;border-radius:8px}\n#tch-root .tch-wagegrid b{display:block;font-size:16px;color:#f0faff}\n#tch-root .tch-wage-target{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid #496987;padding-top:10px;font-size:12px}\n#tch-root .tch-weekgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;text-align:center;margin:12px 0}\n#tch-root .tch-weekgrid>*{background:#25415c;border-radius:6px;padding:8px 3px;min-width:0}\n#tch-root.theme-light .tch-wagerow{background:#e9f3fc;border-color:#abc5db;color:#142e47}\n#tch-root.theme-light .tch-wagegrid span{background:#dcebf7;color:#153a58}\n#tch-root.theme-light .tch-wagegrid b{color:#152a42}\n";
+  style.textContent += "\n#tch-root .tch-wage-risk{border:1px solid #3b6684;background:#213a54;border-radius:12px;margin:10px 0;padding:12px;overflow-wrap:anywhere}\n#tch-root .tch-wage-risk>strong{font-size:14px}\n#tch-root .tch-wage-risk small{display:block;font-size:11px;color:#accfe8}\n#tch-root .tch-wage-risk p{margin:5px 0}\n#tch-root .tch-starplan .tch-insight{text-align:left}\n#tch-root .tch-weekgrid{overflow-x:auto;min-width:0}\n#tch-root.theme-light .tch-wage-risk{background:#e9f3fc;border-color:#9dbbd3;color:#16354e}\n#tch-root.theme-light .tch-wage-risk small{color:#375d78}\n";
   style.textContent+="#tch-open{touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab}#tch-open:active{cursor:grabbing}#tch-open[hidden],#tch-root[hidden]{display:none!important}";
 
   style.textContent += "#tch-root{font-family:system-ui,-apple-system,Arial,sans-serif;background:#101923;color:#f4f7fb}#tch-root .tch-main{padding:16px 13px 118px;max-width:760px;margin:0 auto}#tch-root .tch-top{height:auto;min-height:76px;padding:12px 15px;gap:8px}#tch-root .tch-headline{flex:1;min-width:0}#tch-root .tch-headline strong{display:block;font-size:20px;line-height:1.2}#tch-root .tch-eyebrow{letter-spacing:.09em;font-size:10px;color:#6af0d7;font-weight:700}#tch-root .tch-timestamp{font-size:11px;color:#c0d5e5;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}#tch-root .tch-iconbtn{min-width:40px;padding:7px;font-size:21px;border-radius:12px}#tch-root .tch-bottom{position:fixed;bottom:0;left:0;right:0;background:#152639;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));z-index:3;border-top:1px solid #4b6a85;padding:7px 5px calc(env(safe-area-inset-bottom) + 8px);box-shadow:0 -9px 25px #050c1599}#tch-root .tch-bottom button{border:0;display:flex;flex-direction:column;gap:2px;align-items:center;background:transparent;color:#c7d7e5;border-radius:10px;min-height:56px;padding:3px;font-size:11px}#tch-root .tch-bottom button.active{background:#284d57;color:#f0fffc}#tch-root .tch-navicon{font-size:23px;height:27px}#tch-root .tch-hero{background:linear-gradient(128deg,#153d4b,#1b314e 65%,#172a3e);border:1px solid #446f7d;border-radius:17px;padding:18px;margin-bottom:13px}#tch-root .tch-kicker{color:#72f1da;font-size:11px;font-weight:800;letter-spacing:.1em}#tch-root .tch-hero-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 15px}#tch-root .tch-hero-line strong{font-size:22px;line-height:1.2}#tch-root .tch-rating{background:#16736f;border-radius:9px;padding:6px 10px;font-weight:800;white-space:nowrap}#tch-root .tch-progress{height:8px;background:#355368;border-radius:50px;overflow:hidden;margin:0 0 12px}#tch-root .tch-progress b{height:100%;display:block;background:#37dfc1}#tch-root .tch-hero small{color:#cbdce8}#tch-root .tch-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}#tch-root .tch-metric{background:#263b51;border:1px solid #496882;border-radius:13px;padding:14px;min-width:0;display:flex;flex-direction:column;gap:7px}#tch-root .tch-metric>strong{font-size:22px;letter-spacing:-.02em;overflow-wrap:anywhere}#tch-root .tch-metric>small{font-size:11px;color:#c5d7e6}#tch-root .tch-metric.tch-danger{border-color:#ff7979;background:#49353f}#tch-root .tch-metric.tch-positive{border-color:#468b86}#tch-root .tch-panel{background:#203247;border:1px solid #47627b;border-radius:14px;padding:15px;margin:12px 0}#tch-root .tch-panel h2,#tch-root .tch-section h2{font-size:18px;margin:0 0 8px}#tch-root .tch-section{margin:12px 2px 18px}#tch-root .tch-section p{margin:4px 0 12px}#tch-root .tch-sectionhead,#tch-root .tch-personhead{display:flex;align-items:center;justify-content:space-between;gap:9px}#tch-root .tch-mini{font-size:11px;letter-spacing:.02em;color:#c0dbe8;background:#325069;border-radius:7px;padding:5px 8px}#tch-root .tch-priority{display:flex;align-items:center;gap:12px;margin-top:9px;border:1px solid #536980;background:#2b4058;padding:12px;border-radius:11px}#tch-root .tch-priority>span{height:30px;min-width:30px;border-radius:9px;display:grid;place-items:center;background:#385e6a;color:#b5ffe6;font-weight:800}#tch-root .tch-priority.warning>span{background:#846735;color:#fff}#tch-root .tch-priority.danger>span{background:#9c4755;color:#fff}#tch-root .tch-priority>div{flex:1;min-width:0}#tch-root .tch-priority strong,#tch-root .tch-priority small{display:block}#tch-root .tch-priority small{font-size:11px;color:#cad9e7}#tch-root .tch-priority button{font-size:12px;min-height:36px}#tch-root .tch-actiongrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .tch-actiongrid button{text-align:left;min-height:72px;padding:11px;background:#304b64}#tch-root .tch-actiongrid button span{display:block;font-size:11px;color:#c1d6e6}#tch-root .tch-actionrow{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:10px 0}#tch-root .tch-switch{display:flex;gap:5px;padding:4px;background:#1f334a;border:1px solid #405d75;border-radius:12px;overflow-x:auto;scrollbar-width:none}#tch-root .tch-switch button{flex:1;white-space:nowrap;min-height:38px;padding:8px;border:none;background:transparent;font-size:12px}#tch-root .tch-switch button.active{background:#0b8079;color:#fff}#tch-root .tch-person,#tch-root .tch-review{background:#263b50;border:1px solid #476983;border-radius:13px;padding:13px;margin:10px 0}#tch-root .tch-personhead{justify-content:flex-start}#tch-root .tch-personhead>div:nth-child(2){flex:1}#tch-root .tch-personhead strong,#tch-root .tch-personhead small{display:block}#tch-root .tch-personhead small{font-size:12px;color:#c6d8e8}#tch-root .tch-avatar{width:39px;height:39px;border-radius:12px;background:#116963;display:grid;place-items:center;font-weight:800;font-size:17px}#tch-root .tch-eff{background:#344b64;border-radius:8px;padding:6px;font-size:17px;font-weight:800}#tch-root .tch-eff small{font-size:9px;color:#d5e7f2}#tch-root .tch-recommend{display:flex;align-items:center;gap:9px;margin:12px 0;padding:8px;background:#1d3348;border-radius:9px;flex-wrap:wrap}#tch-root .tch-recommend span{font-size:11px;color:#d5e2ec}#tch-root .tch-recommend strong{font-size:14px}#tch-root .tch-recommend.highlight strong{color:#5ce8ce}#tch-root .tch-recommend small{color:#c6d9e6}#tch-root .tch-statstrip{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0;color:#c5d7e5;font-size:11px}#tch-root .tch-statstrip span{padding:5px 7px;background:#304962;border-radius:7px}#tch-root .tch-statstrip b{color:#fff}#tch-root .tch-whatif{display:flex;align-items:center;justify-content:space-between;gap:12px}#tch-root .tch-whatif select{flex:1;max-width:220px}#tch-root .tch-hint{font-size:12px;color:#c4d7e6;margin:12px 0}#tch-root .tch-queueitem,#tch-root .tch-record{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 1px;border-bottom:1px solid #456077}#tch-root .tch-queueitem>div:first-child,#tch-root .tch-record>div:first-child{flex:1}#tch-root .tch-queueitem strong,#tch-root .tch-queueitem small,#tch-root .tch-record strong,#tch-root .tch-record small{display:block}#tch-root .tch-queueitem small,#tch-root .tch-record small{font-size:11px;color:#cbd9e6}#tch-root .tch-queueitem b{font-size:22px;color:#8af1d8}#tch-root .tch-queueitem>div:last-child{text-align:right}#tch-root .tch-record>div:last-child{text-align:right}#tch-root .tch-record button{display:block;margin-left:auto;min-height:34px}#tch-root .tch-fieldrow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}#tch-root .tch-fieldrow>select,#tch-root .tch-fieldrow>input,#tch-root .tch-fieldrow>label{flex:1 1 110px;min-width:0}#tch-root .tch-fieldrow>label input{display:block;width:100%;margin-top:5px}#tch-root .tch-empty{padding:20px;text-align:center;border-radius:9px;background:#2b445b;color:#d6e4ed}#tch-root .tch-minikpis{display:flex;gap:10px;margin:13px 0}#tch-root .tch-minikpis span{background:#37536b;padding:7px 11px;border-radius:7px}#tch-root .tch-highlight-number{font-size:30px;font-weight:800}#tch-root .tch-welcome{padding:24px}#tch-root .tch-welcome h2{font-size:24px}#tch-root.theme-light{background:#f3f6f9;color:#182d43;color-scheme:light}#tch-root.theme-light .tch-panel,#tch-root.theme-light .tch-person,#tch-root.theme-light .tch-review,#tch-root.theme-light .tch-metric{background:#fff;color:#1d3246;border-color:#cbd9e5}#tch-root.theme-light .tch-top,#tch-root.theme-light .tch-bottom{background:#e7eff6;color:#193449}#tch-root.theme-light .tch-bottom button{color:#354c5e}#tch-root.theme-light .tch-bottom button.active{background:#c9eae4;color:#095f58}#tch-root.theme-light .tch-section p,#tch-root.theme-light .tch-panel p,#tch-root.theme-light .muted,#tch-root.theme-light small,#tch-root.theme-light strong,#tch-root.theme-light h2,#tch-root.theme-light .tch-timestamp{color:#263f51}#tch-root.theme-light input,#tch-root.theme-light select,#tch-root.theme-light textarea{background:#fff;color:#12263a;border-color:#7995aa}#tch-root.theme-light .tch-switch{background:#e1ebf3}#tch-root.theme-light .tch-switch button{color:#233b4b}#tch-root.theme-light .tch-switch button.active{background:#167d78;color:#fff}#tch-root.theme-light .tch-priority,#tch-root.theme-light .tch-recommend,#tch-root.theme-light .tch-statstrip span,#tch-root.theme-light .tch-queueitem{background:#eef3f7;color:#193244}#tch-root.theme-light .tch-hero{background:linear-gradient(135deg,#e1f6ef,#dceaf7);color:#193449}#tch-root.theme-light .tch-hero-line strong,#tch-root.theme-light .tch-hero small{color:#163647}#tch-root.theme-light .tch-eyebrow,#tch-root.theme-light .tch-kicker{color:#046b60}#tch-root.theme-light .tch-avatar{background:#a5ded2;color:#13463d}";
@@ -1174,7 +1368,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.1.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.2.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -1255,7 +1449,7 @@
       {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
       {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
-    if(staffView==="wages")return '<div class="tch-section"><h2>Staff · Wage helper</h2>'+buttonsV2("Staff view",options)+'</div>'+wagesPanelV11(c);
+    if(staffView==="wages")return '<div class="tch-section"><h2>Staff · Wage helper</h2>'+buttonsV2("Staff view",options)+'</div>'+wagesPanelV11(c)+wageRiskPanelV12(c);
     if(staffView==="simulator")return '<div class="tch-section"><h2>Staff optimiser</h2><p>Explore alternative staffing plans before making decisions.</p>'+buttonsV2("Staff view",options)+'</div>'+scenarioV2(c);
     const roles=roleList(c),sc=scenarioModel(c),suggested=suggestions(c);
     const suggestionById={};
@@ -1272,7 +1466,7 @@
       '<div><span>Team changes tested</span><strong>'+sc.changeCount+'</strong></div></div>'+
       (sc.count<c.staff.length?'<p class="tch-hint">Only '+sc.count+' staff have comparable role requirements and stats.</p>':"")+
       '<button data-act="staff-view" data-view="simulator">Open team simulator →</button></section>'+balancedPanelV3(c)+applicantPanelV3(c)+
-      '<div class="tch-list">'+people.map(function(r){
+      replacementPanelV12(c)+'<div class="tch-list">'+people.map(function(r){
         const p=r.person,stats=p.stats||{},effect=p.effectiveness||{},suggestion=suggestionById[p.id];
         const best=suggestion&&suggestion.recommend?suggestion.proposed:null;
         return '<article class="tch-person"><button class="tch-person-button" data-act="employee-detail" data-id="'+esc(p.id)+'">'+
@@ -1413,7 +1607,8 @@
       {action:"growth-view",id:"performance",name:"Overview",active:growthView==="performance"},
       {action:"growth-view",id:"pricing",name:"Pricing & ads",active:growthView==="pricing"},
       {action:"growth-view",id:"accounts",name:"Accounts",active:growthView==="accounts"},
-      {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"}]);
+      {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"},
+      {action:"growth-view",id:"review",name:"Sunday review",active:growthView==="review"}]);
     return '<div class="tch-section"><h2>10-star growth</h2><p>Revenue improvement within your daily loss limit of '+esc(money(c.lossLimit))+'. Estimates are labelled.</p>'+switches+'</div>'+
       (growthView==="performance"?starGrowthPanelV11(c)+'<div class="tch-metrics">'+
          metricV2("Current rating",c.profile.rating+" / 10","Competitive star progression","","growth-performance")+
@@ -1422,7 +1617,8 @@
          metricV2("Advertising",money(a.ad),"Current daily spend","","growth-pricing")+'</div>'+
          '<section class="tch-panel"><h2>Profit and growth</h2><div class="tch-highlight-number">'+esc(a.known?money(a.profit):"Incomplete")+'</div><p>Estimated operating P/L after current wages and advertising, excluding unknown costs.</p>'+
          '<div class="tch-priority '+(!a.known?"warning":a.headroom<0?"danger":"ok")+'"><span>'+(!a.known?"?":a.headroom<0?"!":"✓")+'</span><div><strong>'+esc(a.known?money(a.headroom):"Unknown")+' headroom</strong><small>'+(!a.known?"Financial inputs are incomplete; loss policy cannot be assessed.":"Relative to permitted −"+esc(money(c.lossLimit))+" daily operating result")+'</small></div></div></section>'+growthAdvisorV2(c):
-      growthView==="pricing"?growth(c):growthView==="rivals"?rivalsPanelV11(c):finances(c));
+      growthView==="pricing"?growth(c):growthView==="rivals"?rivalsPanelV11(c)+rivalRostersPanelV12(c):
+      growthView==="review"?sundayPanelV12(c)+changeTrackingPanelV12(c):finances(c));
   }
   function settingsV2(c){
     const native=hasPdaKey(), connected=Boolean(activeApiKey());
@@ -1514,7 +1710,9 @@
         } catch (_) { /* Fallback only for known Fitness Center requirements. */ }
       }
       const a=accounting(c);
-      c.snapshots.push({observedAt:c.lastRefresh,revenue:a.revenue,wages:a.wages,ad:a.ad,profit:a.profit,complete:a.known,rating:p.rating,customers:p.customers && p.customers.daily,price:c.stock[0] && c.stock[0].price,stock:(c.stock||[]).map(function(x){return {id:x.id,sold_amount:x.sold_amount,price:x.price};}),
+      c.snapshots.push({observedAt:c.lastRefresh,revenue:a.revenue,wages:a.wages,ad:a.ad,profit:a.profit,complete:a.known,rating:p.rating,
+        efficiency:p.efficiency,environment:p.environment,popularity:p.popularity,
+        weekly:valueOfMetricV12(p.income,"weekly"),customers:p.customers && p.customers.daily,price:c.stock[0] && c.stock[0].price,stock:(c.stock||[]).map(function(x){return {id:x.id,sold_amount:x.sold_amount,price:x.price};}),
         roster:Object.fromEntries(c.staff.map(function(e){return [String(e.id),{
           position:e.position&&e.position.name||null,effectiveness:e.effectiveness&&e.effectiveness.total!=null?Number(e.effectiveness.total):null,
           stats:{manual_labor:e.stats&&e.stats.manual_labor,intelligence:e.stats&&e.stats.intelligence,endurance:e.stats&&e.stats.endurance}
@@ -1616,6 +1814,32 @@
     });
   }
 
+
+  async function scanRivalRostersV12(){
+    return work(async function(){
+      const c=current();
+      if(!c||!c.profile)throw Error("Refresh company first.");
+      const peers=peerModelV11(c).rows.filter(function(x){return x.rating===10&&x.id!==Number(c.profile.id);})
+        .sort(function(a,b){return b.weekly-a.weekly;}).slice(0,5);
+      if(!peers.length)throw Error("Scan same-type public competitors first. No ten-star companies in saved results.");
+      const rows=[],errors=[];
+      for(const p of peers){
+        try {
+          const raw=await read("company/"+p.id+"/employees");
+          const employees=Array.isArray(raw.employees)?raw.employees:
+            raw.employees&&typeof raw.employees==="object"?Object.values(raw.employees):[];
+          const counts=positionCountsV12(employees);
+          if(!Object.keys(counts).length){errors.push("No public positions for "+p.name);continue;}
+          rows.push({id:p.id,name:p.name,rating:p.rating,weekly:p.weekly,
+            counts:counts,total:Object.values(counts).reduce(function(t,n){return t+n;},0)});
+        }catch(e){errors.push("Could not read "+p.name);}
+      }
+      if(!rows.length)throw Error("Torn provided no usable public role layouts. Public employee permissions may differ.");
+      c.rivalTeams={rows:rows,observedAt:new Date().toISOString(),failures:errors.length};
+      await persist();
+      message="Read "+rows.length+" ten-star role layouts; "+errors.length+" unavailable. Counts only; no private employee data saved.";
+    });
+  }
   async function scanPeersV11(){
     return work(async function(){
       const c=current(),type=c&&c.profile&&Number(c.profile.type&&c.profile.type.id);
@@ -1641,6 +1865,10 @@
       if(!pages)throw Error("No company directory pages loaded.");
       c.peers={rows:rows.slice(0,500),total:total,complete:complete,scanned:rows.length,
         observedAt:new Date().toISOString(),typeId:type};
+      const report=peerModelV11(c);
+      c.peerHistory=c.peerHistory||[];
+      c.peerHistory.push({observedAt:c.peers.observedAt,target:report.target,gap:report.gap,competitors:report.neighbours.length,median:report.benchmark});
+      c.peerHistory=c.peerHistory.slice(-35);
       await persist();
       message="Scanned "+rows.length+" public "+String(c.profile.type.name||"company")+" listings ("+
         (complete?"directory complete":"sample capped at 500")+
@@ -1721,6 +1949,13 @@
     if (act==="more-payments"){paymentViewLimit+=35;draw();return;}
     if (act==="growth-view"){growthView=el.dataset.view;draw();return;}
     if (act==="scan-peers")return scanPeersV11();
+    if (act==="scan-rival-rosters")return scanRivalRostersV12();
+    if (act==="mark-change"){
+      const select=root.querySelector("#tch-change-kind");
+      if(!select)return notify("Choose a valid company change.","bad");
+      try {markChangeV12(c,select.value);}catch(e){return notify(e.message,"bad");}
+      return work(persist);
+    }
     if (act==="wage-share"){const n=Number(el.dataset.share);if(!c||![10,15,20,25,30,35,40,50].includes(n))return;c.wageShare=n;return work(persist);}
     if (act==="stock-days"){const n=Number(el.dataset.days);if(!c||![2,3,5,7].includes(n))return;c.stockDays=n;return work(persist);}
     if (act==="apply-balanced"){if(!c)return;const plan=balancedAssignmentV3(c);c.whatIf={};plan.changes.forEach(function(x){c.whatIf[x.id]=x.to;});tab="employees";staffView="simulator";return work(persist);}
@@ -1729,7 +1964,7 @@
       const target=el.dataset.target;
       const routes={"growth-performance":["growth","performance"],"growth-accounts":["growth","accounts"],
         "growth-pricing":["growth","pricing"],"training-queue":["training","queue"],
-        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","roster"],"staff-sim":["employees","simulator"],"staff-wages":["employees","wages"],"growth-rivals":["growth","rivals"],"stock":["stock",""]};
+        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","roster"],"staff-sim":["employees","simulator"],"staff-wages":["employees","wages"],"growth-rivals":["growth","rivals"],"growth-review":["growth","review"],"stock":["stock",""]};
       if(target==="refresh"){refresh();return;}
       if(!Object.prototype.hasOwnProperty.call(routes,target))return;
       const route=routes[target];tab=route[0];if(tab==="growth")growthView=route[1];
