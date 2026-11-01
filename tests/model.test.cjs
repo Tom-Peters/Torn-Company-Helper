@@ -36,7 +36,7 @@ test("No gameplay HTTP writes or remote website scraping",()=>{
     assert.doesNotMatch(script,expression);
   // Foreground read-only company sync is permitted; explicit gameplay HTTP writes are not.
   assert.match(script,/function autoCompanyRefreshV112\(/);
-  assert.ok(script.includes('if(document.hidden||(!allowAnyPage&&!isCompanyPage()&&!open)||busy'));
+  assert.ok(script.includes('if(document.hidden||busy'));
   assert.match(script,/staxx:refresh-request/);
   assert.match(script,/now-lastAutoCompanyAttemptV112<15\*60000/);
   assert.match(script,/await refresh\(\)/);
