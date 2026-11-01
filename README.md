@@ -2,10 +2,25 @@
 
 **Author:** IamEEKY  
 **Platform:** Torn PDA (Android)  
-**Current status:** v1.1.0 star-growth director command centre  
+**Current status:** v1.2.0 launcher repair, star growth and team analytics  
 **Goal:** A strictly read-only, visual Torn company decision-support dashboard.
 
 > This is an independent community userscript. It is not affiliated with Torn.
+
+## v1.2.0: launcher reliability and director intelligence
+
+**Critical Torn PDA repair:** removes all curly apostrophes from the executable userscript after reproducing the exact case where Torn PDA turns them into straight apostrophes and breaks JavaScript strings. A new unit test normalises quotes and executes the full startup path to verify the floating launcher and dashboard appear. Keep your **existing userscript URL**, and use the script's update function in Torn PDA.
+
+**New:** 
+- Staff → Wage helper: retention/loyalty context, actual addiction and inactivity EFF penalties, conditional range around a selectable percentage of HR-revealed direct contribution. Treat these as scenario budgets, not official or guaranteed wage recommendations. Zero-income support positions receive no direct-income-based wage target.
+- Staff → Suggestions: applicant-vs-current-employee comparison for comparable revenue roles. Never automatically recommends replacing a Cleaner, Marketer, Manager, Secretary or Trainer, and never dismisses employees.
+- Growth → Rivals: on-demand public employee-role layouts for up to five 10-star companies with high observed weekly income; the tool stores only counts by job position, not employees' names, stats or wages. The current roster is compared with a simple peer median. A 10-star role distribution may not work at 3 stars.
+- Growth → Sunday review: saved Sunday star results, daily performance averages and *comparable* rival-gap changes when data exists; no invented star-promotion dates.
+- Growth → Sunday review → Before & after: mark a staffing, hiring, wage, price or other change locally after making it in Torn, then compare with subsequent manually refreshed reports. These observations are never presented as causal proof.
+
+Daily refreshes now retain reported efficiency, environment, popularity and rolling weekly income in each local snapshot. Public rival scans retain a capped local series of benchmark observations.
+
+**Limitations:** Employee contribution is only available when Torn reveals HR/Secretary value; applicant working stats might be unavailable; public company roster fields vary by permission. Every feature is read-only, with explicitly user-triggered API calls and no polling. Existing local storage schema 1, payments, training history, manual corrections and installed URL remain unchanged.
 
 ## v1.1.0: star growth, rivals, HR wages and launcher alerts
 
