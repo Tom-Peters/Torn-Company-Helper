@@ -150,7 +150,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.9\.0/);
+ assert.match(source,/\/\/ @version\s+1\.9\.1/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
