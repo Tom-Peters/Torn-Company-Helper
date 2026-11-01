@@ -81,7 +81,7 @@ test("Public 10-star role layout read stores counts only, while preserving priva
  assert.equal(c.rivalTeams.rows[0].counts["Fitness Instructor"],2);
  assert.equal(c.rivalTeams.rows[0].counts["Cleaner"],1);
  assert.equal(JSON.stringify(c.rivalTeams).includes("Private One"),false);
- assert.match(app.rivalRostersPanelV12(c),/10-star staffing patterns/);
+ assert.match(app.rivalRostersPanelV12(c),/Peer staffing fit/);
 });
 test("Company change marker keeps a private baseline and compares only later observations",()=>{
  const {app}=fixture(),c=company();
@@ -123,5 +123,5 @@ test("All remote company actions remain GET-only and no real keys are committed"
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
  assert.match(source,/const PDA_APP_KEY = "###PDA-APIKEY###";/);
  assert.match(source,/\/\/ @author\s+IamEEKY/);
- assert.match(source,/\/\/ @version\s+1\.2\.0/);
+ assert.match(source,/\/\/ @version\s+1\.3\.0/);
 });
