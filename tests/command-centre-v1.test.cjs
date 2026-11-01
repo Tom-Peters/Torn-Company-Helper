@@ -48,6 +48,8 @@ test("Train planner warns about next-close overflow and prioritises paid queue",
 });
 test("Stock guide uses quantity, on-order stock, and target days without invented prices",()=>{
   const {app}=fixture(),c=example();
+  // A stock-carrying fixture is separate from the stockless Fitness Center.
+  c.profile.type={id:6,name:"Stocked Business"};
   let [stock]=app.stockAdviceV3(c);
   assert.equal(stock.days,1.5);
   assert.equal(stock.qty,10);
@@ -91,7 +93,8 @@ test("All reworked screens render without API requests or gameplay actions",()=>
   assert.match(app.staffV2(c),/Balanced team optimiser/);
   assert.match(app.staffV2(c),/Applications/);
   assert.match(app.trainingV2(c),/Train capacity & allocation/);
-  assert.match(app.stockV3(c),/Stock & replenishment/);
+  assert.match(app.stockV3(c),/Service operations/);
+  assert.ok(!app.stockAdviceV3(c).length,"Fitness Center must not report phantom products");
   assert.equal(calls(),0);
   assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
