@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.20.0
+// @version      1.21.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1489,8 +1489,9 @@
     const ready=p.queue.filter(function(x){return x.give>0;});
     const shortage=stockAdviceV3(c).filter(x=>x.qty!==null&&x.qty>0&&x.days!==null&&x.days<1).slice(0,3);
     if(shortage.length)items.push({id:"stock-shortage",target:"stock",glyph:"!",text:shortage.length+" stock line(s) under one day of cover"});
-    if(p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Trains may overflow at next close"});
-    else if(p.available!==null&&p.available>=17)items.push({id:"training-capacity",target:"training-queue",glyph:"◇",text:"Train bank near capacity"});
+    // Notify only when an eligible paid obligation can be fulfilled now.
+    // Capacity alone is not a paid-training alert.
+    if(p.allocate>0&&p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Available trains may overflow at next close"});
     if(p.allocate>0&&ready.length)items.push({id:"training-owed",target:"training-queue",glyph:"◇",
       text:p.allocate+" paid train(s) ready for "+ready.length+" eligible employee(s)"});
     if(companyProfitTrendV191(c).streak)items.push({id:'cashflow-loss-streak',target:'growth-accounts',glyph:'!',text:'Operating losses on three observed days'});
@@ -2185,7 +2186,7 @@
     else if(accounts.headroom<0)add(0,'Protect your daily loss limit',
       'Current operating model is '+money(-accounts.headroom)+' beyond your configured '+money(c.lossLimit)+' loss cap.','growth-accounts');
     const p=trainPlanV3(c);
-    if(p.overflow>0)add(1,'Assign trains before capacity is lost',
+    if(p.allocate>0&&p.overflow>0)add(1,'Assign trains before capacity is lost',
       p.overflow+' train(s) could be lost at the next company close; check the oldest eligible commitments first.','training-queue');
     const due=p.queue?.find(x=>x.give>0);
     if(due)add(2,'Give '+due.give+' train(s) to '+due.name,
@@ -2557,7 +2558,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.20.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.21.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -3262,7 +3263,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.20.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.21.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
