@@ -515,6 +515,169 @@
         '<span class="tch-mini '+(r.state==="complete"||r.state==="recent"?"good":"warn")+'">'+esc(r.state)+'</span></div>';
       }).join("")+'</section>';
   }
+
+  // v1 advisory engine. Never changes Torn gameplay state.
+  function trainPlanV3(c) {
+    const available=financialAmount(c.profile&&c.profile.trains),stars=financialAmount(c.profile&&c.profile.rating);
+    const base=stars===null?null:Math.min(stars,10),risk=available===null||base===null?null:Math.max(0,available+base-20);
+    const summary=aggregates(c).balance;
+    const eligible=Object.keys(summary).map(function(k){
+      const p=(c.staff||[]).find(function(x){return String(x.id)===k;});
+      return p&&num(p.days_in_company)>=3&&summary[k].owed>0?
+        {id:k,name:p.name,owed:summary[k].owed,oldest:summary[k].oldest||Infinity}:null;
+    }).filter(Boolean).sort(function(a,b){return a.oldest-b.oldest;});
+    let left=available===null?0:available;
+    const queue=eligible.map(function(p){const give=Math.min(left,p.owed);left-=give;return Object.assign({},p,{give:give});});
+    return {available:available,base:base,overflow:risk,queue:queue,allocate:queue.reduce(function(n,p){return n+p.give;},0)};
+  }
+  function stockAdviceV3(c){
+    const byDate={};
+    (c.snapshots||[]).forEach(function(s){if(s&&s.observedAt&&Array.isArray(s.stock))byDate[String(s.observedAt).slice(0,10)]=s.stock;});
+    const history=Object.keys(byDate).sort().slice(-7).map(function(k){return byDate[k];});
+    const target=[2,3,5,7].includes(c.stockDays)?c.stockDays:3;
+    return (c.stock||[]).map(function(p){
+      const values=history.map(function(items){return items.find(function(x){return String(x.id)===String(p.id);});})
+        .filter(function(x){return x&&financialAmount(x.sold_amount)!==null;}).map(function(x){return Number(x.sold_amount);});
+      const today=financialAmount(p.sold_amount),hand=financialAmount(p.in_stock),incoming=financialAmount(p.on_order);
+      const rate=values.length>=2?values.reduce(function(a,b){return a+b;},0)/values.length:today;
+      const days=rate!==null&&rate>0&&hand!==null?hand/rate:null;
+      const qty=rate!==null&&hand!==null&&incoming!==null?Math.max(0,Math.ceil(target*rate-hand-incoming)):null;
+      const cost=financialAmount(p.cost);
+      return {id:p.id,name:p.name,rate:rate,hand:hand,incoming:incoming,days:days,qty:qty,
+        cost:qty!==null&&cost!==null?qty*cost:null,price:p.price,rrp:p.rrp,samples:values.length};
+    }).sort(function(a,b){return (a.days===null?Infinity:a.days)-(b.days===null?Infinity:b.days);});
+  }
+  function riskRadarV3(c){
+    const p=c.profile||{},a=accounting(c),trains=trainPlanV3(c),stock=stockAdviceV3(c);
+    const funds=financialAmount(p.funds),fixed=a&&a.wages!==null&&a.ad!==null?a.wages+a.ad:null;
+    const runway=funds!==null&&fixed!==null&&fixed>0?funds/fixed:null,alerts=[];
+    function flag(title,detail,target){alerts.push({title:title,detail:detail,target:target});}
+    if(trains.overflow>0)flag("Train storage overflow risk",
+      "At least "+trains.overflow+" train(s) could be lost at next close. Trainer bonuses can raise this minimum.","training-queue");
+    const critical=stock.filter(function(x){return x.days!==null&&x.days<1;});
+    if(critical.length)flag("Stock under one day",critical.map(function(x){return x.name;}).slice(0,3).join(", ")+" needs a stock review.","stock");
+    if(runway!==null&&runway<7)flag("Less than 7 days of fixed costs",
+      "Funds cover "+runway.toFixed(1)+" days of wages and advertising; excludes other costs.","growth-accounts");
+    for(const [field,name,target] of [["efficiency","Efficiency","staff"],["environment","Environment","staff-sim"],["popularity","Popularity","growth-pricing"]]){
+      if(p[field]!=null&&Number(p[field])<95)flag(name+" below 95%","Torn currently reports "+p[field]+"%. Investigate before changing costs.",target);
+    }
+    if(!alerts.length)flag("No immediate exceptions","Continue checking daily results; this does not establish optimal performance.","growth-performance");
+    return {alerts:alerts,stock:stock,trains:trains,funds:funds,fixed:fixed,runway:runway};
+  }
+  // Hungarian maximum-weight assignment preserves exact existing position counts.
+  // Switch penalty favours stable staffing; score is requirement fit, not revenue.
+  function balancedAssignmentV3(c){
+    const staff=c.staff||[],roles=roleList(c),n=staff.length;
+    if(n<2||n>50)return {changes:[],delta:0,reason:"Not enough comparable employees"};
+    const slots=staff.map(function(p){return String(p.position&&p.position.name||"");});
+    const roleMap={};roles.forEach(function(r){roleMap[r.name.toLowerCase()]=r;});
+    if(staff.some(function(p){return !p.stats;})||slots.some(function(x){return !roleMap[x.toLowerCase()];}))
+      return {changes:[],delta:0,reason:"Some working stats or position requirements are missing"};
+    const scores=staff.map(function(p,i){return slots.map(function(name){
+      const fit=score(p,roleMap[name.toLowerCase()]);
+      return fit===null?-10000:fit-(slots[i]===name?0:5);
+    });});
+    const u=Array(n+1).fill(0),v=Array(n+1).fill(0),match=Array(n+1).fill(0),way=Array(n+1).fill(0);
+    for(let i=1;i<=n;i++){
+      match[0]=i;let j0=0;
+      const min=Array(n+1).fill(Infinity),seen=Array(n+1).fill(false);
+      do{
+        seen[j0]=true;let best=Infinity,next=0;
+        for(let j=1;j<=n;j++)if(!seen[j]){
+          const x=-scores[match[j0]-1][j-1]-u[match[j0]]-v[j];
+          if(x<min[j]){min[j]=x;way[j]=j0;}
+          if(min[j]<best){best=min[j];next=j;}
+        }
+        for(let j=0;j<=n;j++)if(seen[j]){u[match[j]]+=best;v[j]-=best;}else min[j]-=best;
+        j0=next;
+      }while(match[j0]!==0);
+      do{const previous=way[j0];match[j0]=match[previous];j0=previous;}while(j0!==0);
+    }
+    const assigned=Array(n);
+    for(let j=1;j<=n;j++)assigned[match[j]-1]=j-1;
+    const changes=staff.map(function(p,i){
+      return {id:p.id,name:p.name,from:slots[i],to:slots[assigned[i]],
+        before:score(p,roleMap[slots[i].toLowerCase()]),after:score(p,roleMap[slots[assigned[i]].toLowerCase()])};
+    }).filter(function(x){return x.from!==x.to;});
+    const before=staff.reduce(function(total,p,i){return total+num(score(p,roleMap[slots[i].toLowerCase()]));},0);
+    const after=staff.reduce(function(total,p,i){return total+num(score(p,roleMap[slots[assigned[i]].toLowerCase()]));},0);
+    return {changes:changes,delta:(after-before)/n,reason:"Global fit comparison, 5-point switching penalty, position counts preserved"};
+  }
+  function radarPanelV3(c){
+    const p=c.profile||{},model=riskRadarV3(c);
+    return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Director radar</h2><span class="tch-mini">Reports & risks</span></div>'+
+      '<div class="tch-radar">'+[["Popularity","popularity"],["Efficiency","efficiency"],["Environment","environment"]].map(function(x){
+        const v=p[x[1]];return '<div><small>'+x[0]+'</small><strong>'+esc(v==null?"Unknown":v+"%")+'</strong></div>';
+      }).join("")+'</div>'+
+      model.alerts.map(function(x){return '<button class="tch-insight" data-act="goto" data-target="'+esc(x.target)+'">'+
+        '<strong>'+esc(x.title)+'</strong><small>'+esc(x.detail)+'</small><span>↗</span></button>';}).join("")+'</section>';
+  }
+  function balancedPanelV3(c){
+    const plan=balancedAssignmentV3(c);
+    return '<section class="tch-panel"><h2>Balanced team optimiser</h2>'+
+      '<p>Tests every employee against all current position slots together. Keeps Manager, Cleaner and Marketer slot counts intact, with a stability penalty.</p>'+
+      '<div class="tch-comparison"><div><span>Average role-fit gain</span><strong>'+(plan.delta>=0?"+":"")+plan.delta.toFixed(1)+' pp</strong></div>'+
+      '<div><span>Proposed role moves</span><strong>'+plan.changes.length+'</strong></div></div>'+
+      plan.changes.map(function(x){return '<div class="tch-change"><strong>'+esc(x.name)+'</strong><span>'+esc(x.from)+' → '+esc(x.to)+'</span>'+
+        '<b>'+fitText(x.before)+' → '+fitText(x.after)+'</b></div>';}).join("")+
+      (plan.changes.length?'<button class="primary" data-act="apply-balanced">Try plan in simulator</button>':'<p>No useful swaps found with the available data.</p>')+
+      '<p class="tch-hint">'+esc(plan.reason)+'. Role-fit is not Torn effectiveness or projected income. Changes are saved locally only.</p></section>';
+  }
+  function applicantPanelV3(c){
+    const apps=Array.isArray(c.applications)?c.applications:[];
+    return '<section class="tch-panel"><h2>Applications ('+apps.length+')</h2>'+
+      '<p>Applicant stats and their best requirement-fit role, read only during manual refresh.</p>'+
+      (c.applicationsError?'<p class="tch-hint">Applications unavailable for the current API key.</p>':'')+
+      (apps.length?apps.map(function(a){
+        const p=a.player||{},roles=roleList(c).map(function(role){return {name:role.name,fit:score(p,role)};})
+          .filter(function(r){return r.fit!==null;}).sort(function(x,y){return y.fit-x.fit;});
+        return '<div class="tch-record"><div><strong>'+esc(p.name||"Applicant")+'</strong>'+
+          '<small>Best fit: '+(roles[0]?esc(roles[0].name)+" · "+fitText(roles[0].fit):"Unknown")+'</small></div></div>';
+      }).join(""):'<p class="tch-hint">No applications available.</p>')+'</section>';
+  }
+  function trainPacePanelV3(c){
+    const p=trainPlanV3(c);
+    return '<section class="tch-panel"><h2>Train capacity & allocation</h2><div class="tch-metrics">'+
+      metricV2("In storage",p.available===null?"Unknown":p.available,"Reported by Torn","","training-queue")+
+      metricV2("Base trains / close",p.base===null?"Unknown":p.base,"Trainer bonuses excluded","","training-queue")+
+      metricV2("Overflow risk",p.overflow===null?"Unknown":p.overflow,"Minimum loss if unused","","training-queue")+
+      metricV2("Paid trains to give",p.allocate,"Oldest eligible first","","training-queue")+'</div>'+
+      p.queue.map(function(x){return '<div class="tch-record"><div><strong>'+esc(x.name)+'</strong>'+
+        '<small>Owed '+x.owed+'</small></div><b>Give up to '+x.give+'</b></div>';}).join("")+
+      '<p class="tch-hint">72-hour hire eligibility, oldest confirmed debt first, 20-train storage cap. Actual trainer bonuses can increase overflow.</p></section>';
+  }
+  function stockV3(c){
+    if(!c||!c.profile)return introV2();
+    const health=riskRadarV3(c),products=health.stock,days=[2,3,5,7].includes(c.stockDays)?c.stockDays:3;
+    return '<section class="tch-panel"><h2>Stock & replenishment</h2><p>Manual-refresh sales, price comparisons and simple stock cover. No Torn orders are placed.</p>'+
+      '<div class="tch-actionrow">'+[2,3,5,7].map(function(n){return '<button data-act="stock-days" data-days="'+n+
+        '" class="'+(days===n?"primary":"")+'">'+n+' days</button>';}).join("")+'</div>'+
+      (c.stockFetchError?'<p class="notice warn">Stock read failed. The saved stock may be out of date.</p>':'')+
+      '<div class="tch-metrics">'+metricV2("Products",products.length,"From latest read","","stock")+
+      metricV2("Under 1 day",products.filter(function(x){return x.days!==null&&x.days<1;}).length,"Priority stock-outs","","stock")+
+      metricV2("Order cost",products.every(function(x){return x.cost!==null;})?money(products.reduce(function(t,p){return t+p.cost;},0)):"Incomplete","Provisional cost of proposed units","","stock")+
+      metricV2("Vault",health.funds===null?"Unknown":money(health.funds),"Company funds","","growth-accounts")+'</div></section>'+
+      '<section class="tch-panel"><h2>Product priorities</h2>'+
+      (products.length?products.map(function(p){
+        const pct=p.rrp!=null&&num(p.rrp)>0?((num(p.price)/num(p.rrp)-1)*100).toFixed(1)+"% vs RRP":"Unknown RRP";
+        return '<div class="tch-stockrow"><div class="tch-sectionhead"><strong>'+esc(p.name)+'</strong>'+
+          '<span class="tch-mini">'+(p.days===null?"Unknown cover":p.days.toFixed(1)+" days cover")+'</span></div>'+
+          '<p>On hand '+esc(p.hand===null?"?":p.hand)+' · On order '+esc(p.incoming===null?"?":p.incoming)+
+          ' · Sold/day '+esc(p.rate===null?"?":p.rate.toFixed(1))+'</p>'+
+          '<p>Price '+esc(money(p.price))+' · '+esc(pct)+' · '+(p.samples>=2?p.samples+" observed days":"provisional one-day rate")+'</p>'+
+          '<strong>Order '+esc(p.qty===null?"Unknown":p.qty)+' units · '+esc(p.cost===null?"Unknown":money(p.cost))+'</strong></div>';
+      }).join(""):'<p>No stock returned; a Limited key may be required.</p>')+
+      '<p class="tch-hint">Suggestions subtract existing orders and assume recent sales repeat. No delivery, storage, demand or cash-flow guarantees.</p></section>';
+  }
+  function cashPanelV3(c){
+    const h=riskRadarV3(c);
+    return '<section class="tch-panel"><h2>Cash runway</h2><div class="tch-metrics">'+
+      metricV2("Cash available",h.funds===null?"Unknown":money(h.funds),"Reported company funds","","growth-accounts")+
+      metricV2("Fixed daily costs",h.fixed===null?"Unknown":money(h.fixed),"Wages and advertising","","growth-accounts")+
+      metricV2("7-day reserve",h.fixed===null?"Unknown":money(h.fixed*7),"Before stock and other costs","","growth-accounts")+
+      metricV2("Days covered",h.runway===null?"Unknown":h.runway.toFixed(1),"Vault / known fixed costs","","growth-accounts")+
+      '</div><p class="tch-hint">A conservative fixed-cost check, not a profit or vault forecast.</p></section>';
+  }
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
 
