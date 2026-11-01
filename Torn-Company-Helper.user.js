@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.19.0
+// @version      1.20.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1071,16 +1071,14 @@
     const staleHours=Number.isFinite(Date.parse(c.lastRefresh||""))?Math.max(0,(Date.now()-Date.parse(c.lastRefresh))/3600000):Infinity;
     if(staleHours>=24)add("review","Refresh before acting on staff or spending advice",
       "Your saved roster and financial figures are "+(Number.isFinite(staleHours)?Math.floor(staleHours)+" hours old":"not yet available")+". Decisions based on stale data may be misleading.","High · data freshness","refresh");
-    const balances=aggregates(c).balance;
-    const eligible=Object.keys(balances).filter(function(k){
-      const p=c.staff.find(function(x){return String(x.id)===k;});
-      return p && num(p.days_in_company)>=3 && balances[k].owed>0;
-    }).sort(function(a,b){return (balances[a].oldest||Infinity)-(balances[b].oldest||Infinity);});
-    if(eligible.length){
-      const player=c.staff.find(function(p){return String(p.id)===eligible[0];});
-      add("next","Next eligible training commitment",
-        player.name+" is owed "+balances[eligible[0]].owed+" train(s). The oldest eligible obligation is prioritised; this is not a projected stat gain.",
-        "High · confirmed ledger","training-queue");
+    // Outstanding purchased trains are a ledger balance, not a task, until
+    // the live company train bank can actually fulfil an eligible obligation.
+    const paidTraining=trainPlanV3(c);
+    const firstReady=paidTraining.queue.find(function(x){return x.give>0;});
+    if(paidTraining.allocate>0&&firstReady){
+      add("next","Paid training ready to give",
+        firstReady.name+" is owed "+firstReady.owed+" train(s); "+firstReady.give+" can be given now (oldest eligible first). No train has been assigned automatically.",
+        "High · confirmed ledger and reported train bank","training-queue");
     }
     if(a.known && a.headroom>=0 && staleHours<24){
       const allowance=Math.max(0,a.headroom);
@@ -1290,7 +1288,8 @@
       metricV2("Overflow risk",p.overflow===null?"Unknown":p.overflow,"Minimum loss if unused","","training-queue")+
       metricV2("Paid trains to give",p.allocate,"Oldest eligible first","","training-queue")+'</div>'+
       p.queue.map(function(x){return '<div class="tch-record"><div><strong>'+esc(x.name)+'</strong>'+
-        '<small>Owed '+x.owed+'</small></div><b>Give up to '+x.give+'</b></div>';}).join("")+
+        '<small>Owed '+x.owed+'</small></div><b>'+(x.give>0?'Give up to '+x.give:p.available===null?'Availability unverified':'Waiting for trains')+'</b></div>';}).join("")+
+      (p.queue.length&&p.allocate===0?'<p class="tch-hint">Paid trains are still owed, but none can be assigned from the currently reported bank. Alerts will appear when trains become available.</p>':'')+
       '<p class="tch-hint">72-hour hire eligibility, oldest confirmed debt first, 20-train storage cap. Actual trainer bonuses can increase overflow.</p></section>';
   }
   function stockV3(c){
@@ -1484,13 +1483,16 @@
   }
   function launcherAlertsV11(c){
     if(!c||!c.profile)return {items:[],count:0};
-    const items=[],p=trainPlanV3(c),balances=aggregates(c).balance;
-    const owed=Object.keys(balances).filter(function(k){return balances[k].owed>0;}).length;
+    const items=[],p=trainPlanV3(c);
+    // Only giveable, 72-hour-eligible paid commitments count as a training alert.
+    // Purchased-but-waiting obligations stay in the ledger, without a badge.
+    const ready=p.queue.filter(function(x){return x.give>0;});
     const shortage=stockAdviceV3(c).filter(x=>x.qty!==null&&x.qty>0&&x.days!==null&&x.days<1).slice(0,3);
     if(shortage.length)items.push({id:"stock-shortage",target:"stock",glyph:"!",text:shortage.length+" stock line(s) under one day of cover"});
     if(p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Trains may overflow at next close"});
     else if(p.available!==null&&p.available>=17)items.push({id:"training-capacity",target:"training-queue",glyph:"◇",text:"Train bank near capacity"});
-    if(owed>0)items.push({id:"training-owed",target:"training-queue",glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
+    if(p.allocate>0&&ready.length)items.push({id:"training-owed",target:"training-queue",glyph:"◇",
+      text:p.allocate+" paid train(s) ready for "+ready.length+" eligible employee(s)"});
     if(companyProfitTrendV191(c).streak)items.push({id:'cashflow-loss-streak',target:'growth-accounts',glyph:'!',text:'Operating losses on three observed days'});
     // Use only complete observations from consecutive UTC dates, not repeated reads on one day.
     const delta=companyDeltaV111(c);
@@ -2555,7 +2557,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.19.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.20.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -3260,7 +3262,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.19.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.20.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
