@@ -1,5 +1,12 @@
 # Torn Company Helper
 
+## v1.11.0 — recorded daily comparison and diagnostics
+
+- **Wages, efficiency, profit:** Compare the most recent **two distinct complete UTC-day snapshots**, showing revenue, total staff wages, advertising, operating profit, popularity, environment and rating. For employees present on both days, compare effectiveness; per-employee wage changes appear **only if both snapshots actually contain a wage value**. Future snapshots record this wage field locally; older ones remain unknown. Gaps between observed dates are labelled rather than assumed to be one day.
+- **Diagnostics:** Open via Settings to inspect scoped API connectivity, storage, UI, data recency, recorded snapshot counts and whether payment/news imports succeeded. The copyable report never includes private records, actual wages, employee names, IDs or API keys.
+- **StaxxHub v2.5:** Unified dashboard and health reporting, including automatic support for any future tool that follows the shared registration contract. Read-only manual director decisions remain unchanged.
+
+
 ## v1.10.0 — director briefing and display continuity
 
 - **Director briefing on Today:** A ranked, clearly worded list of checks to perform, including stale company data, unverified accounts, loss-limit guardrails, paid trains due, training receipts, stock shortages and operational growth priorities. Each item opens a relevant internal section. No changes are made in Torn.
