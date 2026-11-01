@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.6.0
+// @version      1.7.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.1 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.2 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -60,6 +60,7 @@
       '#staxx-hub-drawer .staxx-alert.urgent .staxx-alert-title{color:#ff9bad!important}',
       '#staxx-hub-drawer .staxx-alert span{display:block;color:#daecf9;font-size:12px;margin:5px 0;overflow-wrap:anywhere}',
       '#staxx-hub-drawer .staxx-alert small{display:block;color:#91aec6;font-size:11px;margin:4px 0}',
+      '#staxx-hub-drawer .staxx-alert-item{display:block;width:100%;margin:7px 0 3px;padding:9px 10px;background:#123c60;border:1px solid #427b9f;color:#e3f5ff;border-radius:8px;text-align:left;font-size:12px;font-weight:750;line-height:1.35;min-height:38px}#staxx-hub-drawer .staxx-alert-item:focus-visible{outline:2px solid #54d7fa}#staxx-hub-drawer .staxx-alert-description{padding:0 3px 3px}',
       '#staxx-hub-drawer .staxx-alert-actions{display:flex;gap:7px;margin-top:10px}',
       '#staxx-hub-drawer .staxx-snooze-menu{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}#staxx-hub-drawer .staxx-snooze-menu button{background:#174463;border:1px solid #3e7593;border-radius:7px;padding:6px 8px;min-height:32px;font-size:11px}#staxx-hub-drawer .staxx-snooze-menu input{background:#071d32;border:1px solid #527b9b;border-radius:7px;color:#fff;min-width:56px;width:64px;padding:6px;font-size:12px}#staxx-hub-drawer .staxx-snooze-menu label{display:flex;align-items:center;gap:4px;color:#bfd9ec;font-size:11px}#staxx-hub-drawer .staxx-due{font-size:11px;color:#b8e4ff!important;font-weight:700}#staxx-hub-drawer .staxx-spark{display:flex;align-items:end;gap:3px;height:40px;margin:11px 0 4px}#staxx-hub-drawer .staxx-spark span{flex:1;min-width:0;max-width:30px;border-radius:3px 3px 0 0;background:linear-gradient(#50d5f8,#17649c)}#staxx-hub-drawer .staxx-spark span.missing{background:#1e3a52;height:3px!important}#staxx-hub-drawer .staxx-trendnote{font-size:10px!important;color:#9ab5cf!important}#staxx-hub-drawer .staxx-alert-actions button{background:#1c3e5b;border:1px solid #365978;border-radius:8px;padding:6px 9px;font-size:11px;flex:1;min-height:32px}',
       '#staxx-hub-drawer .staxx-empty{color:#9db7cd;background:#0c243e;border:1px dashed #305473;border-radius:10px;font-size:11px;padding:14px 10px}',
@@ -137,9 +138,9 @@
       if(control.dismissed===n.fingerprint || Number(control.snoozeUntil)>Date.now())return null;
       return n;
     }
-    function openTool(id){
+    function openTool(id,alertId){
       if(id==="company"&&!/^\/companies\.php$/i.test(location.pathname)){
-        try{sessionStorage.setItem("staxx-open-company","1");}catch(_){}
+        try{sessionStorage.setItem("staxx-open-company","1");if(alertId)sessionStorage.setItem("staxx-open-company-alert",alertId);}catch(_){}
         location.assign(location.origin+"/companies.php");return;
       }
       if(!active[id]){
@@ -148,7 +149,7 @@
       }
       panelOpen=true;setExpanded(false);launcherVisibility();
       document.dispatchEvent(new CustomEvent("staxx:closeall"));
-      document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id}}));
+      document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id,alertId:alertId||null}}));
     }
     function timeUntil(ms) {
       if(!Number.isFinite(ms)||ms<=0)return "";
@@ -250,7 +251,16 @@
         const title=node("button","staxx-alert-title",e.label+" · "+n.count+" alert"+(n.count===1?"":"s"));
         title.type="button";title.dataset.openStaxx=e.id;card.append(title);
         card.append(node("span","",n.summary||"Needs attention"));
-        for(const item of n.items.slice(0,2))card.append(node("small","",item));
+        if(Array.isArray(n.alerts)&&n.alerts.length){
+          for(const item of n.alerts.slice(0,8)){
+            const go=node("button","staxx-alert-item",item.title);
+            go.type="button";go.dataset.openAlertTool=e.id;go.dataset.openAlertId=item.id;
+            go.title=item.detail||item.title;
+            card.append(go);
+            if(item.detail)card.append(node("small","staxx-alert-description",item.detail));
+          }
+          if(n.alerts.length>8)card.append(node("small","",String(n.alerts.length-8)+" more — open the tool's Alerts tab"));
+        }else for(const item of n.items.slice(0,2))card.append(node("small","",item));
         if(n.cached)card.append(node("small","","Last observed on a previous page"));
         if(n.dueAt){const countdown=node("small","staxx-due",timeUntil(n.dueAt));card.append(countdown);}
         const buttons=node("div","staxx-alert-actions");
@@ -291,6 +301,7 @@
       if(b.hasAttribute("data-arrange")){
         arrangeShown=!arrangeShown;b.setAttribute("aria-pressed",String(arrangeShown));b.textContent=arrangeShown?"Done":"Reorder";render();return;
       }
+      if(b.dataset.openAlertTool){openTool(b.dataset.openAlertTool,b.dataset.openAlertId);return;}
       if(b.dataset.openStaxx){openTool(b.dataset.openStaxx);return;}
       if(b.hasAttribute("data-overview")){overviewShown=!overviewShown;render();return;}
       if(b===toggle){if(Date.now()<suppressClickUntil)return;setExpanded(true);return;}
@@ -339,8 +350,9 @@
       const n={count,summary:String(d.summary||"").slice(0,180),
         items:Array.isArray(d.items)?d.items.slice(0,5).map(x=>String(x).slice(0,160)):[],
         level:["urgent","warning","info"].includes(d.level)?d.level:"info",cached:false};
+      n.alerts=Array.isArray(d.alerts)?d.alerts.slice(0,30).filter(x=>x&&/^[a-z][a-z0-9-]{0,63}$/.test(String(x.id||""))).map(x=>({id:String(x.id),title:String(x.title||x.id).slice(0,100),detail:String(x.detail||"").slice(0,190)})):[];
       n.dueAt=Number.isFinite(Number(d.dueAt))&&Number(d.dueAt)>0?Number(d.dueAt):null;
-      n.fingerprint=JSON.stringify([n.count,n.summary,n.items,n.level,n.dueAt]);
+      n.fingerprint=JSON.stringify([n.count,n.summary,n.items,n.alerts,n.level,n.dueAt]);
       if(JSON.stringify(notices[id])!==JSON.stringify(n)){notices[id]=n;remember();render();}
     });
     document.addEventListener("staxx:summary",e=>{
@@ -1226,15 +1238,15 @@
     if(!c||!c.profile)return {items:[],count:0};
     const items=[],p=trainPlanV3(c),balances=aggregates(c).balance;
     const owed=Object.keys(balances).filter(function(k){return balances[k].owed>0;}).length;
-    if(p.overflow>0)items.push({glyph:"⚡",text:"Trains may overflow at next close"});
-    else if(p.available!==null&&p.available>=17)items.push({glyph:"◇",text:"Train bank near capacity"});
-    if(owed>0)items.push({glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
+    if(p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Trains may overflow at next close"});
+    else if(p.available!==null&&p.available>=17)items.push({id:"training-capacity",target:"training-queue",glyph:"◇",text:"Train bank near capacity"});
+    if(owed>0)items.push({id:"training-owed",target:"training-queue",glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
     const pending=pendingPaymentLogs(c).length;
-    if(pending)items.push({glyph:"!",text:pending+" money transfer(s) await approval"});
+    if(pending)items.push({id:"pending-payments",target:"training-payments",glyph:"!",text:pending+" money transfer(s) await approval"});
     const a=accounting(c);
-    if(a&&a.known&&a.headroom<0)items.push({glyph:"!",text:"Daily operating-loss guardrail exceeded"});
+    if(a&&a.known&&a.headroom<0)items.push({id:"loss-guardrail",target:"growth-accounts",glyph:"!",text:"Daily operating-loss guardrail exceeded"});
     if(c.lastRefresh&&Number.isFinite(Date.parse(c.lastRefresh))&&Date.now()-Date.parse(c.lastRefresh)>86400000)
-      items.push({glyph:"↻",text:"Saved company data over 24 hours old"});
+      items.push({id:"stale-data",target:"refresh",glyph:"↻",text:"Saved company data over 24 hours old"});
     return {items:items,count:items.length};
   }
   function updateLauncherV11(){
@@ -1246,7 +1258,7 @@
       esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
     opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
-    document.dispatchEvent?.(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,level:status.items.some(x=>/guardrail exceeded|overflow/i.test(x.text))?'urgent':status.count?'warning':'info',summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text)}}));
+    document.dispatchEvent?.(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,level:status.items.some(x=>/guardrail exceeded|overflow/i.test(x.text))?'urgent':status.count?'warning':'info',summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text),alerts:status.items.map(x=>({id:x.id,title:x.text,detail:x.target==="refresh"?"Refresh company data":"Open the matching company decision and review"}))}}));
     if(c&&c.profile){const a=accounting(c);
       document.dispatchEvent?.(new CustomEvent('staxx:summary',{detail:{id:'company',headline:String(c.profile.name||'Company')+' · '+String(c.profile.rating??'?')+' stars',metrics:[
         {label:'Star rating',value:String(c.profile.rating??'?')+' / 10'},
@@ -1649,11 +1661,21 @@
         '<span class="tch-step">'+(i+1)+'</span><span><strong>'+esc(r.title)+'</strong><small>'+esc(r.detail)+'</small></span><b>›</b></button>';}).join("")+
       '</section>';
   }
+  function companyAlertsPanel(c){
+    if(!c||!c.profile)return introV2();
+    const issues=launcherAlertsV11(c).items,decisions=companyActionList(c);
+    let html='<section class="tch-panel"><h2>Alerts · '+issues.length+'</h2><p><b>WHAT TO DO:</b> Tap an alert to reach its relevant review or input screen. Nothing is submitted automatically.</p></section>';
+    if(!issues.length)html+='<section class="tch-panel"><h3>All clear</h3><p>No urgent or warning issues currently reported.</p></section>';
+    for(const x of issues)html+='<section class="tch-panel tch-alert-card" id="tch-alert-'+esc(x.id)+'" '+(x.id===companyAlertFocus?'style="outline:2px solid #54d7fa"':'')+'><h3>'+esc(x.text)+'</h3><p>'+esc(x.target==="refresh"?"Update your saved company data before acting.":"Review the related live figures, then make the change yourself.")+'</p>'+
+      '<button class="primary" data-act="goto" data-target="'+esc(x.target)+'">'+(x.target==="refresh"?"Refresh now":"Review this alert ›")+'</button></section>';
+    html+='<section class="tch-panel"><h2>Other recommended actions</h2>'+decisions.map(a=>'<button type="button" class="tch-insight" data-act="goto" data-target="'+esc(a.target)+'"><strong>'+esc(a.title)+'</strong><small>'+esc(a.why)+'</small><span>Review ›</span></button>').join('')+'</section>';
+    return html;
+  }
   function homeV13(c){
     if(!c||!c.profile)return introV2();
     const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
     const due=Object.values(aggregates(c).balance).reduce(function(n,b){return n+b.owed;},0);
-    return '<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
+    return '<section class="tch-panel"><h2>Do this next</h2>'+(companyActionList(c).slice(0,1).map(a=>'<button class="tch-insight" data-act="goto" data-target="'+esc(a.target)+'"><strong>'+esc(a.title)+'</strong><small>'+esc(a.why)+'</small><span>Review ›</span></button>').join('')||'<p>No priority issues reported from saved data.</p>')+'</section>'+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
       '<span class="tch-mini">'+star+' ★ / 10</span></div><div class="tch-home-number">'+star+' ★</div></section>'+
       '<div class="tch-homekpis">'+
         metricV2("Efficiency",c.profile.efficiency==null?"?":c.profile.efficiency+"%","Daily report","","staff")+
@@ -1960,16 +1982,16 @@
   }
 
   function tabsV2(){
-    const tabs=[["overview","⌂","Today"],["employees","♟","Staff"],["training","◇","Trains"],["growth","▥","Growth"],["stock","▣","Stock"]];
+    const tabs=[["overview","⌂","Today"],["alerts","!","Alerts"],["employees","♟","Staff"],["training","◇","Trains"],["growth","▥","Growth"],["stock","▣","Stock"]];
     return '<nav class="tch-bottom" aria-label="Company Helper sections">'+tabs.map(function(x){
       return '<button data-act="tab" data-tab="'+x[0]+'" class="'+(tab===x[0]?"active":"")+'"><span class="tch-navicon">'+x[1]+'</span><span>'+x[2]+'</span></button>';
     }).join("")+'</nav>';
   }
   function headV2(c) {
-    const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
+    const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.6.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
-      '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.7.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+      '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
   function metricV2(title,value,secondary,tone,target){
@@ -2241,7 +2263,8 @@
       (advancedSettings?settings(c):"");
   }
 
-  let staxxCompanyPanelState=null;
+  let staxxCompanyPanelState=null,companyAlertFocus='';
+  function focusCompanyAlert(){if(!companyAlertFocus)return;const el=root.querySelector('#tch-alert-'+companyAlertFocus);if(el)el.scrollIntoView?.({block:'nearest'});companyAlertFocus='';}
   function draw() {
     updateLauncherV11();
     opener.hidden=open || !isCompanyPage();
@@ -2257,6 +2280,7 @@
       let body="";
       if(detailView)body=detailsV2(c);
       else if(tab==="overview")body=homeV13(c);
+      else if(tab==="alerts")body=companyAlertsPanel(c);
       else if(tab==="employees")body=staffV2(c);
       else if(tab==="training")body=trainingV2(c);
       else if(tab==="growth")body=growthV2(c);
@@ -2551,7 +2575,7 @@
     open=true;message="";draw();
     refresh(); // Opening explicitly triggers a fresh read; no background polling.
   });
-  document.addEventListener?.("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){opener.click();}else if(open){open=false;draw();}});
+  document.addEventListener?.("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){if(e.detail.alertId){tab="alerts";detailView="";companyAlertFocus=String(e.detail.alertId);}if(!open)opener.click();else draw();focusCompanyAlert();}else if(open){open=false;draw();}});
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}})));
   document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company"}}));
@@ -2783,7 +2807,7 @@
         positionLauncher();
       }
       updateLauncherV11();
-      try{if(sessionStorage.getItem("staxx-open-company")==="1"){sessionStorage.removeItem("staxx-open-company");opener.click();}}catch(_){}
+      try{if(sessionStorage.getItem("staxx-open-company")==="1"){sessionStorage.removeItem("staxx-open-company");const f=sessionStorage.getItem("staxx-open-company-alert");sessionStorage.removeItem("staxx-open-company-alert");if(f){tab="alerts";companyAlertFocus=f;}opener.click();focusCompanyAlert();}}catch(_){}
     } catch (_) { /* Do not read API or silently overwrite damaged storage. */ }
   })();
 })();
