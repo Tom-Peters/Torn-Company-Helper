@@ -566,6 +566,23 @@
   }
   // Hungarian maximum-weight assignment preserves exact existing position counts.
   // Switch penalty favours stable staffing; score is requirement fit, not revenue.
+
+  function roleGrowthWeightV11(c,name){
+    // Revenue-role signal from Secretary-revealed direct value, not a causal model.
+    // Global assignment always retains identical Manager/Marketer/HR/Cleaner slot counts.
+    if(/manager|marketer|cleaner|human resources|hr officer|trainer/i.test(String(name)))return 1;
+    const measured=(c.staff||[]).filter(function(p){
+      return financialAmount(p.value)!==null&&financialAmount(p.value)>0;
+    });
+    if(measured.length<2)return 1;
+    const max=Math.max.apply(null,measured.map(function(p){return Number(p.value);}));
+    const matches=measured.filter(function(p){
+      return String(p.position&&p.position.name||"").toLowerCase()===String(name).toLowerCase();
+    });
+    if(!matches.length||max<=0)return 1;
+    const average=matches.reduce(function(t,p){return t+Number(p.value);},0)/matches.length;
+    return Math.max(1,Math.min(1.3,1+0.3*average/max));
+  }
   function balancedAssignmentV3(c){
     const staff=c.staff||[],roles=roleList(c),n=staff.length;
     if(n<2||n>50)return {changes:[],delta:0,reason:"Not enough comparable employees"};
@@ -575,7 +592,7 @@
       return {changes:[],delta:0,reason:"Some working stats or position requirements are missing"};
     const scores=staff.map(function(p,i){return slots.map(function(name){
       const fit=score(p,roleMap[name.toLowerCase()]);
-      return fit===null?-10000:fit-(slots[i]===name?0:5);
+      return fit===null?-10000:fit*roleGrowthWeightV11(c,name)-(slots[i]===name?0:5);
     });});
     const u=Array(n+1).fill(0),v=Array(n+1).fill(0),match=Array(n+1).fill(0),way=Array(n+1).fill(0);
     for(let i=1;i<=n;i++){
@@ -601,7 +618,7 @@
     }).filter(function(x){return x.from!==x.to;});
     const before=staff.reduce(function(total,p,i){return total+num(score(p,roleMap[slots[i].toLowerCase()]));},0);
     const after=staff.reduce(function(total,p,i){return total+num(score(p,roleMap[slots[assigned[i]].toLowerCase()]));},0);
-    return {changes:changes,delta:(after-before)/n,reason:"Global fit comparison, 5-point switching penalty, position counts preserved"};
+    return {changes:changes,delta:(after-before)/n,reason:"Revenue-role weighted fit when HR values exist; 5-point switching penalty; position counts preserved. Not a revenue forecast"};
   }
   function radarPanelV3(c){
     const p=c.profile||{},model=riskRadarV3(c);
@@ -615,7 +632,7 @@
   function balancedPanelV3(c){
     const plan=balancedAssignmentV3(c);
     return '<section class="tch-panel"><h2>Balanced team optimiser</h2>'+
-      '<p>Tests every employee against all current position slots together. Keeps Manager, Cleaner and Marketer slot counts intact, with a stability penalty.</p>'+
+      '<p>Star-growth weighted matching of employees to current position slots: HR-revealed revenue contributors get limited extra priority; critical role counts are preserved and switching is penalised.</p>'+
       '<div class="tch-comparison"><div><span>Average role-fit gain</span><strong>'+(plan.delta>=0?"+":"")+plan.delta.toFixed(1)+' pp</strong></div>'+
       '<div><span>Proposed role moves</span><strong>'+plan.changes.length+'</strong></div></div>'+
       plan.changes.map(function(x){return '<div class="tch-change"><strong>'+esc(x.name)+'</strong><span>'+esc(x.from)+' → '+esc(x.to)+'</span>'+
