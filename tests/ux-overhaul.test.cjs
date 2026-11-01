@@ -217,7 +217,14 @@ test("wage what-ifs only change modelled costs and never submit payroll",()=>{
 });
 test("star readiness with insufficient Sunday snapshots refuses fabricated ETA",()=>{
   const v=app(source),c=structuredClone(data);
+  c.snapshots=[
+    {observedAt:"2026-10-04T12:00:00Z",rating:null},
+    {observedAt:"2026-10-11T12:00:00Z",rating:null},
+    {observedAt:"2026-10-18T12:00:00Z",rating:null},
+    {observedAt:"2026-10-25T12:00:00Z",rating:3}
+  ];
   const html=v.ui.starMomentumPanelV14(c);
   assert.match(html,/Unknown/);
+  assert.match(html,/No recorded star-ups yet/);
   assert.match(html,/Sunday snapshots/);
 });
