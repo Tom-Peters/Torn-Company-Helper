@@ -1,5 +1,11 @@
 # Torn Company Helper
 
+## v1.12.0 — automatic foreground director sync
+
+- **Auto refresh:** While a Torn company page is visible in TornPDA, the helper checks whether the company snapshot is at least 15 minutes old and refreshes read-only data when due. It backs off unsuccessful attempts for at least 15 minutes and does nothing while the page is hidden or not a company page.
+- **Training and payments follow the refreshed data:** Every successful automatic company refresh also runs the established recent company-news training matching and the scoped incoming payment-log reconciliation. Duplicates and unverified transfer purposes retain their safety checks.
+- **Manual gameplay remains manual:** Any actual employee training, wages, company orders, spending and assignment changes must still be made and confirmed in Torn. Optional log selections require appropriate API permissions.
+
 ## v1.11.0 — recorded daily comparison and diagnostics
 
 - **Wages, efficiency, profit:** Compare the most recent **two distinct complete UTC-day snapshots**, showing revenue, total staff wages, advertising, operating profit, popularity, environment and rating. For employees present on both days, compare effectiveness; per-employee wage changes appear **only if both snapshots actually contain a wage value**. Future snapshots record this wage field locally; older ones remain unknown. Gaps between observed dates are labelled rather than assumed to be one day.
