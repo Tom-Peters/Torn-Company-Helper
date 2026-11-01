@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.17.0
+// @version      1.18.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.6 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.7 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -73,7 +73,8 @@
       '#staxx-hub-drawer .staxx-foot{font-size:10px;color:#6d90ab;margin-top:17px}#staxx-hub-drawer .staxx-diagnostic-actions{display:flex;gap:8px;margin-bottom:12px}#staxx-hub-drawer .staxx-diagnostic-actions button{flex:1;background:#17496d;border:1px solid #3e789f;border-radius:8px;padding:9px;font-size:11px}#staxx-hub-drawer #staxx-safe-report{width:100%;min-height:130px;white-space:pre;color:#cfeeff;background:#091f34;border:1px solid #5182a3;border-radius:8px;font-size:10px}'
     ].join("");
     css.textContent += '#staxx-hub-drawer .staxx-context-control{display:block;width:100%;background:#0b314e;color:#8bdffc;border:1px solid #315775;border-radius:9px;padding:8px;margin:7px 0 14px;text-align:left}' +
-      '#staxx-page-tip{box-sizing:border-box;display:flex;flex-wrap:wrap;gap:7px;align-items:center;background:#0c2944;color:#e9f5ff;border:1px solid #345f7d;border-left:4px solid #54d7fa;border-radius:9px;padding:10px 12px;margin:10px 0;font:13px/1.4 system-ui,Arial,sans-serif;max-width:100%}' +
+      '#staxx-page-tip{box-sizing:border-box;display:flex;flex-wrap:wrap;gap:7px;align-items:center;background:#0c2944;color:#e9f5ff;border:1px solid #345f7d;border-left:4px solid #54d7fa;border-radius:9px;padding:10px 12px;margin:10px 0;font:13px/1.4 system-ui,Arial,sans-serif;max-width:720px;min-width:0;overflow-wrap:anywhere}' +
+      '@media (max-width:849px),(pointer:coarse){#staxx-page-tip{display:none!important}}' +
       '#staxx-page-tip strong{color:#84e0fb}#staxx-page-tip small{color:#a9cce5;flex-basis:100%}' +
       '#staxx-page-tip button{background:#0879bd;color:#fff;border:1px solid #69cef5;border-radius:8px;padding:7px 10px;font:inherit;font-weight:700;cursor:pointer}';
     document.documentElement.append(css, root);
@@ -326,27 +327,37 @@
       if(control){control.textContent="On-page guidance: "+(contextEnabled()?"On":"Off");
         control.setAttribute("aria-pressed",String(contextEnabled()));}
       const ctx=currentContext();
-      if(!ctx||!contextEnabled()||!active[ctx.id]||openPanels.size||panelOpen||expanded){
+      // TornPDA can display desktop-width pages within a narrow touch viewport.
+      // Never insert guidance into a native heading on a touch device or small layout.
+      const touch=typeof navigator!=="undefined"&&Number(navigator.maxTouchPoints)>0;
+      const coarse=typeof window.matchMedia==="function"&&window.matchMedia("(pointer: coarse)").matches;
+      const width=Math.min(Number(window.innerWidth)||9999,Number(document.documentElement.clientWidth)||9999);
+      if(!ctx||!contextEnabled()||touch||coarse||width<850||!active[ctx.id]||openPanels.size||panelOpen||expanded){
         if(old)old.remove();return;
       }
       const anchor=document.querySelector?.("#gymroot h1, #mainContainer h1, .content-wrapper h1, h1");
-      if(!anchor||typeof anchor.insertAdjacentElement!=="function"){if(old)old.remove();return;}
+      const safeParent=anchor?.parentElement;
+      const parentWidth=typeof safeParent?.getBoundingClientRect==="function"?safeParent.getBoundingClientRect().width:0;
+      if(!anchor||typeof anchor.insertAdjacentElement!=="function"||parentWidth<540||anchor.closest?.("#staxx-hub-root, [role=dialog], #hhj-compact-panel")){if(old)old.remove();return;}
       const set=actionSets[ctx.id],fresh=set&&!set.cached&&Date.now()-Number(set.updated)<(ctx.id==="company"?86400000:ctx.id==="happy"?900000:480000);
       const ranks={urgent:5,now:4,soon:3,review:2,optional:1};
       const items=fresh&&Array.isArray(set.items)?set.items.slice().sort((a,b)=>(ranks[b.status]||0)-(ranks[a.status]||0)||(b.priority||0)-(a.priority||0)):[];
-      const first=items[0];
-      const title=first?first.title:"Check "+ctx.name+" recommendations";
-      const detail=first?first.detail:"Open the tool to verify current data before taking action.";
+      // Stale/missing data triggers automatic refresh inside each tool; never cover Torn
+      // with a large "refresh" prompt or present cached recommendations as live.
+      const first=items.find(x=>!/^((refresh|recheck|scan)(-|$))/i.test(String(x.id||"")));
+      if(!first){if(old)old.remove();return;}
+      const title=first.title;
+      const detail=first.detail||"";
       // Reuse existing element to avoid mutating Torn's DOM during every heartbeat.
       const fingerprint=ctx.id+"|"+title+"|"+detail+"|"+String(first?.id||"");
       if(old&&old.dataset.fingerprint===fingerprint&&old.previousElementSibling===anchor)return;
       if(old)old.remove();
       const bar=node("div");bar.id="staxx-page-tip";bar.dataset.fingerprint=fingerprint;
       bar.setAttribute("role","region");bar.setAttribute("aria-label","Staxx contextual guidance");
-      const heading=node("strong","",ctx.name+" · "+(first?"NEXT ACTION":"STAXX"));
+      const heading=node("strong","",ctx.name+" · NEXT ACTION");
       const message=node("span","",title),sub=node("small","",detail);
-      const button=node("button","",first?"Review action ›":"Open "+ctx.name+" tool ›");
-      button.type="button";button.addEventListener("click",()=>openTool(ctx.id,first?.id||null));
+      const button=node("button","","Review action ›");
+      button.type="button";button.addEventListener("click",()=>openTool(ctx.id,first.id));
       bar.append(heading,message,button,sub);
       anchor.insertAdjacentElement("afterend",bar);
     }
@@ -556,6 +567,7 @@
     window.setInterval(()=>{if(!document.hidden&&entries.some(e=>Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now())){for(const e of entries){if(Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now()){controls[e.id]={...controls[e.id],snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+e.id,controls[e.id]);}}render();}else if(!document.hidden&&expanded&&entries.some(e=>activeNotice(e.id)?.dueAt)){render();}},60000);
     window.addEventListener?.("hashchange",renderContext);
     window.addEventListener?.("popstate",renderContext);
+    window.addEventListener?.("resize",renderContext);
     window.setInterval?.(()=>{if(!document.hidden)renderContext();},15000);
     // Older v1 notifications cannot be trusted for dismiss-state comparisons.
     render();
@@ -2530,7 +2542,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.17.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.18.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
