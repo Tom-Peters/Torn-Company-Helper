@@ -8,7 +8,7 @@ const vm = require("node:vm");
 const script = fs.readFileSync(path.join(__dirname,"..","Torn-Company-Helper.user.js"),"utf8");
 const marker = '  const style=document.createElement("style");';
 if (!script.includes(marker)) throw new Error("Test model marker not found.");
-const instrumented=script.replace(marker,'  globalThis.__model={esc,score,aggregates,accounting,suggestions,normalizeRoles};\n'+marker);
+const instrumented=script.replace(marker,'  globalThis.__model={esc,score,aggregates,accounting,suggestions,normalizeRoles,companyProfitTrendV191};\n'+marker);
 
 function loadModel() {
   let apiRequests=0;
@@ -74,4 +74,24 @@ test("Heuristic recommendations do not mutate positions",()=>{
   const c={profile:{type:{name:"Fitness Center"}},roles:[],staff:[employee]};
   model.suggestions(c);
   assert.equal(employee.position.name,"Receptionist");
+});
+
+test('operating-loss alerts require three consecutive observed UTC days, not arbitrary negative snapshots',()=>{
+ const observations=[
+   {observedAt:'2026-10-25T22:00:00Z',complete:true,profit:-100},
+   {observedAt:'2026-10-29T22:00:00Z',complete:true,profit:-200},
+   {observedAt:'2026-11-01T22:00:00Z',complete:true,profit:-300}
+ ];
+ assert.equal(model.companyProfitTrendV191({snapshots:observations}).streak,false);
+ observations[1].observedAt='2026-10-31T22:00:00Z';
+ observations[0].observedAt='2026-10-30T22:00:00Z';
+ assert.equal(model.companyProfitTrendV191({snapshots:observations}).streak,true);
+ observations.push({observedAt:'2026-11-01T23:00:00Z',complete:true,profit:200});
+ assert.equal(model.companyProfitTrendV191({snapshots:observations}).streak,false,'last observation on same day wins');
+});
+test('director briefing and per-tab render preservation are present',()=>{
+ assert.match(script,/function directorBriefV110\(/);
+ assert.match(script,/directorBriefPanelV110\(c\)/);
+ assert.match(script,/companyScrollPositions\[companyRenderedPage\]/);
+ assert.match(script,/focus\(\{preventScroll:true\}\)/);
 });
