@@ -129,3 +129,13 @@ test('company diagnostics provide only status fields and no credentials or emplo
  assert.match(script,/moneyImportAvailable:Boolean\(c\?\.lastAutoSync\?\.money/);
  assert.match(script,/function companyDiagnosticsPanelV111\(/);
 });
+
+
+test("Hub can open full read-only company helper from other Torn pages",()=>{
+  assert.doesNotMatch(script,/return; \/\/ Company UI and API only run on companies\.php/);
+  assert.match(script,/root\.hidden=!open;/);
+  assert.match(script,/const visible=Boolean\(open\);/);
+  assert.match(script,/document\.addEventListener\?\.\("staxx:refresh-request",\(\)=>\{void autoCompanyRefreshV112\(true\);\}\)/);
+  assert.match(script,/opener\.hidden=!show \|\| open/);
+  assert.doesNotMatch(script,/if \(!show && open\) \{open=false/);
+});
