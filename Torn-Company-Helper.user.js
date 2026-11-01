@@ -2699,7 +2699,7 @@
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
       dailySnapshots:Array.isArray(c?.snapshots)?c.snapshots.length:0,
-      moneyImportAvailable:!Boolean(c?.moneySyncError),newsImportAvailable:!Boolean(c?.newsSyncError),
+      moneyImportAvailable:Boolean(c?.lastAutoSync?.money&&!c?.moneySyncError),newsImportAvailable:Boolean(c?.lastAutoSync?.news&&!c?.newsSyncError),
       pendingPaymentReviews:c?pendingPaymentLogs(c).length:0,
       uiOpen:open,busy};
   }
