@@ -96,7 +96,7 @@ test("All reworked screens render without API requests or gameplay actions",()=>
   assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
 test("Version remains in one userscript URL and private key placeholder remains intact",()=>{
-  assert.match(script,/\/\/ @version\s+1\.9\.1/);
+  assert.match(script,/\/\/ @version\s+1\.10\.0/);
   assert.match(script,/https:\/\/raw\.githubusercontent\.com\/Tom-Peters\/Torn-Company-Helper\/main\/Torn-Company-Helper\.user\.js|@namespace\s+https:\/\/github\.com\/Tom-Peters\/Torn-Company-Helper/);
   assert.match(script,/const PDA_APP_KEY = "###PDA-APIKEY###";/);
 });
