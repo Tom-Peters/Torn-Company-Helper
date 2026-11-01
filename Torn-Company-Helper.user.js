@@ -2431,7 +2431,7 @@
     }).join("")+'</nav>';
   }
   function headV2(c) {
-    const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
+    const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
     return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.11.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
@@ -2691,9 +2691,31 @@
       growthView==="pricing"?growth(c):growthView==="rivals"?rivalsPanelV11(c)+rivalRostersPanelV12(c):
       growthView==="review"?sundayPanelV12(c)+changeTrackingPanelV12(c):finances(c));
   }
+
+  function safeCompanyDiagnosticsV111(c){
+    const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
+    return {tool:'Company Helper',version:'1.11.0',capturedAt:new Date().toISOString(),
+      pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
+      apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
+      lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
+      dailySnapshots:Array.isArray(c?.snapshots)?c.snapshots.length:0,
+      moneyImportAvailable:!Boolean(c?.moneySyncError),newsImportAvailable:!Boolean(c?.newsSyncError),
+      pendingPaymentReviews:c?pendingPaymentLogs(c).length:0,
+      uiOpen:open,busy};
+  }
+  function companyDiagnosticsPanelV111(c){
+    const d=safeCompanyDiagnosticsV111(c);
+    let html='<section class="tch-panel"><h2>Diagnostics · read-only connection checks</h2>'+
+      '<p class="tch-hint">This safe report contains statuses and counts only: no API key, company ID, employee names, pay amounts or private ledger entries.</p>'+
+      '<div class="tch-actionrow"><button class="primary" data-act="diag-check">Check tools</button>'+
+      '<button data-act="diag-copy">Copy safe diagnostics</button><button data-act="tab" data-tab="settings">Back to Settings</button></div>';
+    for(const [k,v] of Object.entries(d))html+='<div class="tch-roleline"><span>'+esc(k.replace(/([A-Z])/g," $1"))+'</span><b>'+esc(v===null?'Not available':v)+'</b></div>';
+    return html+'<p class="tch-hint">If requests fail, confirm the TornPDA script key and its company/profile, company/employees and optional log permissions. Payment import failures do not prove your company data is lost. Use Refresh only on the company page.</p></section>';
+  }
+
   function settingsV2(c){
     const native=hasPdaKey(), connected=Boolean(activeApiKey());
-    return '<div class="tch-section"><h2>Connection & preferences</h2><p>Keep the technical settings separate from everyday decisions.</p></div>'+
+    return '<div class="tch-section"><h2>Connection & preferences</h2><p>Keep the technical settings separate from everyday decisions.</p><button data-act="tab" data-tab="diagnostics" class="primary">Open Diagnostics</button></div>'+
       '<section class="tch-panel"><div class="tch-sectionhead"><h2>Torn PDA API</h2><span class="tch-mini '+(connected?"good":"warn")+'">'+(connected?"KEY AVAILABLE":"NOT CONNECTED")+'</span></div>'+
       '<p>'+(native?"Your Torn PDA API key is detected. No repeated key entry is needed.":"Torn PDA has not supplied an API key to this script. Configure the app key or enter one below.")+'</p>'+
       '<p class="tch-hint">To import personal payments, set a suitably restricted custom userscript API key in Torn PDA. Its app-wide key may lack user/log permissions. Keep personal money access limited.</p>'+
@@ -2741,6 +2763,7 @@
       else if(tab==="growth")body=growthV2(c);
       else if(tab==="stock")body=stockV3(c);
       else if(tab==="settings")body=settingsV2(c);
+      else if(tab==="diagnostics")body=companyDiagnosticsPanelV111(c);
       root.className=data.themeMode==="light"?"theme-light":"";
       root.innerHTML='<div class="tch-staxx-panel" role="dialog" aria-label="Company Helper">'+headV2(c)+tabsV2()+'<main class="tch-main">'+
         (message?'<div class="notice '+esc(severity)+'">'+esc(message)+'</div>':"")+
@@ -3077,6 +3100,10 @@
     const el=evt.target.closest("button[data-act]");if (!el) return;
     const act=el.dataset.act, c=current();
     if (act==="close") {open=false;draw();return;}
+    if (act==="diag-check"){document.dispatchEvent(new CustomEvent("staxx:ping"));document.dispatchEvent(new CustomEvent("staxx:diagnostics-request"));draw();return;}
+    if (act==="diag-copy"){const text=JSON.stringify(safeCompanyDiagnosticsV111(c),null,2);
+      const clipboard=window.navigator?.clipboard;if(clipboard?.writeText)clipboard.writeText(text).catch(()=>notify("Clipboard unavailable. Use StaxxHub diagnostics.","warn"));
+      else notify("Clipboard unavailable. Use StaxxHub diagnostics.","warn");return;}
     if (act==="profitstaxx") {open=false;draw();document.dispatchEvent(new CustomEvent('staxx:open',{detail:{id:'profit'}}));return;}
     if (act==="tab") {detailView="";tab=el.dataset.tab;message="";draw();return;}
     if (act==="metric-detail"){detailView=el.dataset.target;draw();return;}
