@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.18.0
+// @version      1.19.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1120,18 +1120,31 @@
     const queue=eligible.map(function(p){const give=Math.min(left,p.owed);left-=give;return Object.assign({},p,{give:give});});
     return {available:available,base:base,overflow:risk,queue:queue,allocate:queue.reduce(function(n,p){return n+p.give;},0)};
   }
-  // Do not confuse an optional stock API failure with a genuine service company.
+  // The official company type and last *successful* empty-stock response
+  // outrank old cached stock rows. Stock GET errors never imply stockless operation.
   function stockModeV117(c){
-    const name=String(c?.profile?.type?.name||'').trim().toLowerCase();
-    // Explicit product lines take precedence (including legacy/example fixtures).
-    if(Array.isArray(c?.stock)&&c.stock.length)return 'products';
+    const type=c?.profile?.type;
+    const name=String(typeof type==='string'?type:type?.name||'').trim().replace(/\s+/g,' ').toLowerCase();
+    // Service companies such as Fitness Centers must never inherit ghost stock
+    // lines from older saved data or a previous API shape.
     if(name==='fitness center'||name==='fitness centre')return 'service';
-    // A confirmed empty official stock response means service/no-inventory operations,
-    // not a stock-fetch failure. Do not infer this from a failed or denied API request.
-    if(c?.stockModeV117==='no-products'&&Array.isArray(c.stock)&&!c.stock.length)return 'no-products';
-    if(c?.stockModeV117==='products'&&Array.isArray(c.stock)&&c.stock.length)return 'products';
-    if(c?.stockModeV117==='no-products'&&Array.isArray(c.stock)&&!c.stock.length)return 'no-products';
+    if(c?.stockModeV117==='no-products')return 'no-products';
+    if(Array.isArray(c?.stock)&&c.stock.length)return 'products';
     return 'unknown';
+  }
+  function reconcileStocklessCompanyV119(c,profile){
+    if(!c)return false;
+    const mode=stockModeV117({profile:profile||c.profile,stock:c.stock,stockModeV117:c.stockModeV117});
+    if(mode!=='service'&&mode!=='no-products')return false;
+    const changed=!Array.isArray(c.stock)||c.stock.length>0||c.stockFetchError!=null||c.stockModeV117!==mode;
+    if(changed){
+      // Remove only cached inventory and obsolete stock-read errors. Preserve
+      // staff, finances, training ledgers and historical snapshots intact.
+      c.stock=[];
+      c.stockFetchError=null;
+      c.stockModeV117=mode;
+    }
+    return changed;
   }
   function serviceOperationsV117(c){
     const p=c.profile||{},a=accounting(c),members=financialAmount(p.customers?.daily),weekly=valueOfMetricV12(p.income,'weekly');
@@ -2542,7 +2555,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.18.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.19.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2980,9 +2993,11 @@
       if(c.autoCreditSince===undefined)c.autoCreditSince=stamp(); // Never auto-reclassify old transfers.
       const e=await read("company/employees");
       let st=null;
-      if(stockModeV117(c)==='service'||stockModeV117(c)==='no-products'){
-        // Fitness Centers sell memberships; avoid repeatedly requesting nonexistent inventory.
-        c.stock=[];c.stockFetchError=null;c.stockModeV117=stockModeV117(c);
+      // The just-fetched company profile is authoritative even when the
+      // saved profile or one obsolete stock row still describes another model.
+      const liveMode=stockModeV117({...c,profile:p});
+      if(liveMode==='service'||liveMode==='no-products'){
+        reconcileStocklessCompanyV119(c,p);
       }else{
         try{
           st=await read("company/stock");
@@ -3245,7 +3260,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.17.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.19.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
@@ -3457,7 +3472,10 @@
         if (!window.confirm("Replace all locally saved company records with this backup?")) return;
         data=raw;companyId=raw.lastCompany?String(raw.lastCompany):null;
         repairAllSavedCompanyDuplicates(data.byCompany);
-        Object.values(data.byCompany).forEach(function(c){if(c && Array.isArray(c.payments))migrateAutoPaymentClaims(c);});
+        Object.values(data.byCompany).forEach(function(c){
+          if(c && Array.isArray(c.payments))migrateAutoPaymentClaims(c);
+          reconcileStocklessCompanyV119(c);
+        });
         await persist();notify("Backup restored; unverified incoming transfers require confirmation.");
       } catch (e) {notify("Restore failed: "+String(e.message),"bad");}
     }
@@ -3477,12 +3495,16 @@
       if (loaded && loaded.schema===1 && loaded.byCompany && typeof loaded.byCompany==="object") {
         data=loaded;companyId=loaded.lastCompany?String(loaded.lastCompany):null;
         const repaired=repairAllSavedCompanyDuplicates(data.byCompany);
-        let needsReview=0;
-        Object.values(data.byCompany).forEach(function(c){if(c && Array.isArray(c.payments))needsReview+=migrateAutoPaymentClaims(c);});
-        if(repaired||needsReview){
+        let needsReview=0,clearedGhostStock=0;
+        Object.values(data.byCompany).forEach(function(c){
+          if(c && Array.isArray(c.payments))needsReview+=migrateAutoPaymentClaims(c);
+          if(reconcileStocklessCompanyV119(c))clearedGhostStock++;
+        });
+        if(repaired||needsReview||clearedGhostStock){
           await persist();
           message=(repaired?"Repaired "+repaired+" duplicate imported training records. ":"")+
-            (needsReview?needsReview+" previous auto-credited incoming transfers now require training-purpose review.":"");
+            (needsReview?needsReview+" previous auto-credited incoming transfers now require training-purpose review.":"")+
+            (clearedGhostStock?" Cleared obsolete product stock from "+clearedGhostStock+" service/no-stock company record(s).":"");
         }
         positionLauncher();
       }
