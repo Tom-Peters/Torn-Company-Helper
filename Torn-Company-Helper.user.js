@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.9.0
+// @version      1.9.1
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -78,7 +78,7 @@
     document.documentElement.append(css, root);
 
     const entries = [
-      {id:"profit",label:"ProfitStaxx",icon:"PS",desc:"Markets · Museum · Ledger"},
+      {id:"profit",label:"ProfitStaxx",icon:"PS",desc:"Markets · Stocks · Income"},
       {id:"company",label:"Company Helper",icon:"CO",desc:"Staff · Training · Growth"},
       {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}
     ];
@@ -234,6 +234,7 @@
       if(path==="/gym.php")return {id:"happy",name:"Gym"};
       if(path==="/companies.php")return {id:"company",name:"Company"};
       if(path==="/page.php"&&/\bsid=itemmarket\b/i.test(String(location.search||"")))return {id:"profit",name:"Item Market"};
+      if(path==="/page.php"&&/\bsid=stocks\b/i.test(String(location.search||"")))return {id:"profit",name:"Stock Market"};
       return null;
     }
     function contextEnabled(){return safeRead("staxx-hub-context-v1",true)!==false;}
@@ -1333,6 +1334,7 @@
     if(p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Trains may overflow at next close"});
     else if(p.available!==null&&p.available>=17)items.push({id:"training-capacity",target:"training-queue",glyph:"◇",text:"Train bank near capacity"});
     if(owed>0)items.push({id:"training-owed",target:"training-queue",glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
+    if(companyProfitTrendV191(c).streak)items.push({id:'cashflow-loss-streak',target:'growth-accounts',glyph:'!',text:'Operating losses on three observed days'});
     const pending=pendingPaymentLogs(c).length;
     if(pending)items.push({id:"pending-payments",target:"training-payments",glyph:"!",text:pending+" money transfer(s) await approval"});
     const a=accounting(c);
@@ -1353,6 +1355,8 @@
         status:a.id==='loss-guardrail'||a.id==='training-overflow'?'urgent':'now',
         priority:a.id==='loss-guardrail'?100:a.id==='training-overflow'?95:a.id==='stock-shortage'?90:70});
     }
+    const trend=companyProfitTrendV191(c);
+    if(trend.streak)add({id:'cashflow-loss-streak',title:'Review three observed loss days',detail:'Separate company operating estimates from actual cash received; review payroll, pricing and advertising.',status:'soon',priority:88});
     const first=p.queue.find(x=>x.give>0);
     if(first&&fresh)add({id:'decision-training-queue',title:'Assign '+first.give+' of '+first.owed+' owed trains to '+first.name,
       detail:'Oldest eligible purchased commitment; apply the train in Torn, then reconcile it.',status:'now',priority:85});
@@ -1865,6 +1869,38 @@
       '<p>Star ratings update weekly on Sunday. More popularity, revenue and effectiveness history helps identify improvement, but cannot establish an exact promotion date.</p>'+
       '<button data-act="goto" data-target="growth-review">Compare Sunday snapshots ›</button></section>';
   }
+
+  // One observation per UTC day avoids treating repeated refreshes as separate closes.
+  function companyProfitTrendV191(c){
+    const byDay=new Map();
+    for(const item of (c.snapshots||[])){
+      if(!item||item.complete!==true||!Number.isFinite(Number(item.profit)))continue;
+      const d=String(item.observedAt||'').slice(0,10);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(d))continue;
+      if(!byDay.has(d)||String(byDay.get(d).observedAt)<String(item.observedAt))byDay.set(d,item);
+    }
+    const recent=[...byDay.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-7)
+      .map(([date,row])=>({date,profit:Number(row.profit),revenue:Number(row.revenue),wages:Number(row.wages),ad:Number(row.ad)}));
+    const sum=recent.reduce((a,x)=>a+x.profit,0),average=recent.length?sum/recent.length:null;
+    const last3=recent.slice(-3),streak=last3.length===3&&last3.every(x=>x.profit<0);
+    return {recent,sum,average,streak};
+  }
+  function profitBridgePanelV191(c){
+    const history=companyProfitTrendV191(c),a=accounting(c),known=a&&a.known;
+    let html='<section class="tch-panel"><h2>Operating cashflow · income bridge</h2>'+
+      '<p class="tch-hint">Recorded daily snapshots, not Torn bank transactions. Only one verified snapshot per UTC day is counted; repeated refreshes do not inflate the totals.</p>';
+    html+='<div class="tch-homekpis">'+
+      metricV2('Latest daily model',known?money(a.profit):'Unverified','Revenue less wages and advertising','','growth-accounts')+
+      metricV2('Average observed day',history.average===null?'Insufficient history':money(history.average),history.recent.length+' unique days captured','','growth-accounts')+'</div>';
+    if(history.streak)html+='<p class="bad">Three latest recorded days show operating losses. Check wages, price, advertising and customer demand before another investment.</p>';
+    if(history.recent.length)html+='<details><summary>Show observed profit history</summary>'+
+      history.recent.map(x=>'<div class="tch-roleline"><span>'+esc(x.date)+'</span><b class="'+(x.profit<0?'bad':'good')+'">'+esc(money(x.profit))+'</b></div>').join('')+
+      '</details>';
+    html+='<p class="tch-hint">ProfitStaxx can record actual director payouts as realised income. Do not count these modeled company operating results as cash received or duplicate employee wages.</p>'+
+      '<button type="button" class="primary" data-act="profitstaxx">Open ProfitStaxx income tracker</button></section>';
+    return html;
+  }
+
   function homeV13(c){
     if(!c||!c.profile)return introV2();
     const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
@@ -1876,7 +1912,7 @@
         metricV2("Popularity",c.profile.popularity==null?"?":c.profile.popularity+"%","Daily report","","growth-pricing")+
         metricV2("Trains available",train.available===null?"?":train.available,"Paid owed "+due,"","training-queue")+
         metricV2("Estimated P/L",a.known?money(a.profit):"Unknown","Excludes unreported costs","","growth-accounts")+
-      '</div>'+starMomentumPanelV14(c)+growthMovesPanelV13(c)+
+      '</div>'+starMomentumPanelV14(c)+growthMovesPanelV13(c)+profitBridgePanelV191(c)+
       '<div class="tch-quick"><button data-act="goto" data-target="training-queue">Training queue ›</button>'+
       '<button data-act="goto" data-target="staff-wages">Wage analysis ›</button>'+
       '<button data-act="goto" data-target="growth-review">Weekly review ›</button></div>'+
@@ -2794,6 +2830,7 @@
     const el=evt.target.closest("button[data-act]");if (!el) return;
     const act=el.dataset.act, c=current();
     if (act==="close") {open=false;draw();return;}
+    if (act==="profitstaxx") {open=false;draw();document.dispatchEvent(new CustomEvent('staxx:open',{detail:{id:'profit'}}));return;}
     if (act==="tab") {detailView="";tab=el.dataset.tab;message="";draw();return;}
     if (act==="metric-detail"){detailView=el.dataset.target;draw();return;}
     if (act==="detail-back"){detailView="";draw();return;}
