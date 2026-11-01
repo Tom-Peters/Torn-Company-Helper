@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.13.0
+// @version      1.14.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -575,12 +575,9 @@
   if (window.top !== window.self || document.getElementById("tch-open")) return;
   const STORE = "company-helper-v1";
   const isCompanyPage = function () {return /^\/companies\.php$/i.test(window.location.pathname);};
-  if (!isCompanyPage()) {
-    document.addEventListener?.("staxx:refresh-request",()=>{void autoCompanyRefreshV112(true);});
-  document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}})));
-    document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}}));
-    return; // Company UI and API only run on companies.php.
-  }
+  // Keep the local company panel and read-only API available on every Torn page.
+  // The standalone company launcher itself stays on companies.php; StaxxHub can
+  // open the panel elsewhere without reloading or losing the current Torn page.
   const API = "https://api.torn.com/v2/";
   const rolesFallback = [
     ["Personal Trainer",31000,15500,"manual_labor","endurance"],
@@ -2313,7 +2310,7 @@
       '<div class="card"><h3>Payment imports</h3><p>There is no money-log filter to configure. Open Training and tap Import older payments or Rescan recent payments. The script detects the incoming-money types itself, matches identifiable employees and amounts, and asks you only about unclear records.</p><p class="muted">Your dedicated Torn API key must permit the relevant personal user/log types. Only manual taps cause API reads; no money is ever moved.</p><p class="muted">Detected incoming log types: '+esc(c?c.logTypes||"Not loaded yet":"Not loaded yet")+'</p></div>'+
       '<div class="card"><h3>Financial guardrail</h3><label>Maximum daily operating loss ($)</label><input id="tch-limit" type="number" min="0" step="50000" value="'+esc(c?c.lossLimit:500000)+'"><button data-act="save-limit">Save limit</button></div>'+
       '<div class="card"><h3>Local backups</h3><p>Export contains actual company and employee records. Keep the file private. It contains no API key.</p><button data-act="backup">Export JSON backup</button><label>Restore a backup (replaces all local company records)</label><textarea id="tch-restore" rows="3" placeholder="Paste a previously exported JSON backup here"></textarea><button data-act="restore">Restore backup</button></div>'+
-      '<div class="card"><h3>Safety contract</h3><p>Read-only Torn API GET requests automatically refresh company intelligence on a foreground Torn company page, no more than once every 15 minutes. No gameplay interactions, money transfers, staff changes or background scraping. All scenario and ledger buttons change local records only.</p><p class="muted">Author: IamEEKY · Repository: Torn-Company-Helper</p></div>';
+      '<div class="card"><h3>Safety contract</h3><p>Read-only Torn API GET requests automatically refresh company intelligence on a foreground Torn page while the company helper is open or StaxxHub requests data, with 15-minute backoff. No gameplay interactions, money transfers, staff changes or background scraping. All scenario and ledger buttons change local records only.</p><p class="muted">Author: IamEEKY · Repository: Torn-Company-Helper</p></div>';
   }
 
 
@@ -2748,8 +2745,8 @@
   function draw() {
     updateLauncherV11();
     opener.hidden=open || !isCompanyPage();
-    root.hidden=!open || !isCompanyPage();
-    const visible=Boolean(open&&isCompanyPage());
+    root.hidden=!open;
+    const visible=Boolean(open);
     if(staxxCompanyPanelState!==visible){
       staxxCompanyPanelState=visible;
       document.dispatchEvent?.(new CustomEvent('staxx:panel',{detail:{id:'company',open:visible}}));
@@ -3056,7 +3053,7 @@
   function syncCompanyVisibility() {
     const show=isCompanyPage();
     opener.hidden=!show || open;
-    if (!show && open) {open=false;root.hidden=true;}
+    // Navigating away from the company page must not close a Hub-opened panel.
     if (show) {updateLauncherV11();positionLauncher();}
   }
   let drag=null;
@@ -3088,19 +3085,20 @@
   opener.addEventListener("pointercancel",function(){drag=null;});
   opener.addEventListener("click",function(e) {
     if(launcherDragged){launcherDragged=false;e.preventDefault();return;}
-    if(!isCompanyPage()) return;
     open=true;message="";draw();
-    refresh(); // Opening explicitly triggers a fresh read; no background polling.
+    // Only request live information on demand; never write to Torn.
+    void autoCompanyRefreshV112(true);
   });
   document.addEventListener?.("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){if(e.detail.alertId){tab="alerts";detailView="";companyAlertFocus=String(e.detail.alertId);}if(!open)opener.click();else draw();focusCompanyAlert();}else if(open){open=false;draw();}});
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.13.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.14.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
   });
+  document.addEventListener?.("staxx:refresh-request",()=>{void autoCompanyRefreshV112(true);});
   document.addEventListener?.("staxx:ping",()=>document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}})));
   document.dispatchEvent?.(new CustomEvent("staxx:register",{detail:{id:"company",label:"Company Helper",icon:"CO",desc:"Daily performance · Staff · Growth",trendMetric:"Star rating",freshnessMs:86400000}}));
   window.addEventListener("resize",syncCompanyVisibility);
@@ -3339,7 +3337,7 @@
       try{if(sessionStorage.getItem("staxx-open-company")==="1"){sessionStorage.removeItem("staxx-open-company");const f=sessionStorage.getItem("staxx-open-company-alert");sessionStorage.removeItem("staxx-open-company-alert");if(f){tab="alerts";companyAlertFocus=f;}opener.click();focusCompanyAlert();}}catch(_){}
     } catch (_) { /* Do not silently overwrite damaged storage. */ }
   })();
-  // Auto-read on the company page or an open helper; StaxxHub can request foreground updates from other Torn pages.
+  // Auto-read on the company page or an open helper; StaxxHub requests foreground updates from every Torn page.
   // Do not automate any training, wages, stock orders or director actions.
   if(typeof setInterval==="function")setInterval(function(){void autoCompanyRefreshV112();},60000);
   document.addEventListener?.("visibilitychange",function(){
