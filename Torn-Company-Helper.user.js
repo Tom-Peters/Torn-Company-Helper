@@ -1127,7 +1127,7 @@
       metricV2('Weekly income',weekly===null?'Unreported':money(weekly),'Reported gross income','','growth-accounts')+
       metricV2('Popularity',p.popularity==null?'Unknown':p.popularity+'%','Relative popularity','','growth-pricing')+
       metricV2('Estimated daily P/L',a.known?money(a.profit):'Incomplete','Income less wages and advertising','','growth-accounts')+'</div>'+
-      '<div class="tch-actionrow"><button class="primary" data-act="goto" data-target="growth-pricing">Review membership & ads</button>'+
+      '<div class="tch-actionrow"><button class="primary" data-act="goto" data-target="growth-pricing">Review pricing & ads</button>'+
       '<button data-act="goto" data-target="staff-sim">Optimise staff</button><button data-act="goto" data-target="training-queue">Training queue</button></div>'+
       '<p class="tch-hint">No customer or income numbers are invented when missing. Non-Fitness-Center companies with an empty official stock response show no reported product lines rather than an assumed permissions error.</p></section>';
   }
@@ -1464,6 +1464,20 @@
     else if(p.available!==null&&p.available>=17)items.push({id:"training-capacity",target:"training-queue",glyph:"◇",text:"Train bank near capacity"});
     if(owed>0)items.push({id:"training-owed",target:"training-queue",glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
     if(companyProfitTrendV191(c).streak)items.push({id:'cashflow-loss-streak',target:'growth-accounts',glyph:'!',text:'Operating losses on three observed days'});
+    // Use only complete observations from consecutive UTC dates, not repeated reads on one day.
+    const delta=companyDeltaV111(c);
+    if(delta.known&&delta.consecutive){
+      const profit=delta.metrics.find(x=>x.key==='profit'),efficiency=delta.metrics.find(x=>x.key==='efficiency');
+      if(profit&&Number.isFinite(profit.delta)&&profit.delta<0){
+        const prior=Number(profit.before)||0;
+        if(-profit.delta>=Math.max(25000,Math.abs(prior)*0.10))
+          items.push({id:'observed-profit-drop',target:'growth-accounts',glyph:'!',
+            text:'Estimated daily operating result dropped '+money(-profit.delta)+' versus previous observed day'});
+      }
+      if(efficiency&&Number.isFinite(efficiency.delta)&&efficiency.delta<=-5)
+        items.push({id:'observed-efficiency-drop',target:'staff',glyph:'!',
+          text:'Reported efficiency fell '+Math.abs(efficiency.delta).toFixed(1)+' points versus previous observed day'});
+    }
     const pending=pendingPaymentLogs(c).length;
     if(pending)items.push({id:"pending-payments",target:"training-payments",glyph:"!",text:pending+" money transfer(s) await approval"});
     const a=accounting(c);
@@ -2513,7 +2527,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.12.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.17.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2562,7 +2576,7 @@
     const lossBreach=a.known && a.profit < -num(c.lossLimit);
     const newsReview=c.news.filter(function(n){return !c.training.some(function(t){return canonicalTrainingSource(t)==="news:"+n.id;});}).length;
     const moneyReview=pendingPaymentLogs(c).length;
-    return '<button type="button" data-act="goto" data-target="growth-performance" class="tch-hero tch-clickable tch-hero-button"><div class="tch-kicker">YOUR FITNESS CENTER · TAP FOR GROWTH DETAILS</div>'+
+    return '<button type="button" data-act="goto" data-target="growth-performance" class="tch-hero tch-clickable tch-hero-button"><div class="tch-kicker">YOUR '+esc(String(c.profile.type?.name||"COMPANY").toUpperCase())+' · TAP FOR GROWTH DETAILS</div>'+
       '<div class="tch-hero-line"><strong>'+esc(c.profile.name||"Company")+'</strong><span class="tch-rating">'+esc(c.profile.rating)+' ★</span></div>'+
       '<div class="tch-progress"><b style="width:'+Math.min(100,Math.max(0,num(c.profile.rating)*10))+'%"></b></div>'+
       '<small>10-star ambition · Max daily operating loss '+esc(money(c.lossLimit))+'</small></button>'+
