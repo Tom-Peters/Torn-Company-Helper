@@ -53,6 +53,24 @@
       {id:"company",label:"Company Helper",icon:"CO",desc:"Staff · Training · Growth"},
       {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}];
     const active=Object.create(null),notices=Object.create(null);
+    // Keep recent read-only notifications while navigating between Torn pages.
+    // Cached statuses are explicitly identified as previous observations.
+    try {
+      const saved=JSON.parse(sessionStorage.getItem("staxx-hub-notifications-v1")||"null");
+      if(saved&&typeof saved==="object"&&Date.now()-saved.time<4*3600000&&saved.byTool){
+        for(const id of ["profit","company","happy"]){
+          const a=saved.byTool[id];
+          if(a&&typeof a==="object"&&Number(a.count)>0)notices[id]={
+            count:Math.min(99,Math.max(0,Math.floor(Number(a.count)||0))),
+            summary:"Previously seen · "+String(a.summary||"Needs attention").slice(0,120),
+            items:Array.isArray(a.items)?a.items.slice(0,3).map(v=>String(v).slice(0,120)):[]
+          };
+        }
+      }
+    }catch(_){}
+    function rememberNotices(){
+      try{sessionStorage.setItem("staxx-hub-notifications-v1",JSON.stringify({time:Date.now(),byTool:notices}));}catch(_){}
+    }
     const toggle=root.querySelector("#staxx-hub-toggle"),veil=root.querySelector("#staxx-hub-veil"),drawer=root.querySelector("#staxx-hub-drawer");
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
     let expanded=false;
@@ -94,7 +112,7 @@
     document.addEventListener?.("staxx:notice",e=>{const d=e.detail||{},id=d.id;if(!catalog.some(x=>x.id===id))return;
       const clean={count:Math.min(99,Math.max(0,Math.floor(Number(d.count)||0))),summary:String(d.summary||"").slice(0,160),
         items:Array.isArray(d.items)?d.items.slice(0,5).map(v=>String(v).slice(0,160)):[]};
-      if(JSON.stringify(clean)!==JSON.stringify(notices[id])){notices[id]=clean;render();}
+      if(JSON.stringify(clean)!==JSON.stringify(notices[id])){notices[id]=clean;rememberNotices();render();}
     });
     render();
     document.dispatchEvent?.(new CustomEvent("staxx:ping"));
