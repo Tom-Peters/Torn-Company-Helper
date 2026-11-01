@@ -1,4 +1,4 @@
-# Torn Company Helper — Product specification V8 and implementation status
+# Torn Company Helper — Product specification V9 and implementation status
 
 Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** (design baseline; other company types where data supports it).
 
@@ -13,6 +13,19 @@ Author: **IamEEKY** · Target: **Torn PDA** · Company type: **Fitness Center** 
 - Temporarily skip ineligible employees while retaining chronological priority.
 - Archive departed employees.
 - Growth, profit and effectiveness comparisons with stability preference when full optimiser is delivered.
+
+## Shipped: v1.3.0
+
+- [x] Tap-to-open automatically refreshes own company, roster and best-effort latest training news and incoming money log
+- [x] Exact package employee money transfers auto-classified into the local paid train ledger with explicit provenance and audit correction
+- [x] No retrospective auto-credit on version upgrade; manual backfill confirmation and duplicated-manual-receipt safeguards
+- [x] Stable same raw userscript URL, no gameplay POST, no background data polling and no new persistent API key
+- [x] Oldest-first eligible paid commitments preserved and reconciled against automatically imported company training news IDs
+- [x] 38px compact mobile navigation with a four-action Today screen
+- [x] Support-role salary proxy using role/team wage per effectiveness point, labelled distinctly from actual employee value
+- [x] Practical star-growth insights using weak employee efficiency, environment, popularity and daily train capacity
+- [x] Peer staffing benchmark matched to next star and scaled to employee count instead of generic 10-star copying
+- [x] Automated regression checks for opening, money logs, duplicates, backfill, unknown salary inputs and public peer roles
 
 ## Shipped: v1.2.0
 
