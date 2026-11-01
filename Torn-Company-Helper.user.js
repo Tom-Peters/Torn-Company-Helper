@@ -678,6 +678,187 @@
       metricV2("Days covered",h.runway===null?"Unknown":h.runway.toFixed(1),"Vault / known fixed costs","","growth-accounts")+
       '</div><p class="tch-hint">A conservative fixed-cost check, not a profit or vault forecast.</p></section>';
   }
+
+  // v1.1 star-first decisions use observed public company figures. No star-date prediction.
+  function peerModelV11(c){
+    const raw=c&&c.peers&&Array.isArray(c.peers.rows)?c.peers.rows:[];
+    const own=c&&c.profile||{},seen=new Set();
+    const rows=raw.filter(function(p){
+      if(!p||!Number.isSafeInteger(Number(p.id))||seen.has(String(p.id)))return false;
+      seen.add(String(p.id));
+      return Number(p.id)!==Number(own.id)&&p.income&&financialAmount(p.income.weekly)!==null;
+    }).map(function(p){return {id:Number(p.id),name:String(p.name||"Company"),rating:Number(p.rating)||0,
+      weekly:financialAmount(p.income.weekly),customers:p.customers&&financialAmount(p.customers.weekly),
+      hired:p.employees&&financialAmount(p.employees.hired),capacity:p.employees&&financialAmount(p.employees.capacity),
+      age:financialAmount(p.days_old)};}).sort(function(a,b){return b.weekly-a.weekly;});
+    const rating=Number(own.rating)||0,target=Math.min(10,rating+1);
+    const neighbours=rows.filter(function(p){return p.rating===target;});
+    const ownWeekly=financialAmount(own.income&&own.income.weekly);
+    const median=function(a){if(!a.length)return null;const sorted=a.slice().sort(function(x,y){return x-y;});const mid=Math.floor(sorted.length/2);return sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;};
+    const benchmark=median(neighbours.map(function(p){return p.weekly;}));
+    const full=!!(c.peers&&c.peers.complete);
+    const next=neighbours.length?neighbours[0]:null;
+    const gap=benchmark!==null&&ownWeekly!==null?Math.max(0,benchmark-ownWeekly):null;
+    return {rows:rows,target:target,neighbours:neighbours,benchmark:benchmark,
+      gap:gap,next:next,ownWeekly:ownWeekly,total:c.peers&&c.peers.total,full:full,
+      observedAt:c.peers&&c.peers.observedAt,scanned:c.peers&&c.peers.scanned};
+  }
+  function starGrowthV11(c){
+    const p=c.profile||{},peers=peerModelV11(c),issues=[];
+    function add(importance,title,note,link){issues.push({importance:importance,title:title,note:note,link:link});}
+    if(p.efficiency!=null&&Number(p.efficiency)<100)
+      add(0,"Improve daily efficiency","Currently "+p.efficiency+"%. Review role assignments, employee effectiveness, inactivity and addiction.","staff-sim");
+    if(p.environment!=null&&Number(p.environment)<100)
+      add(1,"Improve environment","Currently "+p.environment+"%. Check staff room, Cleaner/Manager effectiveness and inactivity.","staff");
+    if(p.popularity!=null&&Number(p.popularity)<100)
+      add(2,"Grow weekly customer income","Popularity "+p.popularity+"% (relative to your type's leader). Review membership price and ads through measured changes.","growth-pricing");
+    if(peers.benchmark!==null&&peers.gap>0)
+      add(3,"Close the next-star revenue gap","Median of "+peers.neighbours.length+" scanned "+peers.target+"★ peers: "+
+        money(peers.benchmark)+"/week; your observed shortfall "+money(peers.gap)+"/week. This is not a promotion threshold.","growth-rivals");
+    if(!peers.observedAt)
+      add(3,"Scan Fitness Center rivals","Compare the same company type and the next star tier using Torn's public weekly income figures.","growth-rivals");
+    const hired=financialAmount(p.employees&&p.employees.hired),capacity=financialAmount(p.employees&&p.employees.capacity);
+    if(hired!==null&&capacity!==null&&hired<capacity)
+      add(4,"Review "+(capacity-hired)+" available employee slot(s)","Recruit for genuine growth needs; leave supporting roles covered.","staff");
+    if(!issues.length)add(5,"Track Sunday star results","No simple issue detected. Collect more comparable daily and weekly reports; ranking remains competitive.","growth-performance");
+    return {issues:issues.sort(function(a,b){return a.importance-b.importance;}),peers:peers};
+  }
+  function starGrowthPanelV11(c){
+    const growth=starGrowthV11(c),p=c.profile||{};
+    return '<section class="tch-panel tch-starplan"><div class="tch-sectionhead"><h2>Star-growth priorities</h2><span class="tch-mini">Goal: 10 ★</span></div>'+
+      '<p>Ranked for growth: efficiency, environment, popularity, then comparable weekly income. Wages are a retention/cost decision, not a star-up lever.</p>'+
+      growth.issues.map(function(x,i){return '<button data-act="goto" data-target="'+esc(x.link)+'" class="tch-insight">'+
+        '<strong>'+esc((i+1)+". "+x.title)+'</strong><small>'+esc(x.note)+'</small><span>↗</span></button>';}).join("")+
+      '<p class="tch-hint">Torn evaluates company results around 18:00 TCT and changes stars on Sundays. This cannot predict a guaranteed promotion date.</p></section>';
+  }
+  function rivalsPanelV11(c){
+    const m=peerModelV11(c),refresh=m.observedAt?new Date(m.observedAt).toLocaleString():"Never";
+    const limit=5,leaders=m.rows.filter(function(x){return x.rating>=m.target;}).slice(0,limit);
+    const same=m.rows.filter(function(x){return x.rating===Number(c.profile.rating)}).slice(0,limit);
+    return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Rivals · '+esc(c.profile.type&&c.profile.type.name||"Company")+'</h2>'+
+      '<span class="tch-mini">'+m.rows.length+' rivals</span></div>'+
+      '<p>Public weekly gross income comparisons, never wages or net profit. Every scan is manual and limited to five API pages.</p>'+
+      '<button class="primary" data-act="scan-peers" '+(busy?'disabled':'')+'>Scan public competitors</button>'+
+      '<p class="tch-hint">Last scan '+esc(refresh)+' · '+esc(m.full?"Complete API directory sample":"Partial directory sample")+
+      ' · '+esc(m.scanned||0)+' fetched · '+(m.total===null||m.total===undefined?"Total unknown":esc(m.total)+" companies reported")+'</p>'+
+      '<div class="tch-metrics">'+
+        metricV2('Your weekly income',money(m.ownWeekly),'Torn-reported','','growth-rivals')+
+        metricV2('Next-star peer median',m.benchmark===null?'Unknown':money(m.benchmark),m.neighbours.length+' observed '+m.target+'★ companies','','growth-rivals')+
+        metricV2('Gap to peer median',m.gap===null?'Unknown':money(m.gap),'Not a promotion threshold','','growth-rivals')+
+        metricV2('Observed next-star peers',m.neighbours.length,'Sample size, not a ranking','','growth-rivals')+
+      '</div></section>'+
+      '<section class="tch-panel"><h2>Leaders at or above '+m.target+'★</h2>'+
+      (leaders.length?leaders.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p class="tch-hint">No comparable rivals loaded. Tap Scan public competitors.</p>')+
+      '<h2>Your star tier · examples</h2>'+
+      (same.length?same.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p>No same-star companies in the current sample.</p>')+
+      '<p class="tch-hint">Income ratios are observational. A larger sample is needed before claiming any league position. Company data refreshes on Torn’s own schedule.</p></section>';
+  }
+  function rivalRowV11(p,own){
+    const delta=own!==null&&own>0?((p.weekly/own-1)*100):null;
+    return '<div class="tch-record"><div><strong>'+esc(p.rating)+'★ '+esc(p.name)+'</strong>'+
+      '<small>'+esc(p.hired===null?'?':p.hired)+' staff · '+(delta===null?'Income comparison unknown':(delta>=0?'+':'')+delta.toFixed(1)+'% vs you')+
+      '</small></div><b>'+esc(money(p.weekly))+'/wk</b></div>';
+  }
+  function wageModelV11(c){
+    const share=[10,15,20,25,30,35,40,50].includes(c.wageShare)?c.wageShare:25;
+    const staff=c.staff||[],rows=staff.map(function(p){
+      const value=financialAmount(p.value),wage=financialAmount(p.wage),
+        effectiveness=p.effectiveness&&Number.isFinite(Number(p.effectiveness.total))?Number(p.effectiveness.total):null;
+      const ratio=value!==null&&value>0&&wage!==null?wage/value:null;
+      const target=value!==null&&value>0?Math.min(25000000,Math.round(value*share/100/1000)*1000):null;
+      const gap=target!==null&&wage!==null?target-wage:null;
+      return {id:p.id,name:p.name,position:p.position&&p.position.name||'Unknown',value:value,wage:wage,
+        effectiveness:effectiveness,ratio:ratio,target:target,gap:gap,indirect:value===0,
+        salaryPerEff:effectiveness!==null&&effectiveness>0&&wage!==null?wage/effectiveness:null};
+    });
+    const known=rows.filter(function(x){return x.value!==null;});
+    const direct=rows.filter(function(x){return x.value>0&&x.wage!==null;});
+    const gross=direct.reduce(function(t,x){return t+x.value;},0),salaries=direct.reduce(function(t,x){return t+x.wage;},0);
+    return {share:share,rows:rows,visible:known.length,direct:direct.length,gross:gross,salaries:salaries,
+      sumTarget:direct.reduce(function(t,x){return t+x.target;},0)};
+  }
+  function wagesPanelV11(c){
+    const w=wageModelV11(c);
+    return '<section class="tch-panel"><h2>HR-informed wage helper</h2>'+
+      '<p>Uses each employee’s Torn-reported <strong>Value</strong> (direct contribution, revealed by an effective Secretary/HR Officer) plus their wage and effectiveness. It does <strong>not</strong> treat supporting roles as worthless.</p>'+
+      '<div class="tch-actionrow">'+[10,15,20,25,30,35,40,50].map(function(n){
+        return '<button data-act="wage-share" data-share="'+n+'" class="'+(w.share===n?'primary':'')+'">'+n+'%</button>';}).join("")+'</div>'+
+      '<p class="tch-hint">Scenario: target wage '+w.share+'% of reported direct value, rounded to nearest $1,000. This is a budget scenario, NOT a proven market salary. Adjust for retention, special duties and competition.</p>'+
+      '<div class="tch-metrics">'+
+      metricV2('Value revealed',w.visible+' / '+w.rows.length,'Secretary data availability','','staff-wages')+
+      metricV2('Direct value',money(w.gross),w.direct+' measurable contributors','','staff-wages')+
+      metricV2('Current direct wages',money(w.salaries),'Only measurable contributors','','staff-wages')+
+      metricV2('Scenario direct wages',money(w.sumTarget),'Excludes indirect support roles','','staff-wages')+
+      '</div>'+
+      (w.visible===0?'<div class="notice warn">No HR-revealed values in the current API data. Assign an effective HR Officer/Secretary and refresh. Wage recommendations are deliberately withheld.</div>':'')+
+      '</section><section class="tch-panel"><h2>Employee wage review</h2>'+
+      w.rows.slice().sort(function(a,b){return (b.ratio===null?-1:b.ratio)-(a.ratio===null?-1:b.ratio);}).map(function(x){
+        return '<article class="tch-wagerow"><div class="tch-sectionhead"><strong>'+esc(x.name)+'</strong><span class="tch-mini">'+
+          esc(x.position)+'</span></div><div class="tch-wagegrid">'+
+          '<span>HR value <b>'+esc(x.value===null?'Not revealed':money(x.value))+'</b></span>'+
+          '<span>Current wage <b>'+esc(money(x.wage))+'</b></span>'+
+          '<span>Wage / value <b>'+esc(x.ratio===null?'N/A':(x.ratio*100).toFixed(1)+'%')+'</b></span>'+
+          '<span>Torn EFF <b>'+esc(x.effectiveness===null?'Unknown':x.effectiveness)+'</b></span></div>'+
+          (x.target!==null?'<div class="tch-wage-target"><span>Budget scenario <b>'+esc(money(x.target))+'/day</b></span><span>'+
+            esc(x.gap===null?'Unknown':((x.gap>=0?'+':'')+money(x.gap)))+' vs now</span></div>':
+            '<p class="tch-hint">'+esc(x.indirect?'Indirect support role: value may be zero although the employee improves company income elsewhere. No wage target.':
+              'Value unavailable: no salary target inferred.')+'</p>')+
+        '</article>';
+      }).join("")+
+      '<p class="tch-hint">The secretary’s own effectiveness can affect the reliability of these values. Zero and null are distinct. A higher wage does not directly affect a company star-up.</p></section>';
+  }
+  function trainingWeekV11(c){
+    const p=trainPlanV3(c),base=p.base,starting=p.available,now=Date.now();
+    const eligibleNow=p.queue.filter(function(x){return x.give>0;});
+    const committed=eligibleNow.reduce(function(t,x){return t+x.owed;},0);
+    if(base===null||starting===null)return {days:[],base:null,reason:'No current train-stock data'};
+    const rows=[],sumOwed=p.queue.reduce(function(t,x){return t+x.owed;},0);
+    let balance=starting,remaining=sumOwed;
+    for(let i=0;i<7;i++){
+      // Daily award with no future manual actions is a cap-only forecast;
+      // an alternate scenario spends oldest currently eligible obligations first.
+      const take=Math.min(balance,remaining);
+      balance-=take;remaining-=take;
+      const lost=Math.max(0,balance+base-20);
+      balance=Math.min(20,balance+base);
+      rows.push({day:i+1,given:take,remaining:remaining,stored:balance,minimumLost:lost});
+    }
+    return {days:rows,base:base,starting:starting,committed:committed};
+  }
+  function weekPanelV11(c){
+    const f=trainingWeekV11(c);
+    if(!f.days.length)return '<section class="tch-panel"><h2>Seven-day training plan</h2><p>Refresh company trains to calculate a simple scenario.</p></section>';
+    return '<section class="tch-panel"><h2>Seven-day training forecast</h2>'+
+      '<p>Illustration if you use existing trains on <strong>currently eligible</strong> paid commitments each day, then generate the baseline '+f.base+'★ trains at each company close.</p>'+
+      '<div class="tch-weekgrid"><span>Day</span><span>Give</span><span>Bank</span><span>Overflow</span>'+
+      f.days.map(function(d){return '<span>'+d.day+'</span><b>'+d.given+'</b><b>'+d.stored+'</b><b class="'+(d.minimumLost?'bad':'')+'">'+d.minimumLost+'</b>';}).join("")+'</div>'+
+      '<p class="tch-hint">Assumes no star changes, new purchases, new hires or other training; excludes trainers’ extra trains. It is not an automatic schedule or confirmed future event.</p></section>';
+  }
+  function launcherAlertsV11(c){
+    if(!c||!c.profile)return {items:[],count:0};
+    const items=[],p=trainPlanV3(c),balances=aggregates(c).balance;
+    const owed=Object.keys(balances).filter(function(k){return balances[k].owed>0;}).length;
+    if(p.overflow>0)items.push({glyph:"⚡",text:"Trains may overflow at next close"});
+    else if(p.available!==null&&p.available>=17)items.push({glyph:"◇",text:"Train bank near capacity"});
+    if(owed>0)items.push({glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
+    const pending=pendingPaymentLogs(c).length;
+    if(pending)items.push({glyph:"!",text:pending+" money transfer(s) await approval"});
+    const a=accounting(c);
+    if(a&&a.known&&a.headroom<0)items.push({glyph:"!",text:"Daily operating-loss guardrail exceeded"});
+    if(c.lastRefresh&&Number.isFinite(Date.parse(c.lastRefresh))&&Date.now()-Date.parse(c.lastRefresh)>86400000)
+      items.push({glyph:"↻",text:"Saved company data over 24 hours old"});
+    return {items:items,count:items.length};
+  }
+  function updateLauncherV11(){
+    const c=companyId&&data.byCompany&&data.byCompany[companyId];
+    let status={items:[],count:0};
+    try{status=launcherAlertsV11(c);}catch(e){/* Alerts must never block the launcher. */}
+    const n=status.count;
+    opener.innerHTML='<span>Company Helper</span>'+(n?'<span class="tch-launcherbadge" aria-hidden="true">'+
+      esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
+    opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
+    opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
+  }
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
 
