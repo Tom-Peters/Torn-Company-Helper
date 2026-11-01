@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.0.0
+// @version      1.1.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/companies.php*
@@ -63,7 +63,7 @@
     if (!requestKey) throw Error("No API key is available. Configure Torn PDA's app API key or enter a session-only custom key in Settings.");
     if (typeof PDA_httpGet !== "function") throw Error("PDA_httpGet is unavailable. Run this in Torn PDA.");
     // Never accept an arbitrary URL or a path returned by remote data.
-    if (!/^(company\/(profile|employees|stock|news|applications)|torn\/[0-9]+\/companies|torn\/logtypes|user\/log)$/.test(path)) throw Error("Blocked API route.");
+    if (!/^(company\/(profile|employees|stock|news|applications|[0-9]+\/companies)|torn\/[0-9]+\/companies|torn\/logtypes|user\/log)$/.test(path)) throw Error("Blocked API route.");
     const q = new URLSearchParams(params || {});
     const response = await PDA_httpGet(API + path + (q.toString() ? "?" + q : ""), {Authorization:"ApiKey " + requestKey});
     if (!response || response.status !== 200) throw Error("Torn API request failed (HTTP " + (response && response.status) + ").");
@@ -566,6 +566,23 @@
   }
   // Hungarian maximum-weight assignment preserves exact existing position counts.
   // Switch penalty favours stable staffing; score is requirement fit, not revenue.
+
+  function roleGrowthWeightV11(c,name){
+    // Revenue-role signal from Secretary-revealed direct value, not a causal model.
+    // Global assignment always retains identical Manager/Marketer/HR/Cleaner slot counts.
+    if(/manager|marketer|cleaner|human resources|hr officer|trainer/i.test(String(name)))return 1;
+    const measured=(c.staff||[]).filter(function(p){
+      return financialAmount(p.value)!==null&&financialAmount(p.value)>0;
+    });
+    if(measured.length<2)return 1;
+    const max=Math.max.apply(null,measured.map(function(p){return Number(p.value);}));
+    const matches=measured.filter(function(p){
+      return String(p.position&&p.position.name||"").toLowerCase()===String(name).toLowerCase();
+    });
+    if(!matches.length||max<=0)return 1;
+    const average=matches.reduce(function(t,p){return t+Number(p.value);},0)/matches.length;
+    return Math.max(1,Math.min(1.3,1+0.3*average/max));
+  }
   function balancedAssignmentV3(c){
     const staff=c.staff||[],roles=roleList(c),n=staff.length;
     if(n<2||n>50)return {changes:[],delta:0,reason:"Not enough comparable employees"};
@@ -575,7 +592,7 @@
       return {changes:[],delta:0,reason:"Some working stats or position requirements are missing"};
     const scores=staff.map(function(p,i){return slots.map(function(name){
       const fit=score(p,roleMap[name.toLowerCase()]);
-      return fit===null?-10000:fit-(slots[i]===name?0:5);
+      return fit===null?-10000:fit*roleGrowthWeightV11(c,name)-(slots[i]===name?0:5);
     });});
     const u=Array(n+1).fill(0),v=Array(n+1).fill(0),match=Array(n+1).fill(0),way=Array(n+1).fill(0);
     for(let i=1;i<=n;i++){
@@ -601,7 +618,7 @@
     }).filter(function(x){return x.from!==x.to;});
     const before=staff.reduce(function(total,p,i){return total+num(score(p,roleMap[slots[i].toLowerCase()]));},0);
     const after=staff.reduce(function(total,p,i){return total+num(score(p,roleMap[slots[assigned[i]].toLowerCase()]));},0);
-    return {changes:changes,delta:(after-before)/n,reason:"Global fit comparison, 5-point switching penalty, position counts preserved"};
+    return {changes:changes,delta:(after-before)/n,reason:"Revenue-role weighted fit when HR values exist; 5-point switching penalty; position counts preserved. Not a revenue forecast"};
   }
   function radarPanelV3(c){
     const p=c.profile||{},model=riskRadarV3(c);
@@ -615,7 +632,7 @@
   function balancedPanelV3(c){
     const plan=balancedAssignmentV3(c);
     return '<section class="tch-panel"><h2>Balanced team optimiser</h2>'+
-      '<p>Tests every employee against all current position slots together. Keeps Manager, Cleaner and Marketer slot counts intact, with a stability penalty.</p>'+
+      '<p>Star-growth weighted matching of employees to current position slots: HR-revealed revenue contributors get limited extra priority; critical role counts are preserved and switching is penalised.</p>'+
       '<div class="tch-comparison"><div><span>Average role-fit gain</span><strong>'+(plan.delta>=0?"+":"")+plan.delta.toFixed(1)+' pp</strong></div>'+
       '<div><span>Proposed role moves</span><strong>'+plan.changes.length+'</strong></div></div>'+
       plan.changes.map(function(x){return '<div class="tch-change"><strong>'+esc(x.name)+'</strong><span>'+esc(x.from)+' → '+esc(x.to)+'</span>'+
@@ -678,12 +695,194 @@
       metricV2("Days covered",h.runway===null?"Unknown":h.runway.toFixed(1),"Vault / known fixed costs","","growth-accounts")+
       '</div><p class="tch-hint">A conservative fixed-cost check, not a profit or vault forecast.</p></section>';
   }
+
+  // v1.1 star-first decisions use observed public company figures. No star-date prediction.
+  function peerModelV11(c){
+    const raw=c&&c.peers&&Array.isArray(c.peers.rows)?c.peers.rows:[];
+    const own=c&&c.profile||{},seen=new Set();
+    const rows=raw.filter(function(p){
+      if(!p||!Number.isSafeInteger(Number(p.id))||seen.has(String(p.id)))return false;
+      seen.add(String(p.id));
+      return Number(p.id)!==Number(own.id)&&p.income&&financialAmount(p.income.weekly)!==null;
+    }).map(function(p){return {id:Number(p.id),name:String(p.name||"Company"),rating:Number(p.rating)||0,
+      weekly:financialAmount(p.income.weekly),customers:p.customers&&financialAmount(p.customers.weekly),
+      hired:p.employees&&financialAmount(p.employees.hired),capacity:p.employees&&financialAmount(p.employees.capacity),
+      age:financialAmount(p.days_old)};}).sort(function(a,b){return b.weekly-a.weekly;});
+    const rating=Number(own.rating)||0,target=Math.min(10,rating+1);
+    const neighbours=rows.filter(function(p){return p.rating===target;});
+    const ownWeekly=financialAmount(own.income&&own.income.weekly);
+    const median=function(a){if(!a.length)return null;const sorted=a.slice().sort(function(x,y){return x-y;});const mid=Math.floor(sorted.length/2);return sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;};
+    const benchmark=median(neighbours.map(function(p){return p.weekly;}));
+    const full=!!(c.peers&&c.peers.complete);
+    const next=neighbours.length?neighbours[0]:null;
+    const gap=benchmark!==null&&ownWeekly!==null?Math.max(0,benchmark-ownWeekly):null;
+    return {rows:rows,target:target,neighbours:neighbours,benchmark:benchmark,
+      gap:gap,next:next,ownWeekly:ownWeekly,total:c.peers&&c.peers.total,full:full,
+      observedAt:c.peers&&c.peers.observedAt,scanned:c.peers&&c.peers.scanned};
+  }
+  function starGrowthV11(c){
+    const p=c.profile||{},peers=peerModelV11(c),issues=[];
+    function add(importance,title,note,link){issues.push({importance:importance,title:title,note:note,link:link});}
+    if(p.efficiency!=null&&Number(p.efficiency)<100)
+      add(0,"Improve daily efficiency","Currently "+p.efficiency+"%. Review role assignments, employee effectiveness, inactivity and addiction.","staff-sim");
+    if(p.environment!=null&&Number(p.environment)<100)
+      add(1,"Improve environment","Currently "+p.environment+"%. Check staff room, Cleaner/Manager effectiveness and inactivity.","staff");
+    if(p.popularity!=null&&Number(p.popularity)<100)
+      add(2,"Grow weekly customer income","Popularity "+p.popularity+"% (relative to your type's leader). Review membership price and ads through measured changes.","growth-pricing");
+    if(peers.benchmark!==null&&peers.gap>0)
+      add(3,"Close the next-star revenue gap","Median of "+peers.neighbours.length+" scanned "+peers.target+"★ peers: "+
+        money(peers.benchmark)+"/week; your observed shortfall "+money(peers.gap)+"/week. This is not a promotion threshold.","growth-rivals");
+    if(!peers.observedAt)
+      add(3,"Scan Fitness Center rivals","Compare the same company type and the next star tier using Torn's public weekly income figures.","growth-rivals");
+    const hired=financialAmount(p.employees&&p.employees.hired),capacity=financialAmount(p.employees&&p.employees.capacity);
+    if(hired!==null&&capacity!==null&&hired<capacity)
+      add(4,"Review "+(capacity-hired)+" available employee slot(s)","Recruit for genuine growth needs; leave supporting roles covered.","staff");
+    if(!issues.length)add(5,"Track Sunday star results","No simple issue detected. Collect more comparable daily and weekly reports; ranking remains competitive.","growth-performance");
+    return {issues:issues.sort(function(a,b){return a.importance-b.importance;}),peers:peers};
+  }
+  function starGrowthPanelV11(c){
+    const growth=starGrowthV11(c),p=c.profile||{};
+    return '<section class="tch-panel tch-starplan"><div class="tch-sectionhead"><h2>Star-growth priorities</h2><span class="tch-mini">Goal: 10 ★</span></div>'+
+      '<p>Ranked for growth: efficiency, environment, popularity, then comparable weekly income. Wages are a retention/cost decision, not a star-up lever.</p>'+
+      growth.issues.map(function(x,i){return '<button data-act="goto" data-target="'+esc(x.link)+'" class="tch-insight">'+
+        '<strong>'+esc((i+1)+". "+x.title)+'</strong><small>'+esc(x.note)+'</small><span>↗</span></button>';}).join("")+
+      '<p class="tch-hint">Torn evaluates company results around 18:00 TCT and changes stars on Sundays. This cannot predict a guaranteed promotion date.</p></section>';
+  }
+  function rivalsPanelV11(c){
+    const m=peerModelV11(c),refresh=m.observedAt?new Date(m.observedAt).toLocaleString():"Never";
+    const limit=5,leaders=m.rows.filter(function(x){return x.rating>=m.target;}).slice(0,limit);
+    const same=m.rows.filter(function(x){return x.rating===Number(c.profile.rating)}).slice(0,limit);
+    return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Rivals · '+esc(c.profile.type&&c.profile.type.name||"Company")+'</h2>'+
+      '<span class="tch-mini">'+m.rows.length+' rivals</span></div>'+
+      '<p>Public weekly gross income comparisons, never wages or net profit. Every scan is manual and limited to five API pages.</p>'+
+      '<button class="primary" data-act="scan-peers" '+(busy?'disabled':'')+'>Scan public competitors</button>'+
+      '<p class="tch-hint">Last scan '+esc(refresh)+' · '+esc(m.full?"Complete API directory sample":"Partial directory sample")+
+      ' · '+esc(m.scanned||0)+' fetched · '+(m.total===null||m.total===undefined?"Total unknown":esc(m.total)+" companies reported")+'</p>'+
+      '<div class="tch-metrics">'+
+        metricV2('Your weekly income',money(m.ownWeekly),'Torn-reported','','growth-rivals')+
+        metricV2('Next-star peer median',m.benchmark===null?'Unknown':money(m.benchmark),m.neighbours.length+' observed '+m.target+'★ companies','','growth-rivals')+
+        metricV2('Gap to peer median',m.gap===null?'Unknown':money(m.gap),'Not a promotion threshold','','growth-rivals')+
+        metricV2('Observed next-star peers',m.neighbours.length,'Sample size, not a ranking','','growth-rivals')+
+      '</div></section>'+
+      '<section class="tch-panel"><h2>Leaders at or above '+m.target+'★</h2>'+
+      (leaders.length?leaders.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p class="tch-hint">No comparable rivals loaded. Tap Scan public competitors.</p>')+
+      '<h2>Your star tier · examples</h2>'+
+      (same.length?same.map(function(p){return rivalRowV11(p,m.ownWeekly);}).join(""):'<p>No same-star companies in the current sample.</p>')+
+      '<p class="tch-hint">Income ratios are observational. A larger sample is needed before claiming any league position. Company data refreshes on Torn’s own schedule.</p></section>';
+  }
+  function rivalRowV11(p,own){
+    const delta=own!==null&&own>0?((p.weekly/own-1)*100):null;
+    return '<div class="tch-record"><div><strong>'+esc(p.rating)+'★ '+esc(p.name)+'</strong>'+
+      '<small>'+esc(p.hired===null?'?':p.hired)+' staff · '+(delta===null?'Income comparison unknown':(delta>=0?'+':'')+delta.toFixed(1)+'% vs you')+
+      '</small></div><b>'+esc(money(p.weekly))+'/wk</b></div>';
+  }
+  function wageModelV11(c){
+    const share=[10,15,20,25,30,35,40,50].includes(c.wageShare)?c.wageShare:25;
+    const staff=c.staff||[],rows=staff.map(function(p){
+      const value=financialAmount(p.value),wage=financialAmount(p.wage),
+        effectiveness=p.effectiveness&&Number.isFinite(Number(p.effectiveness.total))?Number(p.effectiveness.total):null;
+      const ratio=value!==null&&value>0&&wage!==null?wage/value:null;
+      const target=value!==null&&value>0?Math.min(25000000,Math.round(value*share/100/1000)*1000):null;
+      const gap=target!==null&&wage!==null?target-wage:null;
+      return {id:p.id,name:p.name,position:p.position&&p.position.name||'Unknown',value:value,wage:wage,
+        effectiveness:effectiveness,ratio:ratio,target:target,gap:gap,indirect:value===0,
+        salaryPerEff:effectiveness!==null&&effectiveness>0&&wage!==null?wage/effectiveness:null};
+    });
+    const known=rows.filter(function(x){return x.value!==null;});
+    const direct=rows.filter(function(x){return x.value>0&&x.wage!==null;});
+    const gross=direct.reduce(function(t,x){return t+x.value;},0),salaries=direct.reduce(function(t,x){return t+x.wage;},0);
+    return {share:share,rows:rows,visible:known.length,direct:direct.length,gross:gross,salaries:salaries,
+      sumTarget:direct.reduce(function(t,x){return t+x.target;},0)};
+  }
+  function wagesPanelV11(c){
+    const w=wageModelV11(c);
+    return '<section class="tch-panel"><h2>HR-informed wage helper</h2>'+
+      '<p>Uses each employee’s Torn-reported <strong>Value</strong> (direct contribution, revealed by an effective Secretary/HR Officer) plus their wage and effectiveness. It does <strong>not</strong> treat supporting roles as worthless.</p>'+
+      '<div class="tch-actionrow">'+[10,15,20,25,30,35,40,50].map(function(n){
+        return '<button data-act="wage-share" data-share="'+n+'" class="'+(w.share===n?'primary':'')+'">'+n+'%</button>';}).join("")+'</div>'+
+      '<p class="tch-hint">Scenario: target wage '+w.share+'% of reported direct value, rounded to nearest $1,000. This is a budget scenario, NOT a proven market salary. Adjust for retention, special duties and competition.</p>'+
+      '<div class="tch-metrics">'+
+      metricV2('Value revealed',w.visible+' / '+w.rows.length,'Secretary data availability','','staff-wages')+
+      metricV2('Direct value',money(w.gross),w.direct+' measurable contributors','','staff-wages')+
+      metricV2('Current direct wages',money(w.salaries),'Only measurable contributors','','staff-wages')+
+      metricV2('Scenario direct wages',money(w.sumTarget),'Excludes indirect support roles','','staff-wages')+
+      '</div>'+
+      (w.visible===0?'<div class="notice warn">No HR-revealed values in the current API data. Assign an effective HR Officer/Secretary and refresh. Wage recommendations are deliberately withheld.</div>':'')+
+      '</section><section class="tch-panel"><h2>Employee wage review</h2>'+
+      w.rows.slice().sort(function(a,b){return (b.ratio===null?-1:b.ratio)-(a.ratio===null?-1:b.ratio);}).map(function(x){
+        return '<article class="tch-wagerow"><div class="tch-sectionhead"><strong>'+esc(x.name)+'</strong><span class="tch-mini">'+
+          esc(x.position)+'</span></div><div class="tch-wagegrid">'+
+          '<span>HR value <b>'+esc(x.value===null?'Not revealed':money(x.value))+'</b></span>'+
+          '<span>Current wage <b>'+esc(money(x.wage))+'</b></span>'+
+          '<span>Wage / value <b>'+esc(x.ratio===null?'N/A':(x.ratio*100).toFixed(1)+'%')+'</b></span>'+
+          '<span>Torn EFF <b>'+esc(x.effectiveness===null?'Unknown':x.effectiveness)+'</b></span></div>'+
+          (x.target!==null?'<div class="tch-wage-target"><span>Budget scenario <b>'+esc(money(x.target))+'/day</b></span><span>'+
+            esc(x.gap===null?'Unknown':((x.gap>=0?'+':'')+money(x.gap)))+' vs now</span></div>':
+            '<p class="tch-hint">'+esc(x.indirect?'Indirect support role: value may be zero although the employee improves company income elsewhere. No wage target.':
+              'Value unavailable: no salary target inferred.')+'</p>')+
+        '</article>';
+      }).join("")+
+      '<p class="tch-hint">The secretary’s own effectiveness can affect the reliability of these values. Zero and null are distinct. A higher wage does not directly affect a company star-up.</p></section>';
+  }
+  function trainingWeekV11(c){
+    const p=trainPlanV3(c),base=p.base,starting=p.available,now=Date.now();
+    const eligibleNow=p.queue.filter(function(x){return x.give>0;});
+    const committed=eligibleNow.reduce(function(t,x){return t+x.owed;},0);
+    if(base===null||starting===null)return {days:[],base:null,reason:'No current train-stock data'};
+    const rows=[],sumOwed=p.queue.reduce(function(t,x){return t+x.owed;},0);
+    let balance=starting,remaining=sumOwed;
+    for(let i=0;i<7;i++){
+      // Daily award with no future manual actions is a cap-only forecast;
+      // an alternate scenario spends oldest currently eligible obligations first.
+      const take=Math.min(balance,remaining);
+      balance-=take;remaining-=take;
+      const lost=Math.max(0,balance+base-20);
+      balance=Math.min(20,balance+base);
+      rows.push({day:i+1,given:take,remaining:remaining,stored:balance,minimumLost:lost});
+    }
+    return {days:rows,base:base,starting:starting,committed:committed};
+  }
+  function weekPanelV11(c){
+    const f=trainingWeekV11(c);
+    if(!f.days.length)return '<section class="tch-panel"><h2>Seven-day training plan</h2><p>Refresh company trains to calculate a simple scenario.</p></section>';
+    return '<section class="tch-panel"><h2>Seven-day training forecast</h2>'+
+      '<p>Illustration if you use existing trains on <strong>currently eligible</strong> paid commitments each day, then generate the baseline '+f.base+'★ trains at each company close.</p>'+
+      '<div class="tch-weekgrid"><span>Day</span><span>Give</span><span>Bank</span><span>Overflow</span>'+
+      f.days.map(function(d){return '<span>'+d.day+'</span><b>'+d.given+'</b><b>'+d.stored+'</b><b class="'+(d.minimumLost?'bad':'')+'">'+d.minimumLost+'</b>';}).join("")+'</div>'+
+      '<p class="tch-hint">Assumes no star changes, new purchases, new hires or other training; excludes trainers’ extra trains. It is not an automatic schedule or confirmed future event.</p></section>';
+  }
+  function launcherAlertsV11(c){
+    if(!c||!c.profile)return {items:[],count:0};
+    const items=[],p=trainPlanV3(c),balances=aggregates(c).balance;
+    const owed=Object.keys(balances).filter(function(k){return balances[k].owed>0;}).length;
+    if(p.overflow>0)items.push({glyph:"⚡",text:"Trains may overflow at next close"});
+    else if(p.available!==null&&p.available>=17)items.push({glyph:"◇",text:"Train bank near capacity"});
+    if(owed>0)items.push({glyph:"◇",text:owed+" employee(s) owed confirmed trains"});
+    const pending=pendingPaymentLogs(c).length;
+    if(pending)items.push({glyph:"!",text:pending+" money transfer(s) await approval"});
+    const a=accounting(c);
+    if(a&&a.known&&a.headroom<0)items.push({glyph:"!",text:"Daily operating-loss guardrail exceeded"});
+    if(c.lastRefresh&&Number.isFinite(Date.parse(c.lastRefresh))&&Date.now()-Date.parse(c.lastRefresh)>86400000)
+      items.push({glyph:"↻",text:"Saved company data over 24 hours old"});
+    return {items:items,count:items.length};
+  }
+  function updateLauncherV11(){
+    const c=companyId&&data.byCompany&&data.byCompany[companyId];
+    let status={items:[],count:0};
+    try{status=launcherAlertsV11(c);}catch(e){/* Alerts must never block the launcher. */}
+    const n=status.count;
+    opener.innerHTML='<span>Company Helper</span>'+(n?'<span class="tch-launcherbadge" aria-hidden="true">'+
+      esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
+    opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
+    opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
+  }
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
 
   style.textContent += "#tch-root .tch-evidence{color:#7cead3;font-weight:750}#tch-root .tch-quality{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:11px 1px;border-bottom:1px solid #4a6279}#tch-root .tch-quality>div{flex:1}#tch-root .tch-quality strong,#tch-root .tch-quality small{display:block}#tch-root .tch-quality small{font-size:11px;color:#c9d9e7}#tch-root .tch-metric{text-align:left;cursor:pointer;width:100%;font:inherit;color:inherit}#tch-root .tch-metric:focus-visible{outline:3px solid #64e5d5}#tch-root{color-scheme:dark;color:#f6f9fd;background:#101923;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}#tch-root .card{background:#25384c;border-color:#52708a;box-shadow:0 2px 10px #0003}#tch-root header,#tch-root .nav{background:#1c2b3d;border-color:#425d76}#tch-root h2,#tch-root h3,#tch-root strong{color:#fff}#tch-root p,#tch-root .muted,#tch-root .card .muted{color:#d1e2f1}#tch-root th{color:#e0edf7;background:#2b4055}#tch-root td{color:#f1f6fb;border-color:#58718a}#tch-root table tr:nth-child(even){background:#30465d}#tch-root button{color:#fff;background:#345673;border:1px solid #7592aa;font-weight:650;min-height:43px}#tch-root button.primary,#tch-root .nav button.active{background:#087e7b;border-color:#50d9c3}#tch-root .nav button{white-space:nowrap}#tch-root button:focus-visible,#tch-root input:focus-visible,#tch-root select:focus-visible{outline:3px solid #5ae5d1;outline-offset:2px}#tch-root input,#tch-root select,#tch-root textarea{background:#142536;border:1px solid #8aa3b8;color:#fff;min-height:44px}#tch-root input::placeholder,#tch-root textarea::placeholder{color:#c2d5e5;opacity:1}#tch-root .notice{background:#433b28;border:1px solid #b9a16b;color:#fff}#tch-root .warn{color:#ffe2a1}#tch-root .good{color:#84f5d4}#tch-root .bad{color:#ffb0b0}#tch-root .check{display:flex;align-items:center;gap:12px;border-top:1px solid #52708a;padding:10px 0}#tch-root .check input{min-height:18px;width:20px;height:20px;flex-shrink:0}#tch-root .card .card{background:#2f445a}#tch-root .row{gap:10px}#tch-root .row > input,#tch-root .row > select{flex:1 1 150px}#tch-root .scroll{border-radius:8px}#tch-root [hidden]{display:none!important}";
   style.textContent += "#tch-open{bottom:auto;right:auto;left:16px;top:calc(100dvh - 125px);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}#tch-open:active{cursor:grabbing}";
   style.textContent += "\n#tch-open{background:#1268a5;box-shadow:0 6px 25px #051326bb}\n#tch-root{background:#0c1626;color:#edf7ff}\n#tch-root .tch-top,#tch-root .tch-bottom{background:#12243a;border-color:#385979}\n#tch-root .tch-hero{background:linear-gradient(130deg,#133f64,#192945 60%,#123754);border-color:#4383ae}\n#tch-root .tch-panel,#tch-root .tch-person,#tch-root .tch-metric{background:#1a2e46;border-color:#3b6182}\n#tch-root .tch-eyebrow,#tch-root .tch-kicker{color:#6cd8ff}\n#tch-root button.primary,#tch-root .tch-switch button.active{background:#1468ad;border-color:#67c7ff}\n#tch-root .tch-bottom{grid-template-columns:repeat(5,minmax(0,1fr))}\n#tch-root .tch-bottom button{font-size:10px;min-width:0;padding:3px 1px}\n#tch-root .tch-radar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:11px 0}\n#tch-root .tch-radar div{background:#24415d;border:1px solid #42698c;border-radius:10px;padding:10px}\n#tch-root .tch-radar small,#tch-root .tch-radar strong{display:block}\n#tch-root .tch-radar small{font-size:10px;color:#c6d8e9}\n#tch-root .tch-radar strong{font-size:22px}\n#tch-root .tch-stockrow{background:#223950;border:1px solid #405f7c;border-radius:12px;padding:13px;margin:11px 0}\n#tch-root .tch-stockrow p{font-size:12px}\n#tch-root .tch-stockrow>strong{color:#83ddff}\n#tch-root .tch-clickable:focus-visible,#tch-root button:focus-visible{outline:3px solid #60cdff}\n#tch-root.theme-light .tch-stockrow,#tch-root.theme-light .tch-radar div{background:#e9f3fc;border-color:#abc5db;color:#162a40}\n#tch-root.theme-light .tch-stockrow>strong{color:#176696}\n";
+  style.textContent += "\n#tch-open{display:flex;align-items:center;gap:8px;white-space:nowrap}\n#tch-open .tch-launcherbadge{display:inline-flex;align-items:center;gap:2px;background:#f04458;color:white;border-radius:999px;padding:2px 7px;border:2px solid #0d1b2e;min-width:28px;height:25px;justify-content:center;font-size:11px;font-weight:900}\n#tch-root .tch-starplan .tch-insight{width:100%;text-align:left}\n#tch-root .tch-wagerow{background:#213952;border:1px solid #41617f;border-radius:12px;padding:12px;margin:10px 0}\n#tch-root .tch-wagegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}\n#tch-root .tch-wagegrid span{font-size:11px;color:#b9d2e7;background:#273f59;padding:8px;border-radius:8px}\n#tch-root .tch-wagegrid b{display:block;font-size:16px;color:#f0faff}\n#tch-root .tch-wage-target{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid #496987;padding-top:10px;font-size:12px}\n#tch-root .tch-weekgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;text-align:center;margin:12px 0}\n#tch-root .tch-weekgrid>*{background:#25415c;border-radius:6px;padding:8px 3px;min-width:0}\n#tch-root.theme-light .tch-wagerow{background:#e9f3fc;border-color:#abc5db;color:#142e47}\n#tch-root.theme-light .tch-wagegrid span{background:#dcebf7;color:#153a58}\n#tch-root.theme-light .tch-wagegrid b{color:#152a42}\n";
   style.textContent+="#tch-open{touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab}#tch-open:active{cursor:grabbing}#tch-open[hidden],#tch-root[hidden]{display:none!important}";
 
   style.textContent += "#tch-root{font-family:system-ui,-apple-system,Arial,sans-serif;background:#101923;color:#f4f7fb}#tch-root .tch-main{padding:16px 13px 118px;max-width:760px;margin:0 auto}#tch-root .tch-top{height:auto;min-height:76px;padding:12px 15px;gap:8px}#tch-root .tch-headline{flex:1;min-width:0}#tch-root .tch-headline strong{display:block;font-size:20px;line-height:1.2}#tch-root .tch-eyebrow{letter-spacing:.09em;font-size:10px;color:#6af0d7;font-weight:700}#tch-root .tch-timestamp{font-size:11px;color:#c0d5e5;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}#tch-root .tch-iconbtn{min-width:40px;padding:7px;font-size:21px;border-radius:12px}#tch-root .tch-bottom{position:fixed;bottom:0;left:0;right:0;background:#152639;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));z-index:3;border-top:1px solid #4b6a85;padding:7px 5px calc(env(safe-area-inset-bottom) + 8px);box-shadow:0 -9px 25px #050c1599}#tch-root .tch-bottom button{border:0;display:flex;flex-direction:column;gap:2px;align-items:center;background:transparent;color:#c7d7e5;border-radius:10px;min-height:56px;padding:3px;font-size:11px}#tch-root .tch-bottom button.active{background:#284d57;color:#f0fffc}#tch-root .tch-navicon{font-size:23px;height:27px}#tch-root .tch-hero{background:linear-gradient(128deg,#153d4b,#1b314e 65%,#172a3e);border:1px solid #446f7d;border-radius:17px;padding:18px;margin-bottom:13px}#tch-root .tch-kicker{color:#72f1da;font-size:11px;font-weight:800;letter-spacing:.1em}#tch-root .tch-hero-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 15px}#tch-root .tch-hero-line strong{font-size:22px;line-height:1.2}#tch-root .tch-rating{background:#16736f;border-radius:9px;padding:6px 10px;font-weight:800;white-space:nowrap}#tch-root .tch-progress{height:8px;background:#355368;border-radius:50px;overflow:hidden;margin:0 0 12px}#tch-root .tch-progress b{height:100%;display:block;background:#37dfc1}#tch-root .tch-hero small{color:#cbdce8}#tch-root .tch-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}#tch-root .tch-metric{background:#263b51;border:1px solid #496882;border-radius:13px;padding:14px;min-width:0;display:flex;flex-direction:column;gap:7px}#tch-root .tch-metric>strong{font-size:22px;letter-spacing:-.02em;overflow-wrap:anywhere}#tch-root .tch-metric>small{font-size:11px;color:#c5d7e6}#tch-root .tch-metric.tch-danger{border-color:#ff7979;background:#49353f}#tch-root .tch-metric.tch-positive{border-color:#468b86}#tch-root .tch-panel{background:#203247;border:1px solid #47627b;border-radius:14px;padding:15px;margin:12px 0}#tch-root .tch-panel h2,#tch-root .tch-section h2{font-size:18px;margin:0 0 8px}#tch-root .tch-section{margin:12px 2px 18px}#tch-root .tch-section p{margin:4px 0 12px}#tch-root .tch-sectionhead,#tch-root .tch-personhead{display:flex;align-items:center;justify-content:space-between;gap:9px}#tch-root .tch-mini{font-size:11px;letter-spacing:.02em;color:#c0dbe8;background:#325069;border-radius:7px;padding:5px 8px}#tch-root .tch-priority{display:flex;align-items:center;gap:12px;margin-top:9px;border:1px solid #536980;background:#2b4058;padding:12px;border-radius:11px}#tch-root .tch-priority>span{height:30px;min-width:30px;border-radius:9px;display:grid;place-items:center;background:#385e6a;color:#b5ffe6;font-weight:800}#tch-root .tch-priority.warning>span{background:#846735;color:#fff}#tch-root .tch-priority.danger>span{background:#9c4755;color:#fff}#tch-root .tch-priority>div{flex:1;min-width:0}#tch-root .tch-priority strong,#tch-root .tch-priority small{display:block}#tch-root .tch-priority small{font-size:11px;color:#cad9e7}#tch-root .tch-priority button{font-size:12px;min-height:36px}#tch-root .tch-actiongrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .tch-actiongrid button{text-align:left;min-height:72px;padding:11px;background:#304b64}#tch-root .tch-actiongrid button span{display:block;font-size:11px;color:#c1d6e6}#tch-root .tch-actionrow{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:10px 0}#tch-root .tch-switch{display:flex;gap:5px;padding:4px;background:#1f334a;border:1px solid #405d75;border-radius:12px;overflow-x:auto;scrollbar-width:none}#tch-root .tch-switch button{flex:1;white-space:nowrap;min-height:38px;padding:8px;border:none;background:transparent;font-size:12px}#tch-root .tch-switch button.active{background:#0b8079;color:#fff}#tch-root .tch-person,#tch-root .tch-review{background:#263b50;border:1px solid #476983;border-radius:13px;padding:13px;margin:10px 0}#tch-root .tch-personhead{justify-content:flex-start}#tch-root .tch-personhead>div:nth-child(2){flex:1}#tch-root .tch-personhead strong,#tch-root .tch-personhead small{display:block}#tch-root .tch-personhead small{font-size:12px;color:#c6d8e8}#tch-root .tch-avatar{width:39px;height:39px;border-radius:12px;background:#116963;display:grid;place-items:center;font-weight:800;font-size:17px}#tch-root .tch-eff{background:#344b64;border-radius:8px;padding:6px;font-size:17px;font-weight:800}#tch-root .tch-eff small{font-size:9px;color:#d5e7f2}#tch-root .tch-recommend{display:flex;align-items:center;gap:9px;margin:12px 0;padding:8px;background:#1d3348;border-radius:9px;flex-wrap:wrap}#tch-root .tch-recommend span{font-size:11px;color:#d5e2ec}#tch-root .tch-recommend strong{font-size:14px}#tch-root .tch-recommend.highlight strong{color:#5ce8ce}#tch-root .tch-recommend small{color:#c6d9e6}#tch-root .tch-statstrip{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0;color:#c5d7e5;font-size:11px}#tch-root .tch-statstrip span{padding:5px 7px;background:#304962;border-radius:7px}#tch-root .tch-statstrip b{color:#fff}#tch-root .tch-whatif{display:flex;align-items:center;justify-content:space-between;gap:12px}#tch-root .tch-whatif select{flex:1;max-width:220px}#tch-root .tch-hint{font-size:12px;color:#c4d7e6;margin:12px 0}#tch-root .tch-queueitem,#tch-root .tch-record{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 1px;border-bottom:1px solid #456077}#tch-root .tch-queueitem>div:first-child,#tch-root .tch-record>div:first-child{flex:1}#tch-root .tch-queueitem strong,#tch-root .tch-queueitem small,#tch-root .tch-record strong,#tch-root .tch-record small{display:block}#tch-root .tch-queueitem small,#tch-root .tch-record small{font-size:11px;color:#cbd9e6}#tch-root .tch-queueitem b{font-size:22px;color:#8af1d8}#tch-root .tch-queueitem>div:last-child{text-align:right}#tch-root .tch-record>div:last-child{text-align:right}#tch-root .tch-record button{display:block;margin-left:auto;min-height:34px}#tch-root .tch-fieldrow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}#tch-root .tch-fieldrow>select,#tch-root .tch-fieldrow>input,#tch-root .tch-fieldrow>label{flex:1 1 110px;min-width:0}#tch-root .tch-fieldrow>label input{display:block;width:100%;margin-top:5px}#tch-root .tch-empty{padding:20px;text-align:center;border-radius:9px;background:#2b445b;color:#d6e4ed}#tch-root .tch-minikpis{display:flex;gap:10px;margin:13px 0}#tch-root .tch-minikpis span{background:#37536b;padding:7px 11px;border-radius:7px}#tch-root .tch-highlight-number{font-size:30px;font-weight:800}#tch-root .tch-welcome{padding:24px}#tch-root .tch-welcome h2{font-size:24px}#tch-root.theme-light{background:#f3f6f9;color:#182d43;color-scheme:light}#tch-root.theme-light .tch-panel,#tch-root.theme-light .tch-person,#tch-root.theme-light .tch-review,#tch-root.theme-light .tch-metric{background:#fff;color:#1d3246;border-color:#cbd9e5}#tch-root.theme-light .tch-top,#tch-root.theme-light .tch-bottom{background:#e7eff6;color:#193449}#tch-root.theme-light .tch-bottom button{color:#354c5e}#tch-root.theme-light .tch-bottom button.active{background:#c9eae4;color:#095f58}#tch-root.theme-light .tch-section p,#tch-root.theme-light .tch-panel p,#tch-root.theme-light .muted,#tch-root.theme-light small,#tch-root.theme-light strong,#tch-root.theme-light h2,#tch-root.theme-light .tch-timestamp{color:#263f51}#tch-root.theme-light input,#tch-root.theme-light select,#tch-root.theme-light textarea{background:#fff;color:#12263a;border-color:#7995aa}#tch-root.theme-light .tch-switch{background:#e1ebf3}#tch-root.theme-light .tch-switch button{color:#233b4b}#tch-root.theme-light .tch-switch button.active{background:#167d78;color:#fff}#tch-root.theme-light .tch-priority,#tch-root.theme-light .tch-recommend,#tch-root.theme-light .tch-statstrip span,#tch-root.theme-light .tch-queueitem{background:#eef3f7;color:#193244}#tch-root.theme-light .tch-hero{background:linear-gradient(135deg,#e1f6ef,#dceaf7);color:#193449}#tch-root.theme-light .tch-hero-line strong,#tch-root.theme-light .tch-hero small{color:#163647}#tch-root.theme-light .tch-eyebrow,#tch-root.theme-light .tch-kicker{color:#046b60}#tch-root.theme-light .tch-avatar{background:#a5ded2;color:#13463d}";
@@ -975,7 +1174,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?"Stock":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.0.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.1.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -1033,7 +1232,7 @@
       metricV2("Outstanding trains",owed.toLocaleString(),due+" employee account(s)","","training-queue")+
       metricV2("Trains available",c.profile.trains==null?"—":c.profile.trains,"Company stockpile","","training-queue")+
       metricV2("Employees",c.staff.length+" / "+num(c.profile.employees&&c.profile.employees.capacity),"Current roster","","staff")+'</div>'+
-      actionPanelV3(c)+radarPanelV3(c)+
+      actionPanelV3(c)+radarPanelV3(c)+starGrowthPanelV11(c)+
       '<section class="tch-panel"><h2>Quick actions</h2><div class="tch-actiongrid">'+
       '<button data-act="tab" data-tab="training">Check training queue<span>Paid and outstanding</span></button>'+
       '<button data-act="tab" data-tab="employees">Optimise staff<span>Suggested roles</span></button>'+
@@ -1053,8 +1252,10 @@
     const options=[
       {action:"staff-view",id:"positions",name:"Suggestions",active:staffView==="positions"},
       {action:"staff-view",id:"roster",name:"Roster",active:staffView==="roster"},
-      {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"}
+      {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
+      {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
+    if(staffView==="wages")return '<div class="tch-section"><h2>Staff · Wage helper</h2>'+buttonsV2("Staff view",options)+'</div>'+wagesPanelV11(c);
     if(staffView==="simulator")return '<div class="tch-section"><h2>Staff optimiser</h2><p>Explore alternative staffing plans before making decisions.</p>'+buttonsV2("Staff view",options)+'</div>'+scenarioV2(c);
     const roles=roleList(c),sc=scenarioModel(c),suggested=suggestions(c);
     const suggestionById={};
@@ -1162,7 +1363,7 @@
             (!e.voided?'<button data-act="void-entry" data-id="'+esc(e.id)+'">Void</button>':"")+'</div></div>';
         }).join("")+'</section>';
     }
-    return '<div class="tch-section"><h2>Training ledger</h2><p>Paid commitments, automatic history matching and account corrections.</p>'+switches+'</div>'+body;
+    return '<div class="tch-section"><h2>Training ledger</h2><p>Paid commitments, automatic history matching and account corrections.</p>'+switches+'</div>'+body+(trainingView==="queue"?weekPanelV11(c):'');
   }
 
   function recentObservations(c,days) {
@@ -1211,16 +1412,17 @@
     const switches=buttonsV2("Growth views",[
       {action:"growth-view",id:"performance",name:"Overview",active:growthView==="performance"},
       {action:"growth-view",id:"pricing",name:"Pricing & ads",active:growthView==="pricing"},
-      {action:"growth-view",id:"accounts",name:"Accounts",active:growthView==="accounts"}]);
+      {action:"growth-view",id:"accounts",name:"Accounts",active:growthView==="accounts"},
+      {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"}]);
     return '<div class="tch-section"><h2>10-star growth</h2><p>Revenue improvement within your daily loss limit of '+esc(money(c.lossLimit))+'. Estimates are labelled.</p>'+switches+'</div>'+
-      (growthView==="performance"?'<div class="tch-metrics">'+
+      (growthView==="performance"?starGrowthPanelV11(c)+'<div class="tch-metrics">'+
          metricV2("Current rating",c.profile.rating+" / 10","Competitive star progression","","growth-performance")+
          metricV2("Daily revenue",money(a.revenue),"Reported by Torn","","growth-accounts")+
          metricV2("Wages",money(a.wages),"Current daily staff wages","","growth-accounts")+
          metricV2("Advertising",money(a.ad),"Current daily spend","","growth-pricing")+'</div>'+
          '<section class="tch-panel"><h2>Profit and growth</h2><div class="tch-highlight-number">'+esc(a.known?money(a.profit):"Incomplete")+'</div><p>Estimated operating P/L after current wages and advertising, excluding unknown costs.</p>'+
          '<div class="tch-priority '+(!a.known?"warning":a.headroom<0?"danger":"ok")+'"><span>'+(!a.known?"?":a.headroom<0?"!":"✓")+'</span><div><strong>'+esc(a.known?money(a.headroom):"Unknown")+' headroom</strong><small>'+(!a.known?"Financial inputs are incomplete; loss policy cannot be assessed.":"Relative to permitted −"+esc(money(c.lossLimit))+" daily operating result")+'</small></div></div></section>'+growthAdvisorV2(c):
-      growthView==="pricing"?growth(c):finances(c));
+      growthView==="pricing"?growth(c):growthView==="rivals"?rivalsPanelV11(c):finances(c));
   }
   function settingsV2(c){
     const native=hasPdaKey(), connected=Boolean(activeApiKey());
@@ -1238,6 +1440,7 @@
   }
 
   function draw() {
+    updateLauncherV11();
     opener.hidden=open || !isCompanyPage();
     root.hidden=!open || !isCompanyPage();
     if(!open)return;
@@ -1412,6 +1615,38 @@
       if(c.logHistoryWarning && !newest)severity="bad";
     });
   }
+
+  async function scanPeersV11(){
+    return work(async function(){
+      const c=current(),type=c&&c.profile&&Number(c.profile.type&&c.profile.type.id);
+      if(!Number.isSafeInteger(type)||type<=0)throw Error("Refresh the company type before scanning competitors.");
+      const rows=[],ids=new Set();let total=null,complete=false,pages=0;
+      for(let offset=0;offset<500;offset+=100){
+        const page=await read("company/"+type+"/companies",{limit:"100",offset:String(offset)});
+        if(!Array.isArray(page.companies))throw Error("Torn returned no public company directory list.");
+        const n=Number(page._metadata&&page._metadata.total);
+        if(Number.isSafeInteger(n)&&n>=0)total=n;
+        let added=0;
+        page.companies.forEach(function(p){
+          if(!p||!Number.isSafeInteger(Number(p.id))||Number(p.type&&p.type.id)!==type)return;
+          if(ids.has(String(p.id)))return;
+          ids.add(String(p.id));added++;
+          rows.push({id:Number(p.id),name:String(p.name||"").slice(0,120),
+            rating:p.rating,days_old:p.days_old,income:p.income,customers:p.customers,employees:p.employees});
+        });
+        pages++;
+        if(page.companies.length<100 || (total!==null&&offset+page.companies.length>=total)){complete=true;break;}
+        if(added===0)break; // Do not keep requesting a stuck page.
+      }
+      if(!pages)throw Error("No company directory pages loaded.");
+      c.peers={rows:rows.slice(0,500),total:total,complete:complete,scanned:rows.length,
+        observedAt:new Date().toISOString(),typeId:type};
+      await persist();
+      message="Scanned "+rows.length+" public "+String(c.profile.type.name||"company")+" listings ("+
+        (complete?"directory complete":"sample capped at 500")+
+        "). Weekly income comparisons updated.";
+    });
+  }
   function positionLauncher() {
     const rect=opener.getBoundingClientRect();
     const w=window.innerWidth, h=window.innerHeight;
@@ -1424,7 +1659,7 @@
     const show=isCompanyPage();
     opener.hidden=!show || open;
     if (!show && open) {open=false;root.hidden=true;}
-    if (show) positionLauncher();
+    if (show) {updateLauncherV11();positionLauncher();}
   }
   let drag=null;
   opener.addEventListener("pointerdown",function(e){
@@ -1485,6 +1720,8 @@
     if (act==="training-view"){trainingView=el.dataset.view;draw();return;}
     if (act==="more-payments"){paymentViewLimit+=35;draw();return;}
     if (act==="growth-view"){growthView=el.dataset.view;draw();return;}
+    if (act==="scan-peers")return scanPeersV11();
+    if (act==="wage-share"){const n=Number(el.dataset.share);if(!c||![10,15,20,25,30,35,40,50].includes(n))return;c.wageShare=n;return work(persist);}
     if (act==="stock-days"){const n=Number(el.dataset.days);if(!c||![2,3,5,7].includes(n))return;c.stockDays=n;return work(persist);}
     if (act==="apply-balanced"){if(!c)return;const plan=balancedAssignmentV3(c);c.whatIf={};plan.changes.forEach(function(x){c.whatIf[x.id]=x.to;});tab="employees";staffView="simulator";return work(persist);}
     if (act==="finance-focus"){if(["revenue","wages","ad","profit"].includes(el.dataset.field)){financeFocus=el.dataset.field;draw();}return;}
@@ -1492,7 +1729,7 @@
       const target=el.dataset.target;
       const routes={"growth-performance":["growth","performance"],"growth-accounts":["growth","accounts"],
         "growth-pricing":["growth","pricing"],"training-queue":["training","queue"],
-        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","roster"],"staff-sim":["employees","simulator"],"stock":["stock",""]};
+        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","roster"],"staff-sim":["employees","simulator"],"staff-wages":["employees","wages"],"growth-rivals":["growth","rivals"],"stock":["stock",""]};
       if(target==="refresh"){refresh();return;}
       if(!Object.prototype.hasOwnProperty.call(routes,target))return;
       const route=routes[target];tab=route[0];if(tab==="growth")growthView=route[1];
@@ -1661,6 +1898,7 @@
         }
         positionLauncher();
       }
+      updateLauncherV11();
     } catch (_) { /* Do not read API or silently overwrite damaged storage. */ }
   })();
 })();

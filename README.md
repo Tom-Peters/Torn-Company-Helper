@@ -2,10 +2,26 @@
 
 **Author:** IamEEKY  
 **Platform:** Torn PDA (Android)  
-**Current status:** v1.0.0 director command centre  
+**Current status:** v1.1.0 star-growth director command centre  
 **Goal:** A strictly read-only, visual Torn company decision-support dashboard.
 
 > This is an independent community userscript. It is not affiliated with Torn.
+
+## v1.1.0: star growth, rivals, HR wages and launcher alerts
+
+The **original userscript URL remains unchanged**. Your per-company saved records and training ledger are retained.
+
+- **Star-first priorities**: efficiency, environment, popularity and observed next-star income benchmarks.
+- **Growth → Rivals**: on-demand, capped import of up to 500 same-type companies via the public Torn API v2 company directory. Compares your weekly income with the median of next-star companies, with explicit partial-sample labels. This is not a promotion threshold.
+- **Staff → Wage helper**: uses HR Officer/Secretary-revealed employee \`value\`, current wage and Torn effectiveness. Shows wage-to-direct-value ratios and adjustable 10–50% wage-budget scenarios; never calls a scenario a proven market salary.
+- **Support staff protected**: zero HR value is distinct from unavailable data; special/indirect roles such as Managers, Cleaners, HR Officers and Marketers cannot be judged by direct income alone.
+- **Global staffing optimiser**: conservatively weights direct revenue roles from available HR values, preserves existing position counts and penalises role changes. Its estimates are not an income forecast.
+- **Training week preview**: a seven-day baseline storage and confirmed training-debt scenario; excludes trainer bonuses, future hires, payments and ranking changes.
+- **Floating-button alerts**: derived from *saved* company data, without background API polling. Warns about banked trains, paid obligations, unconfirmed payments, daily loss breaches and stale snapshots.
+
+**Torn wages do not directly determine promotions.** The wage helper is about retention, budget and employee contribution; star-growth priorities focus on actual company reports. A Secretary's revealed value can be inaccurate if their effectiveness is poor.
+
+All features remain visual/read-only. Competitor scans and refreshes run only after you press them.
 
 ## v1.0.0: director command centre
 
