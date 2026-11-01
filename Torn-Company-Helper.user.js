@@ -1841,7 +1841,7 @@
   }
   function starMomentumPanelV14(c){
     const byDay=new Map();
-    for(const s of (c.snapshots||[]))if(s?.observedAt&&Number.isFinite(Number(s.rating)))
+    for(const s of (c.snapshots||[]))if(s?.observedAt&&s.rating!==null&&s.rating!==undefined&&Number.isFinite(Number(s.rating)))
       byDay.set(String(s.observedAt).slice(0,10),Number(s.rating));
     const points=[...byDay].sort((a,b)=>a[0].localeCompare(b[0]));
     const changes=[];
