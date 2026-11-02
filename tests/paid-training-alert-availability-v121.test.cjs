@@ -32,6 +32,7 @@ test("Available trains trigger a paid-training alert for only the assignable qua
 test("A full bank with no paid commitments is not an outstanding paid-training alert",()=>{
  const a=api(),c=company(19);c.payments=[];
  assert.equal(a.trainPlanV3(c).allocate,0);
- assert.ok(!a.launcherAlertsV11(c).items.some(x=>x.id.startsWith("training-")));
- assert.ok(!a.directorBriefV110(c).items.some(x=>x.target==="training-queue"));
+ const ids=a.launcherAlertsV11(c).items.map(x=>x.id);
+ assert.ok(!ids.includes("training-owed"),"No paid training obligation exists");
+ assert.ok(ids.includes("training-overflow"),"Bank-capacity alert remains independent of paid training");
 });
