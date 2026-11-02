@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.24.1
+// @version      1.25.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1729,15 +1729,33 @@
     let status={items:[],count:0};
     try{status=launcherAlertsV11(c);}catch(e){/* Alerts must never block the launcher. */}
     const n=status.count;
-    try{document.dispatchEvent?.(new CustomEvent('staxx:actions',{detail:{id:'company',items:companyHubActions(c),
-      updated:c?.lastRefresh&&Number.isFinite(Date.parse(c.lastRefresh))?Date.parse(c.lastRefresh):Date.now()}}));}
+    try{document.dispatchEvent?.(new CustomEvent('staxx:actions',{detail:{id:'company',items:companyHubActions(c).map(a=>({
+      ...a,reviewMinutes:/training|train|refresh/.test(a.id)?2:/wage|role|staff/.test(a.id)?4:3
+    })),updated:c?.lastRefresh&&Number.isFinite(Date.parse(c.lastRefresh))?Date.parse(c.lastRefresh):Date.now()}}));}
     catch(err){console.warn('[Company Helper] Action summary unavailable:',String(err?.message||err));}
     opener.innerHTML='<span>Company Helper</span>'+(n?'<span class="tch-launcherbadge" aria-hidden="true">'+
       esc(status.items[0].glyph)+' '+Math.min(n,9)+(n>9?'+':'')+'</span>':'');
     opener.title=n?status.items.map(function(x){return x.text;}).join(' · '):'Company Helper · no saved alerts';
     opener.setAttribute&&opener.setAttribute('aria-label',opener.title);
     document.dispatchEvent?.(new CustomEvent('staxx:notice',{detail:{id:'company',count:status.count,level:status.items.some(x=>/guardrail exceeded|overflow/i.test(x.text))?'urgent':status.count?'warning':'info',summary:status.count+' company items needing attention',items:status.items.slice(0,4).map(x=>x.text),alerts:status.items.map(x=>({id:x.id,title:x.text,detail:x.target==="refresh"?"Refresh company data":"Open the matching company decision and review"}))}}));
-    if(c&&c.profile){const a=accounting(c);
+    if(c&&c.profile){
+      const at=Date.parse(c.lastRefresh||'');
+      const rating=Number(c.profile.rating),id=String(companyId||'');
+      if(Number.isFinite(at)&&at<=Date.now()+60000&&Date.now()-at<24*3600000&&Number.isInteger(rating)&&rating>=0&&rating<=10&&id){
+        const key='staxx-company-stars-v31-'+id;
+        try{
+          const prev=JSON.parse(localStorage.getItem(key)||'null');
+          if(!prev||prev.rating!==rating){
+            document.dispatchEvent?.(new CustomEvent('staxx:activity',{detail:{id:'company',events:[{
+              id:'rating-'+id.replace(/[^a-z0-9_-]/gi,'').slice(0,30)+'-'+rating+'-'+Math.floor(at/86400000),
+              at,source:'snapshot',section:'growth',title:prev&&Number.isInteger(prev.rating)?'Company rating changed: '+prev.rating+' → '+rating+' stars':'Company rating observed: '+rating+' stars',
+              detail:'Observed Torn company profile rating · not a forecast'
+            }]}}));
+            localStorage.setItem(key,JSON.stringify({rating,at}));
+          }
+        }catch(_){}
+      }
+      const a=accounting(c);
       document.dispatchEvent?.(new CustomEvent('staxx:summary',{detail:{id:'company',headline:String(c.profile.name||'Company')+' · '+String(c.profile.rating??'?')+' stars',metrics:[
         {label:'Star rating',value:String(c.profile.rating??'?')+' / 10'},
         {label:'Staff',value:String((c.staff||[]).length)},
@@ -2014,6 +2032,16 @@
     });
     repairImportDuplicates(c);
     const result=reconcileTraining(c);
+    if(added>0){
+      const verified=list.filter(n=>!new Set((c.news||[]).filter(x=>!x).map(x=>x.id)).has(String(n.id)))
+        .filter(n=>(c.training||[]).some(t=>!t.voided&&canonicalTrainingSource(t)==='news:'+String(n.id)))
+        .slice(0,8);
+      if(verified.length)document.dispatchEvent?.(new CustomEvent('staxx:activity',{detail:{id:'company',
+        events:verified.map(n=>({id:'training-news-'+String(n.id).replace(/[^a-z0-9_.:-]/gi,'').slice(0,65),
+          at:Number(n.timestamp)*1000,source:'api',section:'training',
+          title:'Company training confirmed by Torn news',
+          detail:'Official training-news record matched to a non-voided training entry'}))}}));
+    }
     c.newsSyncAt=new Date().toISOString();
     return {added:added,matched:result.matched,review:result.review};
   }
@@ -2746,7 +2774,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.24.1</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -3457,7 +3485,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.24.1",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
