@@ -5,7 +5,7 @@ test('Company Find closes the original panel and uses the shared launcher',()=>{
  assert.match(src,/data-act="staxx-find"/);
  assert.match(src,/new CustomEvent\('staxx:find'\)/);
  assert.match(src,/open=false;draw\(\);document\.dispatchEvent/);
- assert.match(src,/\/\/ @version\s+1\.24\.1/);
+ assert.match(src,/\/\/ @version\s+1\.25\.0/);
 });
 test('Company section handoff is short-lived, validated, and preserves alert priority',()=>{
  assert.match(src,/staxx-open-company-section/);
