@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.25.4
+// @version      1.25.5
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v3.3 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v3.4 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -27,7 +27,7 @@
       '<nav class="staxx-main-tabs" aria-label="StaxxHub sections"><button type="button" data-hub-view="today" aria-pressed="true">Today</button><button type="button" data-hub-view="dashboard" aria-pressed="false">Dashboard</button><button type="button" data-hub-view="activity" aria-pressed="false">Activity</button><button type="button" data-hub-view="tools" aria-pressed="false">Tools</button><button type="button" data-hub-view="alerts" aria-pressed="false">Alerts</button><button type="button" data-hub-view="more" aria-pressed="false">More</button></nav>' +
       '<section id="staxx-hub-find" aria-label="Find Staxx tools and actions" hidden><label for="staxx-hub-find-input">FIND TOOLS, ACTIONS &amp; ALERTS</label><input id="staxx-hub-find-input" type="search" maxlength="100" autocomplete="off" spellcheck="false" placeholder="e.g. trains, stocks, gym" aria-controls="staxx-hub-find-results"><p id="staxx-hub-find-status" role="status" aria-live="polite"></p><div id="staxx-hub-find-results" role="group" aria-label="Search results"></div></section>' +
       '<div class="staxx-scroll">' +
-      '<section data-hub-section="today"><section id="staxx-hub-welcome" hidden></section><section id="staxx-hub-source-status" aria-label="Tool evidence status"></section><section id="staxx-hub-page-shortcut" aria-label="Current Torn page shortcut"></section><section id="staxx-hub-early" aria-label="Upcoming source-dated recommendations"></section><section id="staxx-hub-changes" aria-label="Changed source recommendations"></section><div class="staxx-label"><h3>BEST NEXT REVIEW</h3><span>From current tool evidence</span></div><section id="staxx-hub-best" aria-label="Best currently available review"></section><div class="staxx-label"><h3>OTHER NEXT STEPS</h3><span>Priority and estimated review time</span></div><div id="staxx-hub-task-filters" role="group" aria-label="Filter actions by urgency"></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>YOUR SHORTCUTS</h3><span>Learns from your taps</span></div><div id="staxx-hub-frequent"></div><div class="staxx-label"><h3>OPEN A TOOL</h3><span>One tap</span></div><div id="staxx-hub-quick-tools"></div><p class="staxx-trendnote">Marking a recommendation checked only clears your review queue for up to 4 hours. It does not complete a Torn action.</p></section>' +
+      '<section data-hub-section="today"><section id="staxx-hub-welcome" hidden></section><section id="staxx-hub-source-status" aria-label="Tool evidence status"></section><section id="staxx-hub-page-shortcut" aria-label="Current Torn page shortcut"></section><section id="staxx-hub-early" aria-label="Upcoming source-dated recommendations"></section><section id="staxx-hub-changes" aria-label="Changed source recommendations"></section><section id="staxx-hub-session" aria-label="Available play time"></section><section id="staxx-hub-checklist" aria-label="Daily verified checklist"></section><div class="staxx-label"><h3>BEST NEXT REVIEW</h3><span>From current tool evidence</span></div><section id="staxx-hub-best" aria-label="Best currently available review"></section><div class="staxx-label"><h3>OTHER NEXT STEPS</h3><span>Priority and estimated review time</span></div><div id="staxx-hub-task-filters" role="group" aria-label="Filter actions by urgency"></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>YOUR SHORTCUTS</h3><span>Learns from your taps</span></div><div id="staxx-hub-frequent"></div><div class="staxx-label"><h3>OPEN A TOOL</h3><span>One tap</span></div><div id="staxx-hub-quick-tools"></div><p class="staxx-trendnote">Marking a recommendation checked only clears your review queue for up to 4 hours. It does not complete a Torn action.</p></section>' +
       '<section data-hub-section="dashboard" hidden><div class="staxx-label"><h3>SUITE DASHBOARD</h3><span>All three helpers</span></div><section id="staxx-hub-daily" aria-label="Daily evidence report"></section><section id="staxx-hub-dashboard"></section></section>' +
       '<section data-hub-section="activity" hidden><div class="staxx-label"><h3>RECENT ACTIVITY</h3><button type="button" data-activity-clear>Clear history</button></div><section id="staxx-hub-activity"></section></section>' +
       '<section data-hub-section="tools" hidden><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div></section>' +
@@ -175,12 +175,13 @@
     let hubView="today", expandedTaskList=false, findOpen=false, taskFilter='all';
     const activityKey='staxx-hub-activity-v1',usageKey='staxx-hub-usage-v1',reviewKey='staxx-hub-reviewed-v1';
     const observedKey='staxx-hub-action-signatures-v1',baselineKey='staxx-hub-action-baselines-v1';
-    const changeKey='staxx-hub-action-changes-v1',feedbackKey='staxx-hub-feedback-v1';
+    const changeKey='staxx-hub-action-changes-v1',feedbackKey='staxx-hub-feedback-v1',sessionKey='staxx-hub-session-minutes-v1';
     const reviewWindowMs=4*3600000;
     const validTab=/^[a-z][a-z0-9-]{0,31}$/;
     let activity=[],usage=[],reviewed=Object.create(null);
     let observedActions=Object.create(null),baselines=Object.create(null),changeFlags=Object.create(null),feedback=Object.create(null);
     let uiMode=safeRead('staxx-hub-mode-v1','simple')==='advanced'?'advanced':'simple';
+    let sessionMinutes=[5,10,15,30,60].includes(safeRead(sessionKey,0))?safeRead(sessionKey,0):0;
     const findPanel=root.querySelector('#staxx-hub-find'),findInput=root.querySelector('#staxx-hub-find-input');
     const findResults=root.querySelector('#staxx-hub-find-results'),findStatus=root.querySelector('#staxx-hub-find-status');
     function setFindOpen(value){
@@ -399,7 +400,7 @@
       return rows.sort((a,b)=>Number(a.cached)-Number(b.cached)||
         (rank[b.status]??0)-(rank[a.status]??0)||
         (Number(a.dueAt)||Infinity)-(Number(b.dueAt)||Infinity)||
-        feedbackPriority(b)-feedbackPriority(a));
+        (feedbackPriority(b)+sessionFitScore(b))-(feedbackPriority(a)+sessionFitScore(a)));
     }
     // 3.2: local advisory review queue; never interprets a check as completed gameplay.
     // 3.3: all preference and change tracking stays on this device.
@@ -415,6 +416,19 @@
     }
     function feedbackVote(item){return feedback[actionKey(item.owner,item.id)]?.vote||0;}
     function feedbackPriority(item){return Number(item.priority||0)+feedbackVote(item)*10;}
+    function sessionFitScore(item){
+      if(!sessionMinutes||!Number.isInteger(item.reviewMinutes))return 0;
+      return item.reviewMinutes<=sessionMinutes?8:-8;
+    }
+    function fitsSession(item){
+      return sessionMinutes>0&&!item.cached&&Number.isInteger(item.reviewMinutes)&&item.reviewMinutes>=1&&item.reviewMinutes<=sessionMinutes;
+    }
+    function completionFor(item){
+      if(item.cached||!active[item.owner])return null;
+      const signature=shortHash(reviewSignature(item)),today=ukDay(Date.now());
+      return activity.find(e=>e.source==='api'&&e.tool===item.owner&&e.completedActionId===item.id&&
+        e.completedSig===signature&&ukDay(e.at)===today)||null;
+    }
     function noteObservedActions(id,items,updated){
       if(!active[id]||!Number.isFinite(updated)||updated>Date.now()+60000||
         Date.now()-updated>freshnessMs(id))return;
@@ -474,7 +488,7 @@
         host.append(cell);
       }
     }
-    function pendingActions(){return taskRowsV25().filter(x=>!isReviewed(x));}
+    function pendingActions(){return taskRowsV25().filter(x=>!isReviewed(x)&&!completionFor(x));}
     function findCatalog(){
       const rows=[],hiddenAlertIds=new Set();
       for(const e of entries){
@@ -703,7 +717,7 @@
     }
     function renderEarlyWarnings(){
       const host=root.querySelector('#staxx-hub-early');if(!host)return;host.replaceChildren();
-      const now=Date.now(),soon=taskRowsV25().filter(x=>!x.cached&&active[x.owner]&&
+      const now=Date.now(),soon=taskRowsV25().filter(x=>!x.cached&&active[x.owner]&&!completionFor(x)&&
         ['urgent','now','soon'].includes(x.status)&&Number.isFinite(x.dueAt)&&
         x.dueAt>now&&x.dueAt<=now+3600000).slice(0,3);
       if(!soon.length)return;
@@ -717,7 +731,7 @@
     }
     function renderChangedActions(){
       const host=root.querySelector('#staxx-hub-changes');if(!host)return;host.replaceChildren();
-      const changed=taskRowsV25().filter(x=>!x.cached&&active[x.owner]&&flagOf(x)).slice(0,4);
+      const changed=taskRowsV25().filter(x=>!x.cached&&active[x.owner]&&!completionFor(x)&&flagOf(x)).slice(0,4);
       if(!changed.length)return;
       const panel=node('div','staxx-intel');panel.append(node('strong','','NEW OR UPDATED RECOMMENDATIONS'));
       for(const item of changed){
@@ -811,20 +825,56 @@
       }
       if(!shown)host.append(node('p','staxx-empty','No source-backed events recorded yet. Activity appears after a helper observes a confirmed log, snapshot change, or local record.'));
     }
+    function renderSessionAndChecklist(){
+      const picker=root.querySelector('#staxx-hub-session'),host=root.querySelector('#staxx-hub-checklist');
+      if(picker){
+        picker.replaceChildren();
+        const card=node('div','staxx-intel');
+        card.append(node('strong','','PLAY TIME · PRIORITISE THE NEXT REVIEW'));
+        const options=node('div','staxx-session-options');
+        for(const value of [0,5,10,15,30,60]){
+          const b=node('button','',value?value+' min':'Any');
+          b.type='button';b.dataset.sessionMinutes=String(value);
+          b.setAttribute('aria-pressed',String(sessionMinutes===value));options.append(b);
+        }
+        card.append(options,node('p','staxx-intel-foot',
+          'Only source-estimated review time is used. Urgency and verified deadlines always come first; gameplay duration is not predicted.'));
+        picker.append(card);
+      }
+      if(host){
+        host.replaceChildren();
+        const all=taskRowsV25();
+        const fresh=all.filter(x=>!x.cached&&active[x.owner]);
+        const completed=fresh.filter(x=>completionFor(x));
+        const pending=fresh.filter(x=>!completionFor(x)&&!isReviewed(x));
+        const checked=fresh.filter(x=>!completionFor(x)&&isReviewed(x));
+        const card=node('div','staxx-intel');
+        card.append(node('strong','','DAILY CHECKLIST · '+ukDay(Date.now())),
+          node('p','','Pending '+pending.length+' · Verified complete '+completed.length+' · Checked (not complete) '+checked.length));
+        for(const item of completed.slice(0,4)){
+          const done=completionFor(item),line=node('p','staxx-completed','✓ '+item.tool+' · '+item.title);
+          card.append(line,node('small','staxx-intel-foot','Matched Torn API event · '+new Date(done.at).toLocaleTimeString('en-GB')));
+        }
+        card.append(node('p','staxx-intel-foot',
+          'Only exact matching source-published Torn API events can close a recommendation today. Unverified or changed tasks remain pending.'));
+        host.append(card);
+      }
+    }
     function renderTasks(){
       if(!taskList)return;
+      renderSessionAndChecklist();
       taskList.replaceChildren();
       renderBest();renderFrequent();renderSourceStatus();renderPageShortcut();renderEarlyWarnings();renderChangedActions();
       const filters=root.querySelector('#staxx-hub-task-filters');
       const all=taskRowsV25();
       if(filters){
         filters.replaceChildren();
-        for(const [value,label] of [['all','Pending'],['now','Do now'],['soon','Soon'],['optional','Optional'],['reviewed','Checked'],['changed','Changed']]){
-          const count=all.filter(x=>value==='reviewed'?isReviewed(x):value==='changed'?Boolean(flagOf(x)):!isReviewed(x)&&(value==='all'||categoryFor(x)===value)).length;
+        for(const [value,label] of [['all','Pending'],['now','Do now'],['soon','Soon'],['optional','fit','Fits time'],['reviewed','Checked'],['changed','Changed']]){
+          const count=all.filter(x=>!completionFor(x)&&(value==='reviewed'?isReviewed(x):value==='changed'?Boolean(flagOf(x)):!isReviewed(x)&&(value==='all'||value==='fit'&&fitsSession(x)||categoryFor(x)===value))).length;
           const btn=node('button','',label+' · '+count);btn.type='button';btn.dataset.taskFilter=value;btn.setAttribute('aria-pressed',String(taskFilter===value));filters.append(btn);
         }
       }
-      const rows=all.filter(x=>taskFilter==='reviewed'?isReviewed(x):taskFilter==='changed'?Boolean(flagOf(x)):!isReviewed(x)&&(taskFilter==='all'||categoryFor(x)===taskFilter));
+      const rows=all.filter(x=>!completionFor(x)&&(taskFilter==='reviewed'?isReviewed(x):taskFilter==='changed'?Boolean(flagOf(x)):!isReviewed(x)&&(taskFilter==='all'||taskFilter==='fit'&&fitsSession(x)||categoryFor(x)===taskFilter)));
       if(taskFilter==='reviewed')taskList.append(node('p','staxx-queue-info','Checked items return after 4 hours, or immediately if their reported evidence changes. This is not confirmation of a Torn action.'));
       for(const item of rows.slice(0,(expandedTaskList||uiMode==='advanced')?6:2)){
         const btn=node("button","staxx-task "+(!item.cached&&item.status==="urgent"?"urgent":!item.cached&&item.status==="soon"?"soon":""));
@@ -844,7 +894,7 @@
           checked.dataset.reviewUndo=taskFilter==='reviewed'?'1':'0';taskList.append(checked);
         }
       }
-      if(!rows.length)taskList.append(node('p','staxx-empty',taskFilter==='reviewed'?'No checked recommendations.':taskFilter==='changed'?'No new or updated recommendations since the last marked review.':'Nothing pending in this category. Open a tool for new evidence.'));
+      if(!rows.length)taskList.append(node('p','staxx-empty',taskFilter==='reviewed'?'No checked recommendations.':taskFilter==='fit'?'No fresh recommendations have an estimated review time within this session.':taskFilter==='changed'?'No new or updated recommendations since the last marked review.':'Nothing pending in this category. Open a tool for new evidence.'));
       if(rows.length>2&&uiMode!=='advanced'){
         const more=node("button","staxx-more-tasks",expandedTaskList?"Show fewer actions":"Show "+Math.min(rows.length-2,4)+" more actions");
         more.type="button";more.dataset.toggleTasks="1";taskList.append(more);
@@ -932,6 +982,13 @@
     root.addEventListener("click",e=>{
       const b=e.target.closest("button");if(!b)return;
       if(b.dataset.hubView){setFindOpen(false);switchHubView(b.dataset.hubView);return;}
+      if(b.dataset.sessionMinutes!==undefined){
+        const minutes=Number(b.dataset.sessionMinutes);
+        if(![0,5,10,15,30,60].includes(minutes))return;
+        sessionMinutes=minutes;saveLocal(sessionKey,minutes);
+        document.dispatchEvent(new CustomEvent('staxx:time-budget',{detail:{minutes}}));
+        renderTasks();return;
+      }
       if(b.dataset.taskFilter){taskFilter=b.dataset.taskFilter;expandedTaskList=false;renderTasks();return;}
       if(b.hasAttribute('data-change-clear')){clearChangeFlags();return;}
       if(b.hasAttribute('data-vote-reset')){feedback=Object.create(null);saveLocal(feedbackKey,feedback);renderTasks();return;}
@@ -1118,13 +1175,18 @@
         if(activity.some(x=>x.tool===tool&&x.id===item.id))continue;
         const routes=sectionsByTool[tool]||entries.find(x=>x.id===tool)?.sections||[];
         const section=routes.some(x=>x[0]===item.section)?item.section:null;
+        const action=typeof item.completedActionId==='string'&&/^[a-z][a-z0-9-]{0,63}$/.test(item.completedActionId)&&
+          item.source==='api'&&ukDay(at)===ukDay(now)&&active[tool]?
+          actionSets[tool]?.items?.find(x=>x.id===item.completedActionId):null;
+        const complete=action&&!actionSets[tool]?.cached&&now-Number(actionSets[tool].updated)<=freshnessMs(tool);
         activity.push({tool,id:item.id,at,source:item.source,
           title:String(item.title||'Observed update').slice(0,100),
-          detail:String(item.detail||'').slice(0,180),section});
+          detail:String(item.detail||'').slice(0,180),section,
+          ...(complete?{completedActionId:action.id,completedSig:shortHash(reviewSignature(action))}:{})});
         changed=true;
       }
       if(changed){activity=activity.filter(x=>x.at>Date.now()-30*86400000)
-        .sort((a,b)=>b.at-a.at).slice(0,120);saveLocal(activityKey,activity);renderActivity();renderDailyReport();}
+        .sort((a,b)=>b.at-a.at).slice(0,120);saveLocal(activityKey,activity);renderActivity();renderDailyReport();renderTasks();}
     });
     document.addEventListener("staxx:summary",e=>{
       const d=e.detail||{},id=d.id;if(!idOk(id)||!entries.some(x=>x.id===id))return;
@@ -1139,6 +1201,7 @@
     window.addEventListener?.("resize",renderContext);
     window.setInterval?.(()=>{if(!document.hidden){renderContext();if(expanded)renderPageShortcut();}},15000);
     window.setInterval?.(()=>{if(!document.hidden&&expanded){renderEarlyWarnings();if(hubView==='dashboard')renderDailyReport();}},60000);
+    document.addEventListener('staxx:time-budget-request',()=>document.dispatchEvent(new CustomEvent('staxx:time-budget',{detail:{minutes:sessionMinutes}})));
     // Older v1 notifications cannot be trusted for dismiss-state comparisons.
     render();
     document.dispatchEvent(new CustomEvent("staxx:ping"));
@@ -3159,7 +3222,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.4</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.5</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -3870,7 +3933,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.4",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.5",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
