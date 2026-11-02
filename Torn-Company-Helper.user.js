@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.22.0
+// @version      1.22.1
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -1533,8 +1533,8 @@
     const shortage=stockAdviceV3(c).filter(x=>x.qty!==null&&x.qty>0&&x.days!==null&&x.days<1).slice(0,3);
     if(shortage.length)items.push({id:"stock-shortage",target:"stock",glyph:"!",text:shortage.length+" stock line(s) under one day of cover"});
     // Notify only when an eligible paid obligation can be fulfilled now.
-    // Capacity alone is not a paid-training alert.
-    if(p.allocate>0&&p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Available trains may overflow at next close"});
+    // Training bank capacity is independent of paid purchases; paid alerts still need allocatable trains.
+    if(p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Available trains may overflow at next close"});
     if(p.allocate>0&&ready.length)items.push({id:"training-owed",target:"training-queue",glyph:"◇",
       text:p.allocate+" paid train(s) ready for "+ready.length+" eligible employee(s)"});
     if(companyProfitTrendV191(c).streak)items.push({id:'cashflow-loss-streak',target:'growth-accounts',glyph:'!',text:'Operating losses on three observed days'});
