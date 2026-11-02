@@ -1,3 +1,9 @@
+## v1.25.5 — shared StaxxHub 3.4 daily checklist and session-aware priorities
+
+- StaxxHub Today shows pending suggestions, locally checked reviews and **only conclusively matched API-log completions** as separate categories. Ordinary company estimates, staff commitments and pending paid trains cannot count as completed gameplay.
+- Choose an available session length of Any, 5, 10, 15, 30 or 60 minutes. Current company actions participate in time-aware prioritisation within equal urgency and due-time groups. Star-growth safety, real due dates, existing paid-train eligibility and stockless-service exclusions are unchanged.
+- No new API permissions, gameplay writes or automated company training. Single shared launcher; same install URL.
+
 ## v1.20.0 — Alerts only when paid training can be given
 
 - **No more misleading owed-train alerts:** confirmed purchases remain recorded, but training owed does not count toward the Alerts badge or StaxxHub queue when there are zero available trains, the available balance is unknown, or none of the owed employees is eligible.
