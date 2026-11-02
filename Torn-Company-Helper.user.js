@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.23.1
+// @version      1.24.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.9 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v3.0 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -23,8 +23,9 @@
       '<button type="button" id="staxx-hub-toggle" aria-label="Open Staxx tools" aria-expanded="false"><b>S</b><span id="staxx-hub-count" hidden></span></button>' +
       '<div id="staxx-hub-veil" hidden></div>' +
       '<aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>' +
-      '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><button type="button" data-hub-close aria-label="Close sidebar">×</button></header>' +
+      '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><div class="staxx-head-actions"><button type="button" data-hub-find aria-label="Find tools, sections and actions" aria-expanded="false" title="Find tools and actions">⌕</button><button type="button" data-hub-close aria-label="Close sidebar">×</button></div></header>' +
       '<nav class="staxx-main-tabs" aria-label="StaxxHub sections"><button type="button" data-hub-view="today" aria-pressed="true">Today</button><button type="button" data-hub-view="tools" aria-pressed="false">Tools</button><button type="button" data-hub-view="alerts" aria-pressed="false">Alerts</button><button type="button" data-hub-view="more" aria-pressed="false">More</button></nav>' +
+      '<section id="staxx-hub-find" aria-label="Find Staxx tools and actions" hidden><label for="staxx-hub-find-input">FIND TOOLS, ACTIONS &amp; ALERTS</label><input id="staxx-hub-find-input" type="search" maxlength="100" autocomplete="off" spellcheck="false" placeholder="e.g. trains, stocks, gym" aria-controls="staxx-hub-find-results"><p id="staxx-hub-find-status" role="status" aria-live="polite"></p><div id="staxx-hub-find-results" role="group" aria-label="Search results"></div></section>' +
       '<div class="staxx-scroll">' +
       '<section data-hub-section="today"><section id="staxx-hub-welcome" hidden></section><div class="staxx-label"><h3>WHAT TO DO NEXT</h3><span>Highest priority first</span></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>OPEN A TOOL</h3><span>One tap</span></div><div id="staxx-hub-quick-tools"></div><p class="staxx-trendnote">Recommendations update from verified information while TornPDA is open.</p></section>' +
       '<section data-hub-section="tools" hidden><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div></section>' +
@@ -93,6 +94,23 @@
       '#staxx-hub-drawer [data-hub-section]>.staxx-label:first-child{margin-top:2px}'
     ].join("");
     css.textContent += '#staxx-hub-welcome{border:1px solid #367194;background:#103552;border-radius:11px;padding:11px;margin:0 0 12px}#staxx-hub-welcome strong{display:block;color:#9ce7ff;font-size:13px}#staxx-hub-welcome p{font-size:11px;line-height:1.45;color:#c4dfed;margin:7px 0}#staxx-hub-welcome button{background:#0879bd;border:1px solid #64c6ea;border-radius:8px;padding:8px 10px;min-height:36px;font-size:11px;font-weight:800;width:100%}';
+    css.textContent += [
+      '#staxx-hub-drawer .staxx-head-actions{display:flex;align-items:center;gap:7px}',
+      '#staxx-hub-drawer [data-hub-find]{background:#125074;color:#d1f5ff;border:1px solid #4a99bd;border-radius:9px;min-width:38px;height:38px;font-size:24px;line-height:1}',
+      '#staxx-hub-drawer [data-hub-find][aria-expanded="true"]{background:#0879bd;border-color:#80d9ff}',
+      '#staxx-hub-drawer #staxx-hub-find{display:flex;flex:1;flex-direction:column;min-height:0;padding:12px 10px 18px;gap:8px;overflow:hidden}',
+      '#staxx-hub-drawer #staxx-hub-find>label{font-size:10px;font-weight:850;letter-spacing:.8px;color:#9fcbe1}',
+      '#staxx-hub-drawer #staxx-hub-find-input{width:100%;min-height:44px;background:#112e48;color:#f1fbff;border:1px solid #5e96b8;border-radius:10px;padding:10px 12px;font-size:14px;outline-offset:2px}',
+      '#staxx-hub-drawer #staxx-hub-find-input:focus-visible{outline:2px solid #54d7fa}',
+      '#staxx-hub-drawer #staxx-hub-find-status{font-size:11px;color:#a7c8dc;margin:2px 0 0}',
+      '#staxx-hub-drawer #staxx-hub-find-results{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:12px}',
+      '#staxx-hub-drawer .staxx-find-item{width:100%;display:flex;flex-direction:column;gap:4px;text-align:left;min-height:48px;margin:0 0 7px;padding:10px 11px;color:#e8f7ff;border:1px solid #366180;background:#10314f;border-radius:10px}',
+      '#staxx-hub-drawer .staxx-find-item b{font-size:12px;line-height:1.3}',
+      '#staxx-hub-drawer .staxx-find-item small{font-size:10px;color:#a8c8de;line-height:1.4;overflow-wrap:anywhere}',
+      '#staxx-hub-drawer .staxx-find-item.urgent{border-color:#ff778d}',
+      '#staxx-hub-drawer .staxx-find-item:disabled{opacity:.52;cursor:not-allowed}',
+      '#staxx-hub-drawer .staxx-find-item:focus-visible{outline:2px solid #54d7fa}'
+    ].join('');
     document.documentElement.append(css, root);
 
     const entries = [
@@ -100,6 +118,11 @@
       {id:"company",label:"Company Helper",icon:"CO",desc:"Staff · Training · Growth"},
       {id:"happy",label:"Happy Jump",icon:"HJ",desc:"Gym · Schedule · Recovery"}
     ];
+    const sectionsByTool={
+      profit:[["daily","Today"],["alerts","Alerts"],["best","Best opportunities"],["scan","Item deals"],["travel","Travel"],["stocks","Stock market"],["capital","Capital"],["history","Price charts"],["income","Income"],["museum","Museum"],["portfolio","Trading ledger"],["settings","Settings"],["diagnostics","Diagnostics"]],
+      company:[["overview","Today"],["alerts","Alerts"],["employees","Staff"],["training","Training"],["growth","Growth"],["stock","Stock or services"],["settings","Settings"],["diagnostics","Diagnostics"]],
+      happy:[["today","Today"],["alerts","Alerts"],["compare","Compare methods"],["plan","Schedule"],["supplies","Supplies"],["gyms","Gyms"],["perks","Perks and books"],["progress","Progress"],["lab","Upgrades"],["settings","Settings"],["diagnostics","Diagnostics"]]
+    };
     const active = Object.create(null), notices = Object.create(null), summaries = Object.create(null), controls = Object.create(null), actionSets=Object.create(null), healthReports=Object.create(null);
     const registeredAt=Object.create(null);
     let trends=Object.create(null), arrangeShown=false;
@@ -107,8 +130,18 @@
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
     const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]"),taskList=root.querySelector("#staxx-hub-tasks"),diagnostics=root.querySelector("#staxx-hub-diagnostics"),diagnosticButton=root.querySelector("[data-diagnostics]");
     let expanded=false, panelOpen=false, overviewShown=false, diagnosticsShown=false, moving=null, suppressClickUntil=0;
-    let hubView="today", expandedTaskList=false;
+    let hubView="today", expandedTaskList=false, findOpen=false;
     let uiMode=safeRead('staxx-hub-mode-v1','simple')==='advanced'?'advanced':'simple';
+    const findPanel=root.querySelector('#staxx-hub-find'),findInput=root.querySelector('#staxx-hub-find-input');
+    const findResults=root.querySelector('#staxx-hub-find-results'),findStatus=root.querySelector('#staxx-hub-find-status');
+    function setFindOpen(value){
+      findOpen=Boolean(value);
+      if(findPanel)findPanel.hidden=!findOpen;
+      const content=root.querySelector('.staxx-scroll');if(content)content.hidden=findOpen;
+      const btn=root.querySelector('[data-hub-find]');if(btn)btn.setAttribute('aria-expanded',String(findOpen));
+      if(findOpen){renderFind();findInput?.focus?.();}
+      else if(findInput){findInput.value='';}
+    }
     function publishMode(){document.dispatchEvent(new CustomEvent('staxx:mode',{detail:{mode:uiMode}}));}
     function switchHubView(view){
       if(!["today","tools","alerts","more"].includes(view))return;
@@ -178,6 +211,7 @@
     }
     function setExpanded(value){
       if(value&&!expanded){expandedTaskList=false;switchHubView("today");renderTasks();}
+      if(!value)setFindOpen(false);
       expanded=Boolean(value);veil.hidden=drawer.hidden=!expanded;launcherVisibility();renderContext();
     }
     function activeNotice(id){
@@ -186,9 +220,18 @@
       if(control.dismissed===n.fingerprint || Number(control.snoozeUntil)>Date.now())return null;
       return n;
     }
-    function openTool(id,alertId){
+    function openTool(id,alertId,section){
+      const routes=sectionsByTool[id]||entries.find(e=>e.id===id)?.sections||[];
+      const validSection=routes.some(item=>item[0]===section)?section:null;
       if(id==="company"&&!/^\/companies\.php$/i.test(location.pathname)){
-        try{sessionStorage.setItem("staxx-open-company","1");if(alertId)sessionStorage.setItem("staxx-open-company-alert",alertId);}catch(_){}
+        try{
+          sessionStorage.setItem("staxx-open-company","1");
+          sessionStorage.setItem("staxx-open-company-at",String(Date.now()));
+          if(alertId)sessionStorage.setItem("staxx-open-company-alert",alertId);
+          else sessionStorage.removeItem("staxx-open-company-alert");
+          if(validSection&&!alertId)sessionStorage.setItem("staxx-open-company-section",validSection);
+          else sessionStorage.removeItem("staxx-open-company-section");
+        }catch(_){}
         location.assign(location.origin+"/companies.php");return;
       }
       if(!active[id]){
@@ -197,7 +240,7 @@
       }
       panelOpen=true;setExpanded(false);launcherVisibility();
       document.dispatchEvent(new CustomEvent("staxx:closeall"));
-      document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id,alertId:alertId||null}}));
+      document.dispatchEvent(new CustomEvent("staxx:open",{detail:{id,alertId:alertId||null,section:alertId?null:validSection}}));
     }
     function timeUntil(ms) {
       if(!Number.isFinite(ms)||ms<=0)return "";
@@ -273,9 +316,65 @@
         (Number(a.dueAt)||Infinity)-(Number(b.dueAt)||Infinity)||
         (Number(b.priority)||0)-(Number(a.priority)||0));
     }
+    function findCatalog(){
+      const rows=[],hiddenAlertIds=new Set();
+      for(const e of entries){
+        const available=Boolean(active[e.id]);
+        rows.push({kind:'tool',owner:e.id,title:e.label,detail:e.desc,available});
+        const routes=sectionsByTool[e.id]||e.sections||[];
+        for(const route of routes)rows.push({kind:'section',owner:e.id,section:route[0],title:route[1],detail:e.label+' · Section',available});
+        const current=activeNotice(e.id),raw=notices[e.id];
+        if(raw?.count>0&&!current)for(const item of raw.alerts||[])hiddenAlertIds.add(e.id+'/'+item.id);
+        if(current){
+          if(current.alerts?.length){
+            for(const item of current.alerts.slice(0,24))
+              rows.push({kind:'alert',owner:e.id,alertId:item.id,title:item.title,detail:e.label+' · '+item.detail+(current.cached?' · Last observed':''),available,cached:Boolean(current.cached)});
+          }else rows.push({kind:'alert',owner:e.id,title:current.summary||'Review alerts',detail:e.label+(current.cached?' · Last observed':''),available,cached:Boolean(current.cached)});
+        }
+      }
+      for(const task of taskRowsV25()){
+        if(hiddenAlertIds.has(task.owner+'/'+task.id))continue;
+        // A matching actionable alert is represented once, not twice.
+        if(activeNotice(task.owner)?.alerts?.some(x=>x.id===task.id))continue;
+        rows.push({kind:'action',owner:task.owner,alertId:task.id,title:task.title,
+          detail:task.tool+' · '+task.detail+(task.cached?' · Last observed':''),available:Boolean(active[task.owner]),
+          cached:Boolean(task.cached),status:task.status});
+      }
+      return rows;
+    }
+    function renderFind(){
+      if(!findOpen||!findResults||!findInput)return;
+      findResults.replaceChildren();
+      const query=String(findInput.value||'').trim().toLocaleLowerCase().slice(0,100);
+      const tokens=query.split(/\s+/).filter(Boolean);
+      let results=findCatalog();
+      if(tokens.length){
+        results=results.filter(item=>{
+          const hay=(item.title+' '+item.detail+' '+item.owner).toLocaleLowerCase();
+          return tokens.every(word=>hay.includes(word));
+        });
+        results.sort((a,b)=>{
+          const score=item=>(item.title.toLocaleLowerCase()===query?0:item.title.toLocaleLowerCase().startsWith(query)?1:2)*10+
+            (item.kind==='action'?0:item.kind==='alert'?1:item.kind==='section'?2:3);
+          return score(a)-score(b);
+        });
+      }else results=results.filter(x=>x.kind==='tool');
+      if(findStatus)findStatus.textContent=tokens.length?results.length+' matching destination'+(results.length===1?'':'s')+' · Showing up to 12':'Select a tool or type to find a section, alert or recommendation';
+      for(const item of results.slice(0,12)){
+        const btn=node('button','staxx-find-item'+(item.status==='urgent'?' urgent':''));btn.type='button';
+        if(item.kind==='section'){btn.dataset.hubSectionTool=item.owner;btn.dataset.hubSectionTab=item.section;}
+        else if(item.alertId){btn.dataset.openAlertTool=item.owner;btn.dataset.openAlertId=item.alertId;}
+        else btn.dataset.openStaxx=item.owner;
+        if(!item.available&&item.owner!=='company'){btn.disabled=true;btn.title='Enable '+item.owner+' in TornPDA first';}
+        const type=item.kind==='action'?'Action':item.kind==='alert'?'Alert':item.kind==='section'?'Section':'Tool';
+        btn.append(node('b','',item.title),node('small','',type+' · '+item.detail+(btn.disabled?' · Script not active':'')));
+        findResults.append(btn);
+      }
+      if(!results.length)findResults.append(node('p','staxx-empty','No matching active tool data. Try a shorter term or open a helper to refresh.'));
+    }
     function diagnosticReportV25(){
       const time=Date.now();
-      return {hub:"2.8",capturedAt:new Date(time).toISOString(),page:String(location.pathname||""),
+      return {hub:"3.0",capturedAt:new Date(time).toISOString(),page:String(location.pathname||""),
         connectedCount:entries.filter(x=>active[x.id]).length,knownCount:entries.length,tools:entries.map(e=>{
           const sum=summaries[e.id],actions=actionSets[e.id],notice=notices[e.id],h=healthReports[e.id];
           const age=Number(sum?.updated),lastAction=Number(actions?.updated);
@@ -490,6 +589,7 @@
       }
       if(!visible)alerts.append(node("p","staxx-empty",muted?"Alerts dismissed or snoozed. New alerts will still appear.":"Nothing needs your attention right now."));
       renderTasks();
+      if(findOpen)renderFind();
       showOverview();
       showDiagnosticsV25();
       launcherVisibility();
@@ -497,7 +597,9 @@
     }
     root.addEventListener("click",e=>{
       const b=e.target.closest("button");if(!b)return;
-      if(b.dataset.hubView){switchHubView(b.dataset.hubView);return;}
+      if(b.dataset.hubView){setFindOpen(false);switchHubView(b.dataset.hubView);return;}
+      if(b.hasAttribute('data-hub-find')){setFindOpen(!findOpen);return;}
+      if(b.dataset.hubSectionTool){openTool(b.dataset.hubSectionTool,null,b.dataset.hubSectionTab);return;}
       if(b.dataset.hubGuideDone){saveLocal('staxx-hub-onboarded-v1',true);renderWelcome();return;}
       if(b.hasAttribute('data-hub-guide')){saveLocal('staxx-hub-onboarded-v1',false);switchHubView('today');renderWelcome();return;}
       if(b.hasAttribute('data-hub-mode')){uiMode=uiMode==='simple'?'advanced':'simple';saveLocal('staxx-hub-mode-v1',uiMode);expandedTaskList=false;publishMode();render();return;}
@@ -539,7 +641,25 @@
       if(b.hasAttribute("data-hub-close"))setExpanded(false);
     });
     veil.addEventListener("click",()=>setExpanded(false));
-    document.addEventListener("keydown",e=>{if(e.key==="Escape"&&expanded)setExpanded(false);});
+    findInput?.addEventListener?.('input',renderFind);
+    findInput?.addEventListener?.('keydown',e=>{
+      if(e.key==='Enter'){
+        const first=findResults?.querySelector?.('button:not(:disabled)');
+        if(first){e.preventDefault?.();first.click();}
+      }
+    });
+    document.addEventListener('staxx:find',()=>{
+      document.dispatchEvent(new CustomEvent('staxx:closeall'));
+      openPanels.clear();panelOpen=false;
+      setExpanded(true);setFindOpen(true);
+    });
+    document.addEventListener("keydown",e=>{
+      if(e.key==='Escape'&&findOpen){e.preventDefault?.();setFindOpen(false);return;}
+      if(e.key==='Escape'&&expanded){setExpanded(false);return;}
+      if(expanded&&(e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='k'){
+        e.preventDefault?.();setFindOpen(true);
+      }
+    });
     toggle.addEventListener("pointerdown",e=>{
       if(e.button!==undefined&&e.button!==0)return;
       moving={id:e.pointerId,startY:e.clientY,top:toggle.getBoundingClientRect().top,dragged:false};
@@ -579,6 +699,9 @@
         if(d.label)entry.label=String(d.label).slice(0,40);
         if(d.icon)entry.icon=String(d.icon).slice(0,3);
         if(d.desc)entry.desc=String(d.desc).slice(0,70);
+        if(Array.isArray(d.sections))entry.sections=d.sections.slice(0,20)
+          .filter(x=>x&&/^[a-z][a-z0-9-]{0,31}$/.test(String(x.id||'')))
+          .map(x=>[String(x.id),String(x.label||x.id).slice(0,45)]);
         if(typeof d.trendMetric==='string')entry.trendMetric=d.trendMetric.slice(0,36);
         if(Number(d.freshnessMs)>=60000&&Number(d.freshnessMs)<=86400000)entry.freshnessMs=Number(d.freshnessMs);
         if(!registeredAt[id])registeredAt[id]=Date.now();
@@ -2623,8 +2746,8 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.23.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
-      '<div class="actions"><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.24.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+      '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
   function metricV2(title,value,secondary,tone,target){
@@ -3324,11 +3447,17 @@
     // Only request live information on demand; never write to Torn.
     void autoCompanyRefreshV112(true);
   });
-  document.addEventListener?.("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){if(e.detail.alertId){tab="alerts";detailView="";companyAlertFocus=String(e.detail.alertId);}if(!open)opener.click();else draw();focusCompanyAlert();}else if(open){open=false;draw();}});
+  document.addEventListener?.("staxx:open",function(e){if(e.detail&&e.detail.id==="company"){
+    if(e.detail.alertId){tab="alerts";detailView="";companyAlertFocus=String(e.detail.alertId);}
+    else if(["overview","alerts","employees","training","growth","stock","settings","diagnostics"].includes(e.detail.section)){
+      tab=e.detail.section;detailView="";companyAlertFocus="";
+    }
+    if(!open)opener.click();else draw();focusCompanyAlert();
+  }else if(open){open=false;draw();}});
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.21.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.24.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
@@ -3357,6 +3486,7 @@
     if(evt.target===root){open=false;draw();return;}
     const el=evt.target.closest("button[data-act]");if (!el) return;
     const act=el.dataset.act, c=current();
+    if (act==="staxx-find") {open=false;draw();document.dispatchEvent(new CustomEvent('staxx:find'));return;}
     if (act==="close") {open=false;draw();return;}
     if (act==="diag-check"){document.dispatchEvent(new CustomEvent("staxx:ping"));document.dispatchEvent(new CustomEvent("staxx:diagnostics-request"));draw();return;}
     if (act==="diag-copy"){const text=JSON.stringify(safeCompanyDiagnosticsV111(c),null,2);
@@ -3579,7 +3709,19 @@
         positionLauncher();
       }
       updateLauncherV11();
-      try{if(sessionStorage.getItem("staxx-open-company")==="1"){sessionStorage.removeItem("staxx-open-company");const f=sessionStorage.getItem("staxx-open-company-alert");sessionStorage.removeItem("staxx-open-company-alert");if(f){tab="alerts";companyAlertFocus=f;}opener.click();focusCompanyAlert();}}catch(_){}
+      try{
+        const pending=sessionStorage.getItem("staxx-open-company")==="1";
+        const at=Number(sessionStorage.getItem("staxx-open-company-at")||0);
+        const f=sessionStorage.getItem("staxx-open-company-alert");
+        const section=sessionStorage.getItem("staxx-open-company-section");
+        for(const key of ["staxx-open-company","staxx-open-company-at","staxx-open-company-alert","staxx-open-company-section"])sessionStorage.removeItem(key);
+        const valid=!at||(at<=Date.now()&&Date.now()-at<=120000);
+        if(pending&&valid){
+          if(f){tab="alerts";companyAlertFocus=f;}
+          else if(["overview","alerts","employees","training","growth","stock","settings","diagnostics"].includes(section)){tab=section;detailView="";companyAlertFocus="";}
+          opener.click();focusCompanyAlert();
+        }
+      }catch(_){}
     } catch (_) { /* Do not silently overwrite damaged storage. */ }
   })();
   // Auto-read on the company page or an open helper; StaxxHub requests foreground updates from every Torn page.
