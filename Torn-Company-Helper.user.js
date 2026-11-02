@@ -869,7 +869,7 @@
       const all=taskRowsV25();
       if(filters){
         filters.replaceChildren();
-        for(const [value,label] of [['all','Pending'],['now','Do now'],['soon','Soon'],['optional','fit','Fits time'],['reviewed','Checked'],['changed','Changed']]){
+        for(const [value,label] of [['all','Pending'],['now','Do now'],['soon','Soon'],['optional','Optional'],['fit','Fits time'],['reviewed','Checked'],['changed','Changed']]){
           const count=all.filter(x=>!completionFor(x)&&(value==='reviewed'?isReviewed(x):value==='changed'?Boolean(flagOf(x)):!isReviewed(x)&&(value==='all'||value==='fit'&&fitsSession(x)||categoryFor(x)===value))).length;
           const btn=node('button','',label+' · '+count);btn.type='button';btn.dataset.taskFilter=value;btn.setAttribute('aria-pressed',String(taskFilter===value));filters.append(btn);
         }
