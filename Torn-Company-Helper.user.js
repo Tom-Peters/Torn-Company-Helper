@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.25.0
+// @version      1.25.1
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -254,7 +254,7 @@
       const old=storedUse(key);
       usage=usage.filter(x=>x&&x.key!==key&&now-Number(x.last)<30*86400000);
       const record={key,tool,section:section||'',count:Math.min(99,(old?.count||0)+1),last:now};
-      usage.push(record);usage=usage.slice(-50);saveLocal(usageKey,usage);
+      usage.push(record);usage=usage.slice(-50);saveLocal(usageKey,usage);renderFrequent();
     }
     function storedUse(key){return usage.find(x=>x.key===key);}
     function openTool(id,alertId,section){
@@ -896,7 +896,7 @@
       const entry={headline:String(d.headline||"").slice(0,90),
         metrics:Array.isArray(d.metrics)?d.metrics.slice(0,4).map(x=>({label:String(x.label||"").slice(0,36),value:String(x.value??"—").slice(0,45)})):[],
         updated:Number(d.updated)||Date.now()};
-      if(JSON.stringify(summaries[id])!==JSON.stringify(entry)){summaries[id]=entry;recordTrend(id,entry);remember();if(expanded&&overviewShown)showOverview();if(expanded)renderDashboard();}
+      if(JSON.stringify(summaries[id])!==JSON.stringify(entry)){summaries[id]=entry;recordTrend(id,entry);remember();if(expanded&&overviewShown)showOverview();renderDashboard();}
     });
     window.setInterval(()=>{if(!document.hidden&&entries.some(e=>Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now())){for(const e of entries){if(Number(controls[e.id]?.snoozeUntil)>0&&Number(controls[e.id]?.snoozeUntil)<=Date.now()){controls[e.id]={...controls[e.id],snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+e.id,controls[e.id]);}}render();}else if(!document.hidden&&expanded&&entries.some(e=>activeNotice(e.id)?.dueAt)){render();}},60000);
     window.addEventListener?.("hashchange",renderContext);
@@ -2923,7 +2923,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.1</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -3634,7 +3634,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.1",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
