@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.21.0
+// @version      1.22.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -9,7 +9,7 @@
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
-/* StaxxHub v2.7 · shared Torn PDA launcher · IamEEKY · no external dependencies */
+/* StaxxHub v2.8 · shared Torn PDA launcher · IamEEKY · no external dependencies */
 (function () {
   "use strict";
   if (typeof location === "undefined" || typeof document === "undefined" ||
@@ -24,11 +24,14 @@
       '<div id="staxx-hub-veil" hidden></div>' +
       '<aside id="staxx-hub-drawer" aria-label="Staxx tools and notifications" hidden>' +
       '<header class="staxx-head"><div><strong>Staxx<span>Hub</span></strong><small>YOUR TORN COMMAND CENTRE</small></div><button type="button" data-hub-close aria-label="Close sidebar">×</button></header>' +
-      '<div class="staxx-scroll"><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Daily dashboard · all tools</button>' +
-      '<button class="staxx-overview-switch" type="button" data-diagnostics>⚙ &nbsp; Tool diagnostics</button><section id="staxx-hub-diagnostics" hidden></section>' +
-      '<section id="staxx-hub-overview" hidden></section><button class="staxx-context-control" type="button" data-context-toggle>On-page guidance: On</button><div class="staxx-label"><h3>WHAT TO DO NEXT</h3><span>Prioritised</span></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div>' +
-      '<div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div>' +
-      '<div id="staxx-hub-alerts"></div><p class="staxx-foot">Read-only signals · Alerts use last known data · Drag the S tab vertically to reposition</p>' +
+      '<nav class="staxx-main-tabs" aria-label="StaxxHub sections"><button type="button" data-hub-view="today" aria-pressed="true">Today</button><button type="button" data-hub-view="tools" aria-pressed="false">Tools</button><button type="button" data-hub-view="alerts" aria-pressed="false">Alerts</button><button type="button" data-hub-view="more" aria-pressed="false">More</button></nav>' +
+      '<div class="staxx-scroll">' +
+      '<section data-hub-section="today"><div class="staxx-label"><h3>WHAT TO DO NEXT</h3><span>Highest priority first</span></div><section id="staxx-hub-tasks" aria-label="Prioritised Torn actions"></section><div class="staxx-label"><h3>OPEN A TOOL</h3><span>One tap</span></div><div id="staxx-hub-quick-tools"></div><p class="staxx-trendnote">Recommendations update from verified information while TornPDA is open.</p></section>' +
+      '<section data-hub-section="tools" hidden><div class="staxx-label"><h3>YOUR TOOLS</h3><button type="button" data-arrange aria-pressed="false">Reorder</button></div><div id="staxx-hub-tools"></div></section>' +
+      '<section data-hub-section="alerts" hidden><div class="staxx-label"><h3>NOTIFICATIONS</h3><span id="staxx-hub-total"></span></div><div id="staxx-hub-alerts"></div></section>' +
+      '<section data-hub-section="more" hidden><button class="staxx-overview-switch" type="button" data-overview>▦ &nbsp; Daily dashboard · all tools</button>' +
+      '<section id="staxx-hub-overview" hidden></section><button class="staxx-overview-switch" type="button" data-diagnostics>⚙ &nbsp; Tool diagnostics</button><section id="staxx-hub-diagnostics" hidden></section>' +
+      '<button class="staxx-context-control" type="button" data-context-toggle>On-page guidance: On</button><p class="staxx-foot">Alerts use last known data · Drag the S tab vertically to reposition · No gameplay actions are submitted automatically</p></section>' +
       '</div></aside>';
     const css = document.createElement("style");
     css.id = "staxx-hub-css";
@@ -77,6 +80,17 @@
       '@media (max-width:849px),(pointer:coarse){#staxx-page-tip{display:none!important}}' +
       '#staxx-page-tip strong{color:#84e0fb}#staxx-page-tip small{color:#a9cce5;flex-basis:100%}' +
       '#staxx-page-tip button{background:#0879bd;color:#fff;border:1px solid #69cef5;border-radius:8px;padding:7px 10px;font:inherit;font-weight:700;cursor:pointer}';
+    css.textContent += [
+      '#staxx-hub-drawer .staxx-main-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:9px 10px;background:#08192d;border-bottom:1px solid #284b6b;flex-shrink:0}',
+      '#staxx-hub-drawer .staxx-main-tabs button{min-width:0;min-height:42px;background:#102b46;border:1px solid #315d7d;border-radius:9px;font-size:11px;font-weight:800;padding:5px 2px;color:#cce9f7}',
+      '#staxx-hub-drawer .staxx-main-tabs button[aria-pressed="true"]{background:#0879bd;border-color:#54d7fa;color:#fff}',
+      '#staxx-hub-drawer #staxx-hub-quick-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:4px 0 13px}',
+      '#staxx-hub-drawer .staxx-quick-tool{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;min-height:64px;min-width:0;padding:8px 3px;background:#103756;border:1px solid #366d94;border-radius:10px;text-align:center;font-weight:800;font-size:11px;line-height:1.25;overflow-wrap:anywhere}',
+      '#staxx-hub-drawer .staxx-quick-tool small{color:#8ddfff;font-size:10px;font-weight:700}',
+      '#staxx-hub-drawer .staxx-quick-tool:disabled{opacity:.52;cursor:not-allowed}',
+      '#staxx-hub-drawer .staxx-more-tasks{width:100%;margin:2px 0 8px;padding:9px;border:1px solid #376a8c;background:#0e3452;border-radius:9px;color:#9edfff;font-size:11px;font-weight:800}',
+      '#staxx-hub-drawer [data-hub-section]>.staxx-label:first-child{margin-top:2px}'
+    ].join("");
     document.documentElement.append(css, root);
 
     const entries = [
@@ -91,6 +105,17 @@
     const tools=root.querySelector("#staxx-hub-tools"),alerts=root.querySelector("#staxx-hub-alerts"),bubble=root.querySelector("#staxx-hub-count");
     const overview=root.querySelector("#staxx-hub-overview"),overviewButton=root.querySelector("[data-overview]"),taskList=root.querySelector("#staxx-hub-tasks"),diagnostics=root.querySelector("#staxx-hub-diagnostics"),diagnosticButton=root.querySelector("[data-diagnostics]");
     let expanded=false, panelOpen=false, overviewShown=false, diagnosticsShown=false, moving=null, suppressClickUntil=0;
+    let hubView="today", expandedTaskList=false;
+    function switchHubView(view){
+      if(!["today","tools","alerts","more"].includes(view))return;
+      hubView=view;
+      for(const btn of root.querySelectorAll?.("[data-hub-view]")||[])
+        btn.setAttribute("aria-pressed",String(btn.dataset.hubView===view));
+      for(const section of root.querySelectorAll?.("[data-hub-section]")||[])
+        section.hidden=section.dataset.hubSection!==view;
+      const scroll=root.querySelector(".staxx-scroll");
+      if(scroll)scroll.scrollTop=0; // Never scroll due to an event-driven data refresh.
+    }
     let lastDataRequestV26=0;
     function refreshConnectedV26(force=false){
       if(document.hidden||!entries.some(x=>active[x.id]))return false;
@@ -148,6 +173,7 @@
       toggle.setAttribute("aria-expanded",String(expanded));
     }
     function setExpanded(value){
+      if(value&&!expanded){expandedTaskList=false;switchHubView("today");renderTasks();}
       expanded=Boolean(value);veil.hidden=drawer.hidden=!expanded;launcherVisibility();renderContext();
     }
     function activeNotice(id){
@@ -245,7 +271,7 @@
     }
     function diagnosticReportV25(){
       const time=Date.now();
-      return {hub:"2.6",capturedAt:new Date(time).toISOString(),page:String(location.pathname||""),
+      return {hub:"2.8",capturedAt:new Date(time).toISOString(),page:String(location.pathname||""),
         connectedCount:entries.filter(x=>active[x.id]).length,knownCount:entries.length,tools:entries.map(e=>{
           const sum=summaries[e.id],actions=actionSets[e.id],notice=notices[e.id],h=healthReports[e.id];
           const age=Number(sum?.updated),lastAction=Number(actions?.updated);
@@ -365,7 +391,7 @@
       if(!taskList)return;
       taskList.replaceChildren();
       const rows=taskRowsV25();
-      for(const item of rows.slice(0,6)){
+      for(const item of rows.slice(0,expandedTaskList?6:2)){
         const btn=node("button","staxx-task "+(!item.cached&&item.status==="urgent"?"urgent":!item.cached&&item.status==="soon"?"soon":""));
         btn.type="button";btn.dataset.openAlertTool=item.owner;btn.dataset.openAlertId=item.id;
         btn.append(node("span","staxx-step",(item.cached?"LAST OBSERVED · ":"")+(item.status==="urgent"?"ACT NOW":item.status==="now"?"DO NEXT":item.status==="soon"?"UPCOMING":item.status==="review"?"REVIEW":"OPTIONAL")+" · "+item.tool),
@@ -376,10 +402,16 @@
         taskList.append(btn);
       }
       if(!rows.length)taskList.append(node("p","staxx-empty","No verified next steps yet. Open a tool to refresh its data."));
-      else if(rows.length>6)taskList.append(node("p","staxx-foot",String(rows.length-6)+" more recommendations inside your tools"));
+      if(rows.length>2){
+        const more=node("button","staxx-more-tasks",expandedTaskList?"Show fewer actions":"Show "+Math.min(rows.length-2,4)+" more actions");
+        more.type="button";more.dataset.toggleTasks="1";taskList.append(more);
+      }
+      if(rows.length>6&&expandedTaskList)taskList.append(node("p","staxx-foot",String(rows.length-6)+" further recommendations inside your tools"));
     }
     function render(){
       tools.replaceChildren();alerts.replaceChildren();
+      const quick=root.querySelector("#staxx-hub-quick-tools");
+      if(quick)quick.replaceChildren();
       let total=0,maxLevel=0,visible=0,muted=0;
       for(const [index,e] of entries.entries()){
         const n=activeNotice(e.id),count=n?Math.min(99,Number(n.count)||0):0;
@@ -396,12 +428,21 @@
           up.title="Move "+e.label+" up";down.title="Move "+e.label+" down";
           row.append(btn,up,down);tools.append(row);
         }else tools.append(btn);
+        if(quick&&index<3){
+          const shortcut=node("button","staxx-quick-tool");
+          shortcut.type="button";shortcut.dataset.openStaxx=e.id;
+          shortcut.disabled=!active[e.id];
+          shortcut.append(node("span","",e.label),node("small","",!active[e.id]?"Not active":count?count+" alerts":"Open"));
+          quick.append(shortcut);
+        }
       }
       toggle.classList.toggle("staxx-urgent",maxLevel===2);
       toggle.classList.toggle("staxx-warning",maxLevel===1);
       bubble.hidden=total===0;bubble.textContent=total>=100?"99+":String(total);
       toggle.setAttribute("aria-label",total?total+" Staxx notifications; open tools":"Open Staxx tools");
       root.querySelector("#staxx-hub-total").textContent=visible?visible+" tools":muted?muted+" muted":"All clear";
+      const alertsTab=root.querySelector('[data-hub-view="alerts"]');
+      if(alertsTab)alertsTab.textContent=total?"Alerts · "+(total>99?"99+":total):"Alerts";
       for(const e of entries){
         const n=activeNotice(e.id);if(!n)continue;
         const card=node("div","staxx-alert "+n.level);
@@ -442,6 +483,8 @@
     }
     root.addEventListener("click",e=>{
       const b=e.target.closest("button");if(!b)return;
+      if(b.dataset.hubView){switchHubView(b.dataset.hubView);return;}
+      if(b.dataset.toggleTasks){expandedTaskList=!expandedTaskList;renderTasks();return;}
       if(b.dataset.contextToggle!==undefined){saveLocal("staxx-hub-context-v1",!contextEnabled());renderContext();return;}
       if(b.dataset.dismissStaxx){const id=b.dataset.dismissStaxx,n=notices[id];if(n){controls[id]={...controls[id],dismissed:n.fingerprint,snoozeUntil:0};saveLocal("staxx-hub-alert-control-"+id,controls[id]);render();}return;}
       if(b.dataset.snoozeStaxx){const menu=b.parentNode?.nextSibling;if(menu)menu.hidden=!menu.hidden;return;}
