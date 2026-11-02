@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Company Helper
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.25.1
+// @version      1.25.2
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -815,6 +815,15 @@
       renderContext();
     });
     document.addEventListener('staxx:mode',e=>{const m=e.detail?.mode;if((m==='simple'||m==='advanced')&&m!==uiMode){uiMode=m;saveLocal('staxx-hub-mode-v1',m);expandedTaskList=false;render();}});
+    document.addEventListener('staxx:visit',e=>{
+      const d=e.detail||{},id=d.id;
+      if(!idOk(id)||!active[id])return;
+      const entry=entries.find(x=>x.id===id),routes=sectionsByTool[id]||entry?.sections||[];
+      if(!routes.some(route=>route[0]===d.section))return;
+      const key=id+'/'+d.section,prior=storedUse(key);
+      if(prior&&Date.now()-Number(prior.last)<10000)return;
+      recordUse(id,d.section);
+    });
     document.addEventListener("staxx:register",e=>{
       const d=e.detail||{},id=d.id;if(!idOk(id))return;
       let entry=entries.find(x=>x.id===id);
@@ -2923,7 +2932,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.1</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.2</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -3634,7 +3643,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.1",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.2",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
@@ -3671,7 +3680,10 @@
       else notify("Clipboard unavailable. Use StaxxHub diagnostics.","warn");return;}
     if (act==="profitstaxx") {open=false;draw();document.dispatchEvent(new CustomEvent('staxx:open',{detail:{id:'profit'}}));return;}
     if (act==="staxx-more-tabs") {companyTabsExpanded=!companyTabsExpanded;draw();return;}
-    if (act==="tab") {detailView="";tab=el.dataset.tab;message="";draw();return;}
+    if (act==="tab") {detailView="";tab=el.dataset.tab;message="";
+      if(["overview","alerts","employees","training","growth","stock","settings","diagnostics"].includes(tab))
+        document.dispatchEvent?.(new CustomEvent('staxx:visit',{detail:{id:'company',section:tab}}));
+      draw();return;}
     if (act==="metric-detail"){detailView=el.dataset.target;draw();return;}
     if (act==="detail-back"){detailView="";draw();return;}
     if (act==="staff-view"){staffView=el.dataset.view;selectedEmployee=null;draw();return;}
