@@ -2022,19 +2022,18 @@
     return {credited:added,skipped:skipped};
   }
   function mergeTrainingNewsV13(c,response) {
-    const list=normaliseNewsResponse(response&&response.news),seen=new Set((c.news||[]).map(function(n){return String(n.id);}));
+    const list=normaliseNewsResponse(response&&response.news),seen=new Set((c.news||[]).map(function(n){return String(n.id);})),newlySeen=[];
     let added=0;
     list.forEach(function(n){
       if(seen.has(String(n.id)))return;
       seen.add(String(n.id));
       c.news.push({id:String(n.id),timestamp:Number(n.timestamp),text:String(n.text||"").slice(0,700)});
-      added++;
+      newlySeen.push(n);added++;
     });
     repairImportDuplicates(c);
     const result=reconcileTraining(c);
     if(added>0){
-      const verified=list.filter(n=>!new Set((c.news||[]).filter(x=>!x).map(x=>x.id)).has(String(n.id)))
-        .filter(n=>(c.training||[]).some(t=>!t.voided&&canonicalTrainingSource(t)==='news:'+String(n.id)))
+      const verified=newlySeen.filter(n=>(c.training||[]).some(t=>!t.voided&&canonicalTrainingSource(t)==='news:'+String(n.id)))
         .slice(0,8);
       if(verified.length)document.dispatchEvent?.(new CustomEvent('staxx:activity',{detail:{id:'company',
         events:verified.map(n=>({id:'training-news-'+String(n.id).replace(/[^a-z0-9_.:-]/gi,'').slice(0,65),
