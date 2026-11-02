@@ -122,7 +122,7 @@ test("Payment review interface lets users confirm purpose explicitly",()=>{
  assert.match(source,/data-act="more-payments"/);
 });
 test("There are no new automatic reads or gameplay writes",()=>{
- assert.match(source,/\/\/ @version\s+1\.21\.0/);
+ assert.match(source,/\/\/ @version\s+1\.22\.0/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
  assert.match(source,/\/\/ @author\s+IamEEKY/);
 });
