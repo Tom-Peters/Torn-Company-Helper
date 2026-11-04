@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.26.0
+// @version      1.26.1
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
 // @run-at       document-end
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/Tom-Peters/Torn-Company-Helper/main/Torn-Company-Helper.user.js
+// @downloadURL  https://raw.githubusercontent.com/Tom-Peters/Torn-Company-Helper/main/Torn-Company-Helper.user.js
 // ==/UserScript==
 /* TornStaxx 4.0 module fallback — compact, local-only and no remote dependencies. */
 (function(){
