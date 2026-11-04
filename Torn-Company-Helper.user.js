@@ -12,10 +12,11 @@
 /* TornStaxx 4.0 module fallback — compact, local-only and no remote dependencies. */
 (function(){
   'use strict';
-  if(typeof window==='undefined'||typeof document==='undefined'||window.top!==window.self||
+  if(typeof window==='undefined'||typeof document==='undefined'||typeof location==='undefined'||window.top!==window.self||
      !/^(www\.)?torn\.com$/i.test(location.hostname)||window.__TornStaxxFallbackBooted)return;
   window.__TornStaxxFallbackBooted=true;
   function mount(){
+    if(!document.body||typeof document.body.append!=='function'||typeof document.getElementById!=='function'||typeof document.createElement!=='function')return;
     if(document.getElementById('staxx-hub-root')||document.getElementById('staxx-fallback-root'))return;
     const entries=new Map(),root=document.createElement('div'),button=document.createElement('button'),menu=document.createElement('div');
     root.id='staxx-fallback-root';
