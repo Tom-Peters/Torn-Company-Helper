@@ -665,7 +665,7 @@
     // indexed roster so the three decisions remain usable without navigation.
     const nativeVisible=typeof document.querySelectorAll==="function"&&
       [...document.querySelectorAll('ul.employee-list > li[data-user]')].some(li=>Object.hasOwn(model.byId,String(li.getAttribute("data-user"))));
-    return '<details class="tch-native-roster"'+(nativeVisible?'':' open')+'><summary>Staff intelligence / '+rows.length+
+    return '<details class="tch-native-roster"><summary>All staff insights / '+rows.length+
       ' employees <small>Pay estimates, owed training, best position fit</small></summary>'+
       '<p class="tch-native-explain">Wages are planning estimates, not Torn salary recommendations. Best fit measures working stats, not overall business value; keep essential support roles covered.</p>'+
       (rows.length?rows.map(function(r){
@@ -703,6 +703,38 @@
         panel.dataset.signature=signature;
       }
     }
+  }
+
+
+  function staffBriefV128(c,scope){
+    const model=staffIntelligenceV128(c);
+    const rows=model.rows.slice().sort(function(a,b){
+      const rank=r=>r.give>0?0:r.due>0?1:r.roleReview?2:r.compare!=="Within model range"&&r.compare!=="Unknown"?3:4;
+      return rank(a)-rank(b)||b.due-a.due||a.name.localeCompare(b.name);
+    });
+    if(scope==="native"){
+      return '<section class="tch-native-focus"><div class="tch-native-focushead"><b>Staff priorities</b>'+
+        '<small>Top '+Math.min(3,rows.length)+' of '+rows.length+' · open the roster for everyone</small></div>'+
+        (rows.length?rows.slice(0,3).map(function(r){
+          return '<button type="button" data-tch-act="employee" data-id="'+esc(r.id)+'" class="tch-native-focusrow">'+
+            '<strong>'+esc(r.name)+'</strong><span>'+r.due+' owed</span>'+
+            '<span>Pay '+esc(r.payTarget===null?'Unknown':money(r.payTarget))+'</span>'+
+            '<span>'+esc(r.best?r.best.name:'Fit unknown')+'</span></button>';
+        }).join(''):'<small>No staff information loaded yet.</small>')+'</section>';
+    }
+    return '<section class="tch-panel tch-team-brief"><div class="tch-sectionhead"><h2>Team / quick decisions</h2>'+
+      '<span class="tch-mini">'+rows.length+' employees</span></div>'+
+      '<p class="tch-hint">Tap a person for their wage planning range, training ledger and all position matches.</p>'+
+      (rows.length?rows.slice(0,5).map(function(r){
+        return '<button type="button" data-act="employee-detail" data-id="'+esc(r.id)+'" class="tch-team-briefrow">'+
+          '<span><strong>'+esc(r.name)+'</strong><small>'+esc(r.currentRole)+'</small></span>'+
+          '<span><strong>'+esc(r.payTarget===null?'Pay ?':money(r.payTarget))+'</strong><small>modelled / day</small></span>'+
+          '<span><strong>'+r.due+' owed</strong><small>'+(r.give?r.give+' ready':'not ready')+'</small></span>'+
+          '<span><strong>'+esc(r.best?r.best.name:'Unknown')+'</strong><small>best stats fit</small></span></button>';
+      }).join(''):'<p class="tch-hint">Refresh the employee roster to see suggested pay and best roles.</p>')+
+      (rows.length>5?'<p class="tch-hint">+'+(rows.length-5)+' more employees available in Staff.</p>':'')+
+      '<div class="tch-actionrow"><button data-act="goto" data-target="staff" class="primary">All staff</button>'+
+      '<button data-act="goto" data-target="staff-wages">Wage optimiser</button></div></section>';
   }
 
   function nativeCompanyDeskHTMLV127(c){
@@ -743,7 +775,7 @@
       (d.overflow>0?'<p class="tch-native-warning">Possible overflow: '+d.overflow+' trains at the next close.</p>':'')+
       (d.pending?'<button type="button" data-tch-act="payments" class="tch-native-review">Review '+
         d.pending+' unconfirmed transfer(s) / not counted as owed</button>':'')+
-      nativeStaffRosterV128(c,m)+
+      staffBriefV128(c,"native")+nativeStaffRosterV128(c,m)+
       (d.rows.length?'<details class="tch-native-obligations"><summary>Paid training queue · '+d.owed+' still owed</summary>'+
         '<div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+
         owedPreview+(d.rows.length>3?'<small>+'+(d.rows.length-3)+' further employees in the full queue</small>':'')+
@@ -1943,7 +1975,7 @@
         metricV2("Employees",c.staff.length+" / "+num(c.profile.employees&&c.profile.employees.capacity),"Current company roster","","staff")+
         metricV2("Training ready",d.ready,d.owed+" confirmed outstanding","","training-queue")+
         metricV2("Efficiency",c.profile.efficiency==null?"Unknown":c.profile.efficiency+"%","Torn reported","","growth-performance")+
-      '</div>'+trainingSpotlightV127(c)+
+      '</div>'+trainingSpotlightV127(c)+staffBriefV128(c,"today")+
       '<section class="tch-panel"><div class="tch-sectionhead"><h2>What needs attention</h2>'+
       '<span class="tch-mini">'+actions.length+' prioritised</span></div>'+
       (actions.length?actions.map(function(r){
@@ -2329,7 +2361,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.27.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.28.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -3057,7 +3089,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.27.0",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.28.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
