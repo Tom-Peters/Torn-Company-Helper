@@ -2,7 +2,7 @@
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
 // @version      1.27.0
-// @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
+// @description  Read-only company desk: inline owed training, staffing, wages and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -554,7 +554,7 @@
     // the live company train bank can actually fulfil an eligible obligation.
     const paidTraining=trainPlanV3(c);
     const firstReady=paidTraining.queue.find(function(x){return x.give>0;});
-    if(paidTraining.allocate>0&&firstReady){
+    if(staleHours<24&&paidTraining.allocate>0&&firstReady){
       add("next","Paid training ready to give",
         firstReady.name+" is owed "+firstReady.owed+" train(s); "+firstReady.give+" can be given now (oldest eligible first). No train has been assigned automatically.",
         "High · confirmed ledger and reported train bank","training-queue");
@@ -1024,12 +1024,12 @@
     const items=[],p=trainPlanV3(c);
     // Only giveable, 72-hour-eligible paid commitments count as a training alert.
     // Purchased-but-waiting obligations stay in the ledger, without a badge.
-    const ready=p.queue.filter(function(x){return x.give>0;});
+    const ready=trainingDeskV127(c).fresh?p.queue.filter(function(x){return x.give>0;}):[];
     const shortage=stockAdviceV3(c).filter(x=>x.qty!==null&&x.qty>0&&x.days!==null&&x.days<1).slice(0,3);
     if(shortage.length)items.push({id:"stock-shortage",target:"stock",glyph:"!",text:shortage.length+" stock line(s) under one day of cover"});
     // Notify only when an eligible paid obligation can be fulfilled now.
     // Training bank capacity is independent of paid purchases; paid alerts still need allocatable trains.
-    if(p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Available trains may overflow at next close"});
+    if(trainingDeskV127(c).fresh&&p.overflow>0)items.push({id:"training-overflow",target:"training-queue",glyph:"⚡",text:"Available trains may overflow at next close"});
     if(p.allocate>0&&ready.length)items.push({id:"training-owed",target:"training-queue",glyph:"◇",
       text:p.allocate+" paid train(s) ready for "+ready.length+" eligible employee(s)"});
     if(companyProfitTrendV191(c).streak)items.push({id:'cashflow-loss-streak',target:'growth-accounts',glyph:'!',text:'Operating losses on three observed days'});
@@ -1751,10 +1751,10 @@
     else if(accounts.headroom<0)add(0,'Protect your daily loss limit',
       'Current operating model is '+money(-accounts.headroom)+' beyond your configured '+money(c.lossLimit)+' loss cap.','growth-accounts');
     const p=trainPlanV3(c);
-    if(p.allocate>0&&p.overflow>0)add(1,'Assign trains before capacity is lost',
+    if(fresh&&p.allocate>0&&p.overflow>0)add(1,'Assign trains before capacity is lost',
       p.overflow+' train(s) could be lost at the next company close; check the oldest eligible commitments first.','training-queue');
     const due=p.queue?.find(x=>x.give>0);
-    if(due)add(2,'Give '+due.give+' train(s) to '+due.name,
+    if(due&&fresh)add(2,'Give '+due.give+' train(s) to '+due.name,
       'Oldest eligible paid commitment · '+due.owed+' recorded as owed. Confirm the recipient and quantity in Torn.','training-queue');
     const payments=pendingPaymentLogs(c).length;
     if(payments)add(2,'Verify '+payments+' incoming transfer(s)',
@@ -1812,7 +1812,7 @@
       '<span class="tch-mini">'+(d.fresh?'Figures current':'Saved figures - refresh recommended')+'</span></div>'+
       '<div class="tch-home-number">'+(star===null?'?':star)+' / 10 ★</div></section>'+
       '<div class="tch-homekpis">'+
-        metricV2("Estimated daily P/L",a.known?money(a.profit):"Incomplete","Revenue less wages and advertising",
+        metricV2("Estimated P/L",a.known?money(a.profit):"Incomplete","Revenue less wages and advertising",
           a.known&&a.headroom<0?"tch-danger":"","growth-accounts")+
         metricV2("Employees",c.staff.length+" / "+num(c.profile.employees&&c.profile.employees.capacity),"Current company roster","","staff")+
         metricV2("Training ready",d.ready,d.owed+" confirmed outstanding","","training-queue")+
@@ -2177,7 +2177,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.25.6</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.27.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
