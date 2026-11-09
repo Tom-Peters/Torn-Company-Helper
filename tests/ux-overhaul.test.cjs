@@ -57,16 +57,16 @@ test("Mobile UI contains four action-first sections and compact status cards",()
 test("Staff roster and optimisation UI render without Torn writes",()=>{
  const v=app(source);
  const html=v.ui.staffV2(data);
- assert.match(html,/Staff optimiser/);
+ assert.match(html,/Staff comparison/);
  assert.match(html,/SampleEmployee/);
- assert.match(html,/Current role fit/);
+ assert.match(html,/Current fit/);
  assert.match(html,/data-act="employee-detail"/);
  assert.equal(v.requests(),0);
 });
 test("Training prioritises accounts and hides old manual records by default",()=>{
  const v=app(source);
  const html=v.ui.trainingV2(data);
- assert.match(html,/Oldest commitments first/);
+ assert.match(html,/Training order \/ ready first/);
  assert.match(html,/Record a completed train/);
  assert.match(html,/training-view/);
  assert.equal(v.requests(),0);
@@ -97,7 +97,7 @@ test("Current-role fit is visible independently of Torn effectiveness",()=>{
  c.profile.type={id:1,name:"Fitness Center"};
  c.roles=[{name:"Receptionist",requirements:{endurance:40000,intelligence:30000}}];
  const html=ui.staffV2(c);
- assert.match(html,/Current role fit/);
+ assert.match(html,/Current fit/);
  assert.match(html,/100\.0%/);
  assert.match(html,/Torn EFF/);
 });
