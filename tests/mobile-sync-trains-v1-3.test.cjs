@@ -151,7 +151,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.28\.0/);
+ assert.match(source,/\/\/ @version\s+1\.29\.0/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
@@ -192,7 +192,7 @@ test("Native company desk shows each recorded obligation without opening the hel
  assert.match(d.rows.find(x=>x.id==="12").status,/72h/);
  assert.match(d.rows.find(x=>x.id==="99").status,/Former/);
  const html=app.nativeCompanyDeskHTMLV127(c);
- assert.match(html,/CompanyStaxx \/ Owed trains/);
+ assert.match(html,/CompanyStaxx \/ Director/);
  assert.match(html,/data-tch-act="refresh"/);
  assert.match(html,/data-tch-act="employee"/);
  assert.match(html,/data-tch-act="payments"/);
@@ -204,7 +204,7 @@ test("Stale data cannot claim a train is ready, but never hides owed balances",(
  c.payments=[{id:"confirmed",playerId:11,trains:5,ts:now(),confirmed:true}];
  const d=app.trainingDeskV127(c);
  assert.equal(d.ready,0);assert.equal(d.owed,5);assert.equal(d.fresh,false);
- assert.match(app.nativeCompanyDeskHTMLV127(c),/Saved data/);
+ assert.match(app.nativeCompanyDeskHTMLV127(c),/refresh needed/);
 });
 test("Employee names are escaped on the live company-page training panel",()=>{
  const {app}=fixture(),c=company();
