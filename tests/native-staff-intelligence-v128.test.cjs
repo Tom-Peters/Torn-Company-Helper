@@ -34,7 +34,8 @@ function fixture(){
  const marker='  const style=document.createElement("style");';
  assert.ok(source.includes(marker));
  const extra='  globalThis.__staffV128={staffIntelligenceV128,staffInsightHTMLV128,nativeStaffRosterV128,'+
-  'syncNativeStaffRowsV128,nativeCompanyDeskHTMLV127,staffBriefV128,setCompany(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;}};\n'+marker;
+  'syncNativeStaffRowsV128,nativeCompanyDeskHTMLV127,staffBriefV128,staffComparisonV129,'+
+  'comparableStaffV129,directorOpportunitiesV129,responsiblePayV129,setCompany(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;}};\n'+marker;
  const sandbox={window,document,location:window.location,Date,Math,Number,Set,Map,JSON,URL,URLSearchParams,Blob,console,
   PDA_storage:{get:async()=>null,set:async()=>true}};
  vm.runInNewContext(source.replace(marker,extra),sandbox,{timeout:1800});
@@ -104,4 +105,30 @@ test("Redesigned native page exposes KPIs and safe quick-action navigation",()=>
  for(const action of ["refresh","overview","queue","staff","wages","growth"])
   assert.match(h,new RegExp('type="button" data-tch-act="'+action+'"'));
  assert.match(api.staffBriefV128(c,"today"),/best stats fit/i);
+});
+
+test("Comparison table is sortable and includes pay, EFF, fit and training obligations",()=>{
+ const {api}=fixture(),c=company();
+ const html=api.staffComparisonV129(c);
+ assert.match(html,/<table>/);assert.match(html,/Sort employees/);
+ for(const col of ["Daily pay","Torn EFF","Best stats fit","Fit gain","Owed \/ ready"])
+   assert.match(html,new RegExp(col,"i"));
+ const rows=api.comparableStaffV129(c);
+ assert.equal(rows[0].id,"11");
+});
+test("Director opportunities put cost breaches ahead of training and unsupported growth claims",()=>{
+ const {api}=fixture(),c=company();
+ c.profile.income.daily=0;c.lossLimit=0;
+ const moves=api.directorOpportunitiesV129(c);
+ assert.match(moves[0].title,/loss/i);
+ assert.match(moves[0].detail,/daily operating improvement/);
+ assert.equal(moves[0].target,"growth-accounts");
+ assert.ok(moves.some(x=>x.target==="training-queue"));
+});
+test("Thin employee markup never renders a large card or a full-width detail button",()=>{
+ const {api}=fixture(),r=api.staffIntelligenceV128(company()).byId["11"],html=api.staffInsightHTMLV128(r,false);
+ assert.match(html,/tch-staff-insight-grid/);
+ assert.doesNotMatch(html,/Recommended pay <i>/);
+ assert.doesNotMatch(html,/View employee</);
+ assert.match(html,/class="tch-intel-open"/);
 });
