@@ -2,7 +2,7 @@
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
 // @version      1.29.0
-// @description  CompanyStaxx staff intelligence on Torn: wage estimates, owed trains and best position fits
+// @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -591,7 +591,7 @@
     const ledger=aggregates(c),plan=trainPlanV3(c),staff=new Map((c.staff||[]).map(p=>[String(p.id),p]));
     const ready=new Map(plan.queue.map(p=>[String(p.id),p]));
     const updated=Date.parse(c.lastRefresh||"");
-    const fresh=Number.isFinite(updated)&&updated<=Date.now()+60000&&Date.now()-updated<86400000;
+    const fresh=Number.isFinite(updated)&&updated<=Date.now()+60000&&Date.now()-updated<1800000;
     const rows=Object.keys(ledger.balance).filter(k=>ledger.balance[k].owed>0).map(function(k){
       const b=ledger.balance[k],person=staff.get(k),q=ready.get(k),give=fresh&&q?q.give:0;
       return {id:k,name:ledger.people[k]||"Player #"+k,owed:b.owed,oldest:b.oldest,give,active:!!person,
@@ -756,7 +756,7 @@
       (rows.length?rows.slice(0,5).map(function(r){
         return '<button type="button" data-act="employee-detail" data-id="'+esc(r.id)+'" class="tch-team-briefrow">'+
           '<span><strong>'+esc(r.name)+'</strong><small>'+esc(r.currentRole)+'</small></span>'+
-          '<span><strong>'+esc(r.payTarget===null?'Pay ?':money(r.payTarget))+'</strong><small>modelled / day</small></span>'+
+          '<span><strong>'+esc(r.payTarget===null?'Pay ?':money(r.payTarget))+'</strong><small>'+esc(r.payStatus)+' / day</small></span>'+
           '<span><strong>'+r.due+' owed</strong><small>'+(r.give?r.give+' ready':'not ready')+'</small></span>'+
           '<span><strong>'+esc(r.best?r.best.name:'Unknown')+'</strong><small>best stats fit</small></span></button>';
       }).join(''):'<p class="tch-hint">Refresh the employee roster to see suggested pay and best roles.</p>')+
@@ -766,7 +766,7 @@
   }
 
   function nativeCompanyDeskHTMLV127(c){
-    if(!c||!c.profile)return '<div class="tch-native-header"><b>CompanyStaxx / Owed trains</b>'+
+    if(!c||!c.profile)return '<div class="tch-native-header"><b>CompanyStaxx / Director</b>'+
       '<button type="button" data-tch-act="refresh">Connect & refresh</button></div><p>Load your company data to start.</p>';
     const d=trainingDeskV127(c),m=staffIntelligenceV128(c),accounts=accounting(c),profile=c.profile;
     const stars=financialAmount(profile.rating),total=financialAmount(profile.employees?.capacity);
@@ -781,7 +781,7 @@
     }).join('');
     const timestamp=d.updated?'Updated '+esc(new Date(d.updated).toLocaleString("en-GB")):'Not refreshed';
     const status=d.fresh?"Current":"Saved / refresh needed";
-    return '<div class="tch-native-header"><div><b>CompanyStaxx / Owed trains</b><small>'+
+    return '<div class="tch-native-header"><div><b>CompanyStaxx / Director</b><small>'+
       esc(profile.name||"Company")+' · '+timestamp+' · '+status+'</small></div>'+
       '<div class="tch-native-actions"><button type="button" data-tch-act="refresh">Refresh</button>'+
       '<button type="button" data-tch-act="overview">Dashboard</button></div></div>'+
