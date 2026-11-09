@@ -1986,6 +1986,22 @@
     "#tch-root .tch-spot-kpis{display:flex;gap:8px;margin:10px 0}#tch-root .tch-spot-kpis span{flex:1;background:#143653;padding:10px;border:1px solid #39698b;border-radius:8px;font-size:11px}#tch-root .tch-spot-kpis b{display:block;color:#8adfff;font-size:22px}#tch-root .tch-spot-person{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:10px;width:100%;min-height:49px;margin:4px 0}#tch-root .tch-spot-person strong,#tch-root .tch-spot-person small,#tch-root .tch-spot-person b{display:block}#tch-root .tch-spot-person small{font-size:11px;color:#b2d4e8}"+
     "#tch-root details.tch-deep-dive{margin:10px 0}#tch-root details.tch-deep-dive>summary{padding:12px;border:1px solid #3b7698;border-radius:9px;font-weight:700;cursor:pointer}"+
     "@media(max-width:450px){#tch-company-owed .tch-native-row,#tch-company-owed .tch-native-cols{grid-template-columns:minmax(0,1fr) 36px 34px 42px;gap:3px}#tch-company-owed button{padding:5px;font-size:11px}#tch-company-owed .tch-native-row{padding:5px 2px}}";
+
+  // Scoped styling never changes the Torn employee fields or controls.
+  style.textContent += "\n#tch-company-owed .tch-native-dashboard{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:11px 0}#tch-company-owed .tch-native-dashboard>div{min-width:0;padding:9px 10px;border:1px solid #345f7c;background:#12314a;border-radius:9px}#tch-company-owed .tch-native-dashboard small{font-size:10px;color:#abcddd}#tch-company-owed .tch-native-dashboard b{display:block;margin-top:2px;font-size:16px;overflow-wrap:anywhere;color:#eaf8ff}"+
+    "#tch-company-owed .tch-native-shortcuts{margin:7px 0 11px}#tch-company-owed .tch-native-shortcuts button{flex:1 1 auto;background:#13517b;min-height:38px}#tch-company-owed .tch-native-staffcard{padding:9px 8px;margin:6px 0;border:1px solid #2e5671;border-radius:8px;background:#0e2a43}#tch-company-owed .tch-native-staffname{font-size:13px}#tch-company-owed .tch-native-staffname small{display:inline;color:#a1c8df}"+
+    "#tch-company-owed details.tch-native-roster,#tch-company-owed details.tch-native-obligations{margin:10px 0;border:1px solid #315d7c;border-radius:9px;padding:8px}#tch-company-owed details>summary{cursor:pointer;font-weight:800;color:#eaf7ff;padding:6px;list-style-position:inside}#tch-company-owed details>summary small{font-weight:400}#tch-company-owed .tch-native-explain{font-size:11px;line-height:1.5;color:#b1cee0}"+
+    "#tch-company-owed .tch-staff-insight-grid,ul.employee-list>li[data-user]>.tch-staff-intel .tch-staff-insight-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:7px;align-items:stretch;width:100%;font:12px/1.35 system-ui,Arial,sans-serif}"+
+    "#tch-company-owed .tch-staff-intel-cell,ul.employee-list>li[data-user]>.tch-staff-intel .tch-staff-intel-cell{display:block;min-width:0;padding:8px;background:#173a56;border-radius:7px;color:#f3fbff;white-space:normal;overflow-wrap:anywhere}"+
+    "#tch-company-owed .tch-staff-intel-cell>span,ul.employee-list>li[data-user]>.tch-staff-intel .tch-staff-intel-cell>span{display:block;font-size:10px;line-height:1.3;color:#abcddd}"+
+    "#tch-company-owed .tch-staff-intel-cell>strong,ul.employee-list>li[data-user]>.tch-staff-intel .tch-staff-intel-cell>strong{display:block;font-size:13px;line-height:1.45;color:#e9f9ff}"+
+    "#tch-company-owed .tch-staff-intel-cell>small,ul.employee-list>li[data-user]>.tch-staff-intel .tch-staff-intel-cell>small{display:block;color:#b2d2e5;font-size:10px;margin-top:2px}"+
+    "#tch-company-owed .tch-intel-due strong,ul.employee-list>li[data-user]>.tch-staff-intel .tch-intel-due strong{color:#78f1ce}"+
+    "#tch-company-owed button.tch-intel-open,ul.employee-list>li[data-user]>.tch-staff-intel button.tch-intel-open{align-self:center;min-height:37px;background:#12679c;color:#e9faff;border:1px solid #5dbbe3;border-radius:8px;cursor:pointer;font:600 12px system-ui,Arial,sans-serif;padding:7px}"+
+    "ul.employee-list>li[data-user]>.tch-staff-intel{display:block!important;clear:both;float:none!important;position:relative;box-sizing:border-box;width:100%;height:auto;margin:8px 0 3px;padding:8px;border-top:1px solid #4089b4;border-bottom:1px solid #2f627f;border-radius:7px;background:#092c47;color:#f2f8ff;overflow-wrap:anywhere;white-space:normal}"+
+    "ul.employee-list>li[data-user]>.tch-staff-intel *{box-sizing:border-box}ul.employee-list>li[data-user]>.tch-staff-intel button:focus-visible{outline:3px solid #88dcff;outline-offset:2px}"+
+    "@media(max-width:560px){#tch-company-owed .tch-native-dashboard{grid-template-columns:repeat(2,minmax(0,1fr))}#tch-company-owed .tch-staff-insight-grid,ul.employee-list>li[data-user]>.tch-staff-intel .tch-staff-insight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#tch-company-owed .tch-intel-open,ul.employee-list>li[data-user]>.tch-staff-intel .tch-intel-open{grid-column:1/-1}#tch-company-owed .tch-staff-intel-cell,ul.employee-list>li[data-user]>.tch-staff-intel .tch-staff-intel-cell{padding:7px}}";
+
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
   const root=document.createElement("div");root.id="tch-root";root.hidden=true;document.body.appendChild(root);
@@ -3053,15 +3069,29 @@
   window.addEventListener("resize",syncCompanyVisibility);
   window.addEventListener("popstate",syncCompanyVisibility);
   window.addEventListener("hashchange",syncCompanyVisibility);
-  // Watch only route changes: Torn can navigate without popstate.
+
+  // Torn updates its employee list with client-side DOM changes; coalesce
+  // observations so we do not rerender in response to our own injected cards.
+  let nativeCompanyRenderQueuedV128=false;
+  function scheduleNativeCompanySyncV128(){
+    if(nativeCompanyRenderQueuedV128)return;
+    nativeCompanyRenderQueuedV128=true;
+    const schedule=typeof requestAnimationFrame==="function"?requestAnimationFrame:
+      function(fn){if(typeof setTimeout==="function")setTimeout(fn,50);else fn();};
+    schedule(function(){
+      nativeCompanyRenderQueuedV128=false;
+      syncCompanyVisibility();
+    });
+  }
+  // Watch route and native employee-list changes: Torn updates tabs without reloading.
   let observedPath=window.location.pathname;
   if(typeof MutationObserver!=="undefined") {
     const routeObserver=new MutationObserver(function(){
       if(observedPath!==window.location.pathname){
         observedPath=window.location.pathname;
         syncCompanyVisibility();
-      }else if(isCompanyPage()&&!document.getElementById("tch-company-owed")){
-        syncInlineCompanyV127();
+      }else if(isCompanyPage()){
+        scheduleNativeCompanySyncV128();
       }
     });
     routeObserver.observe(document.body,{childList:true,subtree:true});
