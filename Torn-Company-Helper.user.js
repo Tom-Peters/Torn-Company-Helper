@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.28.0
+// @version      1.29.0
 // @description  CompanyStaxx staff intelligence on Torn: wage estimates, owed trains and best position fits
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -606,72 +606,102 @@
       fresh,updated:Number.isFinite(updated)?updated:null};
   }
 
-  // All staff insights are derived locally from the currently loaded Torn
-  // company and the confirmed payment / training ledger. Never write to Torn.
+
+  // Conservative wage advice: no externally verified Torn wage benchmark exists.
+  // The employee's actual wage is the baseline, never an arbitrary 25% of their
+  // reported daily company value or an unrelated support-role team's rate.
+  // Only a sufficiently sampled same-position peer set may prompt a raise
+  // review; automatic salary cuts and gameplay writes are explicitly excluded.
+  function responsiblePayV129(c,p,a){
+    const wage=financialAmount(p.wage),eff=financialAmount(p.effectiveness?.total);
+    const role=String(p.position?.name||"");
+    const peers=(c.staff||[]).filter(q=>q&&String(q.id)!==String(p.id)&&
+      String(q.position?.name||"")===role&&financialAmount(q.wage)!==null&&
+      financialAmount(q.wage)>0&&financialAmount(q.effectiveness?.total)>0);
+    const rates=peers.map(q=>financialAmount(q.wage)/financialAmount(q.effectiveness.total)).sort((a,b)=>a-b);
+    const median=rates.length?rates.length%2?rates[Math.floor(rates.length/2)]:
+      (rates[rates.length/2-1]+rates[rates.length/2])/2:null;
+    const comparable=peers.length>=2&&eff>0&&median!==null;
+    const peerPay=comparable?Math.round(median*eff/1000)*1000:null;
+    let target=wage,decision="Hold",change=0;
+    let basis=comparable?"Same-role peer check ("+peers.length+" peers)":"Current wage / no reliable comparable pay evidence";
+    if(wage!==null&&wage>0&&comparable&&peerPay>wage*1.15){
+      const step=Math.ceil(wage*1.2/1000)*1000;
+      const suggestion=Math.min(peerPay,step);
+      const increase=suggestion-wage;
+      if(!a?.known||a.headroom===null){
+        basis="Raise candidate / check missing operating data";
+      }else if(a.headroom>=increase){
+        target=suggestion;change=increase;decision="Review raise";
+        basis="Same-role EFF peers ("+peers.length+"), capped at 20% per review";
+      }else{
+        basis="Pay rise not inside the current operating loss allowance";
+      }
+    }
+    return {wage,target,decision,change,basis,peerPay,peerCount:peers.length,
+      evidence:comparable?"Same role / matched EFF":"Insufficient comparable peers",role};
+  }
+  // All staff insights are derived locally from Torn and the confirmed ledger.
   function staffIntelligenceV128(c){
     if(!c||!c.profile)return {rows:[],byId:Object.create(null),stale:true};
-    const roles=roleList(c),pays=wageModelV11(c),support=supportWageModelV13(c),ledger=aggregates(c).balance;
+    const roles=roleList(c),ledger=aggregates(c).balance,accounts=accounting(c);
     const ready=trainingDeskV127(c),readyById=new Map(ready.rows.map(r=>[String(r.id),r]));
     const recommendations=new Map(suggestions(c).map(r=>[String(r.person.id),r]));
-    const directById=new Map(pays.rows.map(r=>[String(r.id),r]));
-    const proxyById=new Map(support.map(r=>[String(r.p.id),r]));
     const rows=(c.staff||[]).filter(p=>p&&Number.isSafeInteger(Number(p.id))&&Number(p.id)>0).map(function(p){
-      const key=String(p.id),direct=directById.get(key),proxy=proxyById.get(key),currentRole=String(p.position?.name||"Unknown");
+      const key=String(p.id),currentRole=String(p.position?.name||"Unknown");
       const currentFit=fitFor(p,roles,currentRole),validRoles=roles.map(function(role){
         return {name:role.name,fit:fitFor(p,roles,role.name)};
       }).filter(x=>x.fit!==null).sort(function(a,b){
         return b.fit-a.fit||Number(b.name===currentRole)-Number(a.name===currentRole)||a.name.localeCompare(b.name);
       });
       const best=validRoles[0]||null,approved=recommendations.get(key);
+      const fitGain=best&&currentFit!==null?best.fit-currentFit:null;
       const due=ledger[key]?.owed||0,readyRow=readyById.get(key),give=readyRow?.give||0;
-      const wage=direct?.wage??null;
-      const directTarget=direct?.value>0&&direct.target!==null?direct.target:null;
-      const payTarget=directTarget!==null?directTarget:(proxy?.estimate??null);
-      const low=directTarget!==null?Math.round(directTarget*.85/1000)*1000:(proxy?.min??null);
-      const high=directTarget!==null?Math.round(directTarget*1.15/1000)*1000:(proxy?.max??null);
-      const source=directTarget!==null?"HR value / "+pays.share+"% budget scenario":
-        payTarget!==null?"Peer wage / EFF estimate":"Insufficient HR or peer data";
-      const compare=payTarget===null||wage===null?"Unknown":wage<low?"Below model range":
-        wage>high?"Above model range":"Within model range";
-      return {id:key,name:String(p.name||"Employee"),currentRole,currentFit,best,roleReview:Boolean(approved?.recommend),
-        due,give,trainStatus:readyRow?.status||(due?"Waiting":"No outstanding debt"),
-        wage,payTarget,low,high,source,compare,eff:financialAmount(p.effectiveness?.total)};
+      const pay=responsiblePayV129(c,p,accounts);
+      return {id:key,name:String(p.name||"Employee"),currentRole,currentFit,best,fitGain,
+        roleReview:Boolean(approved?.recommend),due,give,trainStatus:readyRow?.status||(due?"Waiting":"No outstanding debt"),
+        wage:pay.wage,payTarget:pay.target,payStatus:pay.decision,payChange:pay.change,
+        low:null,high:null,source:pay.basis,peerPay:pay.peerPay,peerCount:pay.peerCount,
+        compare:pay.decision==="Review raise"?"Raise review":"Hold / unknown",eff:financialAmount(p.effectiveness?.total),
+        trainOldest:readyRow?.oldest??null};
     });
     const byId=Object.create(null);rows.forEach(r=>{byId[r.id]=r;});
     return {rows,byId,stale:!ready.fresh,updated:ready.updated,ready:ready.ready,
       owed:ready.owed,pending:ready.pending,available:ready.available,overflow:ready.overflow,
       rating:c.profile.rating,efficiency:c.profile.efficiency};
   }
+  // One thin strip below Torn's own employee row. Detailed explanation stays
+  // in the tool, never as repeated multi-card text on the game page.
   function staffInsightHTMLV128(info,compact){
-    const pay=info.payTarget===null?"Unavailable":money(info.payTarget)+"/day";
-    const now=info.wage===null?"Unknown":money(info.wage)+"/day";
-    const fit=info.best?info.best.name+" / "+info.best.fit.toFixed(1)+"%":"Unavailable";
-    const current=info.currentFit===null?"Unknown":info.currentFit.toFixed(1)+"%";
+    const pay=info.payTarget===null?"Unknown":(info.payStatus==="Review raise"?"Review ":"Hold ")+money(info.payTarget);
+    const training=info.due?info.due+(info.give?" / "+info.give+" ready":" owed"):"None";
+    const role=info.best?info.best.name:"Unknown";
+    const fit=info.best?info.best.fit.toFixed(0)+"%":"—";
+    const fitDelta=info.fitGain!==null?(info.fitGain>=0?"+":"")+info.fitGain.toFixed(1)+" pp":"unknown";
+    const more="Current "+info.currentRole+" / stats-fit change "+fitDelta+
+      " / actual effectiveness change cannot be forecast reliably";
     return '<div class="tch-staff-insight-grid">'+
-      '<div class="tch-staff-intel-cell"><span>Recommended pay <i>est.</i></span><strong>'+esc(pay)+'</strong>'+
-      '<small>'+esc(info.source)+' / Currently '+esc(now)+'</small></div>'+
-      '<div class="tch-staff-intel-cell '+(info.give>0?'tch-intel-due':'')+'"><span>Trains owed</span>'+
-      '<strong>'+info.due+'</strong><small>'+esc(info.due?info.give>0?info.give+' can give now':info.trainStatus:'No debt')+'</small></div>'+
-      '<div class="tch-staff-intel-cell"><span>Best stats fit</span><strong>'+esc(fit)+'</strong>'+
-      '<small>Current '+esc(info.currentRole)+' ('+esc(current)+')'+
-      (info.roleReview?' / Review reassignment':' / Match only')+'</small></div>'+
-      (compact?'<button type="button" data-tch-act="employee" data-id="'+esc(info.id)+'" class="tch-intel-open">Details</button>':
-        '<button type="button" data-tch-act="employee" data-id="'+esc(info.id)+'" class="tch-intel-open">View employee</button>')+
-      '</div>';
+      '<span class="tch-staff-intel-cell" title="'+esc(info.source)+
+      '"><small>PAY</small><b>'+esc(pay)+'</b></span>'+
+      '<span class="tch-staff-intel-cell '+(info.give>0?'tch-intel-due':'')+
+      '" title="'+esc(info.trainStatus)+'"><small>TRAINS</small><b>'+esc(training)+'</b></span>'+
+      '<span class="tch-staff-intel-cell" title="'+esc(more)+
+      '"><small>BEST STAT FIT</small><b>'+esc(role)+' <em>'+esc(fit)+'</em></b></span>'+
+      '<button type="button" data-tch-act="employee" data-id="'+esc(info.id)+
+      '" class="tch-intel-open" title="Open employee breakdown" aria-label="CompanyStaxx details for '+esc(info.name)+'">›</button></div>';
   }
+
   function nativeStaffRosterV128(c,model){
     const rows=model.rows;
-    // On other Torn company tabs the native roster is absent; expand our own
-    // indexed roster so the three decisions remain usable without navigation.
-    return '<details class="tch-native-roster"><summary>All staff insights / '+rows.length+
-      ' employees <small>Pay estimates, owed training, best position fit</small></summary>'+
-      '<p class="tch-native-explain">Wages are planning estimates, not Torn salary recommendations. Best fit measures working stats, not overall business value; keep essential support roles covered.</p>'+
+    return '<details class="tch-native-roster"><summary>All staff / '+rows.length+
+      ' <small>Pay · trains · best fit</small></summary>'+
+      '<p class="tch-native-explain">Pay uses current salary unless multiple comparable same-role peers justify reviewing a raise. Role fit is not predicted Torn EFF.</p>'+
       (rows.length?rows.map(function(r){
-        return '<div class="tch-native-staffcard"><strong class="tch-native-staffname">'+esc(r.name)+
+        return '<div class="tch-native-compactstaff"><strong>'+esc(r.name)+
           ' <small>'+esc(r.currentRole)+'</small></strong>'+staffInsightHTMLV128(r,true)+'</div>';
-      }).join(''):'<p>No staff records loaded yet. Refresh your company data.</p>')+
-      '</details>';
+      }).join(''):'<p>No staff records. Refresh to load your roster.</p>')+'</details>';
   }
+
   function syncNativeStaffRowsV128(c){
     if(typeof document.querySelectorAll!=="function")return;
     const selector='ul.employee-list > li[data-user]';
@@ -695,7 +725,7 @@
         row.appendChild(panel);
       }
       const signature=JSON.stringify([c.lastRefresh,info.wage,info.payTarget,info.low,info.high,info.currentFit,
-        info.best?.name,info.best?.fit,info.due,info.give,info.trainStatus,info.roleReview,model.stale]);
+        info.best?.name,info.best?.fit,info.due,info.give,info.trainStatus,info.roleReview,model.stale,info.payStatus,info.fitGain]);
       if(panel.dataset.signature!==signature){
         panel.innerHTML=staffInsightHTMLV128(info,false);
         panel.dataset.signature=signature;
@@ -2365,7 +2395,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.28.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.29.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2641,7 +2671,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.27.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.29.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
