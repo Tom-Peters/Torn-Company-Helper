@@ -86,7 +86,7 @@ test("Native employee rows match only known numeric data-user IDs, never guessed
  assert.match(a._child.innerHTML,/>PAY</);
  assert.match(a._child.innerHTML,/>TRAINS</);
  assert.match(a._child.innerHTML,/>BEST STAT FIT</);
- assert.match(a._child.innerHTML,/data-tch-act="employee"/);
+ assert.match(a._child.innerHTML,/data-tch-act="employee-inline"/);
  api.syncNativeStaffRowsV128(c);assert.equal(a.appendCount,1);
  api.syncNativeStaffRowsV128(null);assert.equal(a._child,null);
 });
