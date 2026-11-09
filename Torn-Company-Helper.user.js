@@ -1806,20 +1806,32 @@
 
   function homeV13(c){
     if(!c||!c.profile)return introV2();
-    const a=accounting(c),train=trainPlanV3(c),star=Number(c.profile.rating)||0;
-    const due=Object.values(aggregates(c).balance).reduce(function(n,b){return n+b.owed;},0);
-    return directorBriefPanelV110(c)+companyStressLabV115(c)+'<section class="tch-homehead"><div><small>YOUR COMPANY</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
-      '<span class="tch-mini">'+star+' ★ / 10</span></div><div class="tch-home-number">'+star+' ★</div></section>'+
+    const a=accounting(c),d=trainingDeskV127(c),star=financialAmount(c.profile.rating);
+    const actions=directorBriefV110(c).items.slice(0,3);
+    return '<section class="tch-homehead"><div><small>COMPANY / DAILY DESK</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
+      '<span class="tch-mini">'+(d.fresh?'Figures current':'Saved figures - refresh recommended')+'</span></div>'+
+      '<div class="tch-home-number">'+(star===null?'?':star)+' / 10 ★</div></section>'+
       '<div class="tch-homekpis">'+
-        metricV2("Efficiency",c.profile.efficiency==null?"?":c.profile.efficiency+"%","Daily report","","staff")+
-        metricV2("Popularity",c.profile.popularity==null?"?":c.profile.popularity+"%","Daily report","","growth-pricing")+
-        metricV2("Trains available",train.available===null?"?":train.available,"Paid owed "+due,"","training-queue")+
-        metricV2("Estimated P/L",a.known?money(a.profit):"Unknown","Excludes unreported costs","","growth-accounts")+
-      '</div>'+starMomentumPanelV14(c)+growthMovesPanelV13(c)+companyDeltaPanelV111(c)+profitBridgePanelV191(c)+
-      '<div class="tch-quick"><button data-act="goto" data-target="training-queue">Training queue ›</button>'+
-      '<button data-act="goto" data-target="staff-wages">Wage analysis ›</button>'+
-      '<button data-act="goto" data-target="growth-review">Weekly review ›</button></div>'+
-      '<p class="tch-hint">Comparisons are advisory, and every data refresh is read-only.</p>';
+        metricV2("Estimated daily P/L",a.known?money(a.profit):"Incomplete","Revenue less wages and advertising",
+          a.known&&a.headroom<0?"tch-danger":"","growth-accounts")+
+        metricV2("Employees",c.staff.length+" / "+num(c.profile.employees&&c.profile.employees.capacity),"Current company roster","","staff")+
+        metricV2("Training ready",d.ready,d.owed+" confirmed outstanding","","training-queue")+
+        metricV2("Efficiency",c.profile.efficiency==null?"Unknown":c.profile.efficiency+"%","Torn reported","","growth-performance")+
+      '</div>'+trainingSpotlightV127(c)+
+      '<section class="tch-panel"><div class="tch-sectionhead"><h2>What needs attention</h2>'+
+      '<span class="tch-mini">'+actions.length+' prioritised</span></div>'+
+      (actions.length?actions.map(function(r){
+        return '<button type="button" class="tch-insight" data-act="goto" data-target="'+esc(r.target)+'">'+
+          '<strong>'+esc(r.title)+'</strong><small>'+esc(r.why)+'</small><span>Review</span></button>';
+      }).join(''):'<p class="tch-hint">No urgent exception in the saved data.</p>')+'</section>'+
+      '<section class="tch-panel"><h2>Quick access</h2><div class="tch-actionrow">'+
+      '<button data-act="goto" data-target="staff-sim">Optimise staff</button>'+
+      '<button data-act="goto" data-target="staff-wages">Wage helper</button>'+
+      '<button data-act="goto" data-target="growth-performance">Growth to 10 stars</button>'+
+      '<button data-act="refresh">Refresh data</button></div></section>'+
+      '<details class="tch-deep-dive"><summary>Detailed trends, diagnostics and what-if scenarios</summary>'+
+      starMomentumPanelV14(c)+growthMovesPanelV13(c)+companyDeltaPanelV111(c)+
+      profitBridgePanelV191(c)+companyStressLabV115(c)+'</details>';
   }
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
@@ -2212,7 +2224,7 @@
     const owed=Object.values(balances).reduce(function(t,b){return t+b.owed;},0);
     const due=Object.keys(balances).filter(function(k){return balances[k].owed>0;}).length;
     const lossBreach=a.known && a.profit < -num(c.lossLimit);
-    const newsReview=c.news.filter(function(n){return !c.training.some(function(t){return canonicalTrainingSource(t)==="news:"+n.id;});}).length;
+    const newsReview=c.news.filter(function(n){return !(c.training||[]).some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});}).length;
     const moneyReview=pendingPaymentLogs(c).length;
     return '<button type="button" data-act="goto" data-target="growth-performance" class="tch-hero tch-clickable tch-hero-button"><div class="tch-kicker">YOUR '+esc(String(c.profile.type?.name||"COMPANY").toUpperCase())+' · TAP FOR GROWTH DETAILS</div>'+
       '<div class="tch-hero-line"><strong>'+esc(c.profile.name||"Company")+'</strong><span class="tch-rating">'+esc(c.profile.rating)+' ★</span></div>'+
@@ -2292,7 +2304,7 @@
       return Number(ia)-Number(ib) || (a[1].oldest||Infinity)-(b[1].oldest||Infinity);
     });
     const pending=pendingPaymentLogs(c);
-    const reviewNews=(c.news||[]).filter(function(n){return !c.training.some(function(t){return canonicalTrainingSource(t)==="news:"+n.id;});});
+    const reviewNews=(c.news||[]).filter(function(n){return !(c.training||[]).some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});});
     const switches=buttonsV2("Training screens",[
       {action:"training-view",id:"queue",name:"Queue",active:trainingView==="queue"},
       {action:"training-view",id:"payments",name:"Payments"+(pending.length?" ("+pending.length+")":""),active:trainingView==="payments"},
