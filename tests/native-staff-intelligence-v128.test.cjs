@@ -40,15 +40,30 @@ function fixture(){
  vm.runInNewContext(source.replace(marker,extra),sandbox,{timeout:1800});
  return {api:sandbox.__staffV128,rows,staffRow};
 }
-test("HR direct value drives one pay target; support uses EFF peers, not invented income",()=>{
+test("Current pay is kept where same-position peer evidence is missing",()=>{
  const {api}=fixture(),m=api.staffIntelligenceV128(company());
- assert.equal(m.byId["11"].payTarget,300000);
- assert.equal(m.byId["11"].wage,200000);
- assert.match(m.byId["11"].source,/HR value/);
- assert.ok(m.byId["12"].payTarget>0);
- assert.match(m.byId["12"].source,/Peer wage/);
+ assert.equal(m.byId["11"].payTarget,200000);
+ assert.equal(m.byId["12"].payTarget,100000);
+ assert.equal(m.byId["11"].payStatus,"Hold");
+ assert.equal(m.byId["12"].payStatus,"Hold");
+ assert.match(m.byId["11"].source,/Current wage/);
+ assert.match(m.byId["12"].source,/Current wage/);
  assert.equal(m.byId["12"].best.name,"Cleaner");
  assert.equal(m.byId["11"].best.name,"Receptionist");
+});
+test("Same-position comparisons justify only capped raises inside the loss limit",()=>{
+ const {api}=fixture(),c=company();c.staff[0].wage=100000;
+ c.staff.push({id:13,name:"Sample Gamma",days_in_company:100,position:{name:"Receptionist"},
+  stats:{intelligence:40000,endurance:20000},wage:200000,value:0,effectiveness:{total:90}},
+  {id:14,name:"Sample Delta",days_in_company:100,position:{name:"Receptionist"},
+  stats:{intelligence:40000,endurance:20000},wage:240000,value:0,effectiveness:{total:90}});
+ c.profile.employees={hired:4,capacity:4};
+ const r=api.staffIntelligenceV128(c).byId["11"];
+ assert.equal(r.payStatus,"Review raise");assert.equal(r.payTarget,120000);
+ assert.equal(r.payChange,20000);
+ c.lossLimit=0;c.profile.income.daily=0;
+ const blocked=api.staffIntelligenceV128(c).byId["11"];
+ assert.equal(blocked.payStatus,"Hold");assert.equal(blocked.payTarget,100000);
 });
 test("Confirmed owed trains stay visible even if someone is not eligible",()=>{
  const {api}=fixture(),m=api.staffIntelligenceV128(company());
@@ -67,9 +82,9 @@ test("Native employee rows match only known numeric data-user IDs, never guessed
  const {api,rows,staffRow}=fixture(),c=company(),a=staffRow(11),x=staffRow(999),b=staffRow(12);
  rows.push(a,x,b);api.setCompany(c);api.syncNativeStaffRowsV128(c);
  assert.ok(a._child);assert.equal(x._child,null);assert.ok(b._child);
- assert.match(a._child.innerHTML,/Recommended pay/);
- assert.match(a._child.innerHTML,/Trains owed/);
- assert.match(a._child.innerHTML,/Best stats fit/);
+ assert.match(a._child.innerHTML,/>PAY</);
+ assert.match(a._child.innerHTML,/>TRAINS</);
+ assert.match(a._child.innerHTML,/>BEST STAT FIT</);
  assert.match(a._child.innerHTML,/data-tch-act="employee"/);
  api.syncNativeStaffRowsV128(c);assert.equal(a.appendCount,1);
  api.syncNativeStaffRowsV128(null);assert.equal(a._child,null);
@@ -84,7 +99,7 @@ test("Untrusted names, roles and data are HTML escaped",()=>{
 });
 test("Redesigned native page exposes KPIs and safe quick-action navigation",()=>{
  const {api}=fixture(),c=company(),h=api.nativeCompanyDeskHTMLV127(c);
- for(const label of ["Rating","Daily P/L","Staff","Payroll","Owed trains","Recommended pay"])
+ for(const label of ["Rating","Daily P/L","Staff","Payroll","Owed trains","PAY"])
   assert.match(h,new RegExp(label,"i"));
  for(const action of ["refresh","overview","queue","staff","wages","growth"])
   assert.match(h,new RegExp('type="button" data-tch-act="'+action+'"'));
