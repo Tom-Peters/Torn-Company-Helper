@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.27.0
-// @description  Read-only company desk: inline owed training, staffing, wages and growth
+// @version      1.28.0
+// @description  CompanyStaxx staff intelligence on Torn: wage estimates, owed trains and best position fits
 // @author       IamEEKY
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -605,6 +605,106 @@
       pending:pendingPaymentLogs(c).length,available:plan.available,overflow:plan.overflow,
       fresh,updated:Number.isFinite(updated)?updated:null};
   }
+
+  // All staff insights are derived locally from the currently loaded Torn
+  // company and the confirmed payment / training ledger. Never write to Torn.
+  function staffIntelligenceV128(c){
+    if(!c||!c.profile)return {rows:[],byId:Object.create(null),stale:true};
+    const roles=roleList(c),pays=wageModelV11(c),support=supportWageModelV13(c),ledger=aggregates(c).balance;
+    const ready=trainingDeskV127(c),readyById=new Map(ready.rows.map(r=>[String(r.id),r]));
+    const recommendations=new Map(suggestions(c).map(r=>[String(r.person.id),r]));
+    const directById=new Map(pays.rows.map(r=>[String(r.id),r]));
+    const proxyById=new Map(support.map(r=>[String(r.p.id),r]));
+    const rows=(c.staff||[]).filter(p=>p&&Number.isSafeInteger(Number(p.id))&&Number(p.id)>0).map(function(p){
+      const key=String(p.id),direct=directById.get(key),proxy=proxyById.get(key),currentRole=String(p.position?.name||"Unknown");
+      const currentFit=fitFor(p,roles,currentRole),validRoles=roles.map(function(role){
+        return {name:role.name,fit:fitFor(p,roles,role.name)};
+      }).filter(x=>x.fit!==null).sort(function(a,b){
+        return b.fit-a.fit||Number(b.name===currentRole)-Number(a.name===currentRole)||a.name.localeCompare(b.name);
+      });
+      const best=validRoles[0]||null,approved=recommendations.get(key);
+      const due=ledger[key]?.owed||0,readyRow=readyById.get(key),give=readyRow?.give||0;
+      const wage=direct?.wage??null;
+      const directTarget=direct?.value>0&&direct.target!==null?direct.target:null;
+      const payTarget=directTarget!==null?directTarget:(proxy?.estimate??null);
+      const low=directTarget!==null?Math.round(directTarget*.85/1000)*1000:(proxy?.min??null);
+      const high=directTarget!==null?Math.round(directTarget*1.15/1000)*1000:(proxy?.max??null);
+      const source=directTarget!==null?"HR value / "+pays.share+"% budget scenario":
+        payTarget!==null?"Peer wage / EFF estimate":"Insufficient HR or peer data";
+      const compare=payTarget===null||wage===null?"Unknown":wage<low?"Below model range":
+        wage>high?"Above model range":"Within model range";
+      return {id:key,name:String(p.name||"Employee"),currentRole,currentFit,best,roleReview:Boolean(approved?.recommend),
+        due,give,trainStatus:readyRow?.status||(due?"Waiting":"No outstanding debt"),
+        wage,payTarget,low,high,source,compare,eff:financialAmount(p.effectiveness?.total)};
+    });
+    const byId=Object.create(null);rows.forEach(r=>{byId[r.id]=r;});
+    return {rows,byId,stale:!ready.fresh,updated:ready.updated,ready:ready.ready,
+      owed:ready.owed,pending:ready.pending,available:ready.available,overflow:ready.overflow,
+      rating:c.profile.rating,efficiency:c.profile.efficiency};
+  }
+  function staffInsightHTMLV128(info,compact){
+    const pay=info.payTarget===null?"Unavailable":money(info.payTarget)+"/day";
+    const now=info.wage===null?"Unknown":money(info.wage)+"/day";
+    const fit=info.best?info.best.name+" / "+info.best.fit.toFixed(1)+"%":"Unavailable";
+    const current=info.currentFit===null?"Unknown":info.currentFit.toFixed(1)+"%";
+    return '<div class="tch-staff-insight-grid">'+
+      '<div class="tch-staff-intel-cell"><span>Recommended pay <i>est.</i></span><strong>'+esc(pay)+'</strong>'+
+      '<small>'+esc(info.source)+' / Currently '+esc(now)+'</small></div>'+
+      '<div class="tch-staff-intel-cell '+(info.give>0?'tch-intel-due':'')+'"><span>Trains owed</span>'+
+      '<strong>'+info.due+'</strong><small>'+esc(info.due?info.give>0?info.give+' can give now':info.trainStatus:'No debt')+'</small></div>'+
+      '<div class="tch-staff-intel-cell"><span>Best stats fit</span><strong>'+esc(fit)+'</strong>'+
+      '<small>Current '+esc(info.currentRole)+' ('+esc(current)+')'+
+      (info.roleReview?' / Review reassignment':' / Match only')+'</small></div>'+
+      (compact?'<button type="button" data-tch-act="employee" data-id="'+esc(info.id)+'" class="tch-intel-open">Details</button>':
+        '<button type="button" data-tch-act="employee" data-id="'+esc(info.id)+'" class="tch-intel-open">View employee</button>')+
+      '</div>';
+  }
+  function nativeStaffRosterV128(c,model){
+    const rows=model.rows;
+    // On other Torn company tabs the native roster is absent; expand our own
+    // indexed roster so the three decisions remain usable without navigation.
+    const nativeVisible=typeof document.querySelectorAll==="function"&&
+      [...document.querySelectorAll('ul.employee-list > li[data-user]')].some(li=>Object.hasOwn(model.byId,String(li.getAttribute("data-user"))));
+    return '<details class="tch-native-roster"'+(nativeVisible?'':' open')+'><summary>Staff intelligence / '+rows.length+
+      ' employees <small>Pay estimates, owed training, best position fit</small></summary>'+
+      '<p class="tch-native-explain">Wages are planning estimates, not Torn salary recommendations. Best fit measures working stats, not overall business value; keep essential support roles covered.</p>'+
+      (rows.length?rows.map(function(r){
+        return '<div class="tch-native-staffcard"><strong class="tch-native-staffname">'+esc(r.name)+
+          ' <small>'+esc(r.currentRole)+'</small></strong>'+staffInsightHTMLV128(r,true)+'</div>';
+      }).join(''):'<p>No staff records loaded yet. Refresh your company data.</p>')+
+      '</details>';
+  }
+  function syncNativeStaffRowsV128(c){
+    if(typeof document.querySelectorAll!=="function")return;
+    const selector='ul.employee-list > li[data-user]';
+    const rows=[...document.querySelectorAll(selector)];
+    if(!isCompanyPage()||!c?.profile){
+      for(const row of rows){row.querySelector?.(":scope > .tch-staff-intel")?.remove?.();}
+      return;
+    }
+    if(!rows.length)return;
+    const model=staffIntelligenceV128(c);
+    for(const row of rows){
+      const id=String(row.getAttribute?.("data-user")||"");
+      let panel=row.querySelector?.(":scope > .tch-staff-intel");
+      const info=Object.hasOwn(model.byId,id)?model.byId[id]:null;
+      if(!/^[1-9][0-9]*$/.test(id)||!info){
+        panel?.remove?.();continue;
+      }
+      if(!panel){
+        panel=document.createElement("div");panel.className="tch-staff-intel";
+        panel.setAttribute("aria-label","CompanyStaxx employee intelligence");
+        row.appendChild(panel);
+      }
+      const signature=JSON.stringify([c.lastRefresh,info.wage,info.payTarget,info.low,info.high,info.currentFit,
+        info.best?.name,info.best?.fit,info.due,info.give,info.trainStatus,info.roleReview,model.stale]);
+      if(panel.dataset.signature!==signature){
+        panel.innerHTML=staffInsightHTMLV128(info,false);
+        panel.dataset.signature=signature;
+      }
+    }
+  }
+
   function nativeCompanyDeskHTMLV127(c){
     if(!c||!c.profile)return '<div class="tch-native-header"><b>CompanyStaxx / Owed trains</b>'+
       '<button type="button" data-tch-act="refresh">Connect & refresh</button></div><p>Load company records to see who is owed training.</p>';
