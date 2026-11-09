@@ -1,3 +1,13 @@
+## 1.29.0 — Readable employee rows and conservative wage logic
+
+- Fixes the oversized native staff cards visible in Torn PDA. Per-person information now occupies a **single compact horizontal strip**, with the full explanation behind a small detail arrow. No huge repeated button or nested panels.
+- **Pay calculation corrected:** the previous 25% of HR value and cross-position wage/EFF model are no longer treated as recommendations. Default pay action is **Hold current salary**. Reviews of possible raises require at least two same-position peers with valid wage/EFF, known operating loss headroom and a per-review increase capped at 20%; weak evidence cannot prompt a cut.
+- Adds a sortable full employee comparison table for daily pay, reported Torn EFF, best working-stat role fit, fit delta and verified outstanding training.
+- Improves per-person detail with fit impact (percentage points, explicitly *not* predicted Torn EFF), conservative pay reasoning and training readiness.
+- Training queue now visibly numbers employees ready for oldest-confirmed-debt allocation; latest company snapshot must be younger than 30 minutes to claim readiness.
+- Adds evidence-led profitability/star-growth priority actions and collapses the oversized native CompanyStaxx company dashboard to a quick KPI strip, with deep detail expandable.
+- Preserves local-ledger integrity, 72-hour eligibility, service-company no-stock model, loss limit, stable installer, hub protocol and author IamEEKY.
+
 ## 1.28.0 — Staff intelligence directly on Torn's company page
 
 - **Native employee rows:** shows a modelled daily pay recommendation, confirmed trains owed / giveable now, and the best working-stat position directly beneath each identified employee.
