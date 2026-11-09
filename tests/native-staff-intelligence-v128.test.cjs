@@ -77,7 +77,7 @@ test("Stale company snapshots never claim ready trains",()=>{
  const m=api.staffIntelligenceV128(c);
  assert.equal(m.byId["11"].due,3);assert.equal(m.byId["11"].give,0);
  assert.match(m.byId["11"].trainStatus,/Refresh/);
- assert.match(api.nativeCompanyDeskHTMLV127(c),/Saved data/);
+ assert.match(api.nativeCompanyDeskHTMLV127(c),/refresh needed/);
 });
 test("Native employee rows match only known numeric data-user IDs, never guessed names",()=>{
  const {api,rows,staffRow}=fixture(),c=company(),a=staffRow(11),x=staffRow(999),b=staffRow(12);
