@@ -94,7 +94,7 @@ test("Seven-day plan uses current paid debt and flags possible overflow, without
  assert.match(app.weekPanelV11(c),/excludes trainer/);
 });
 test("Floating-button alerts are derived only from saved data and include overdue trains",()=>{
- const {app,nodes}=fixture(),c=example();app.seed(c);app.updateLauncherV11();
+ const {app,nodes}=fixture(),c=example();c.lastRefresh=new Date().toISOString();app.seed(c);app.updateLauncherV11();
  const badge=nodes.get("tch-open").innerHTML;
  assert.match(badge,/tch-launcherbadge/);
  assert.match(badge,/Company Helper/);
