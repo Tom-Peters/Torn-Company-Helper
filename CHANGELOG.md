@@ -1,3 +1,13 @@
+## 1.28.0 — Staff intelligence directly on Torn's company page
+
+- **Native employee rows:** shows a modelled daily pay recommendation, confirmed trains owed / giveable now, and the best working-stat position directly beneath each identified employee.
+- Uses Torn's employee ID (data-user) instead of guessing names. Existing staff, training and payments remain in local storage; no private data is committed to GitHub.
+- Direct-value pay suggestions use HR value and the chosen share budget scenario. Support-role estimates use a peer wage/effectiveness model. Missing data remains unknown, and no figure is presented as Torn's official recommendation.
+- Position matches compare working stats with company role requirements, not whole-business contribution. Special-role changes are not applied automatically.
+- Native company overview now has compact KPIs, training balances, immediate staff priorities, shortcut actions and collapsible full employee/training lists. The CompanyStaxx Today panel also includes staff action shortcuts.
+- Monitors dynamic Torn employee-tab changes and mounts cards idempotently. Only known employee IDs receive cards; the source includes HTML escaping and native form-safe buttons.
+- Automated tests cover matching, stale balances, role fits, wage estimates and safe page injection.
+
 ## 1.27.0 — company-page owed trains and daily-desk overhaul
 
 - **Company page:** a compact, inline CompanyStaxx training desk displays confirmed trains owed to each employee, what can currently be given, the available train bank and the oldest recorded commitment. Staff within their first 72 hours and former employees remain visible but not actionable.
