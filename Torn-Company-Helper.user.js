@@ -707,23 +707,49 @@
 
   function nativeCompanyDeskHTMLV127(c){
     if(!c||!c.profile)return '<div class="tch-native-header"><b>CompanyStaxx / Owed trains</b>'+
-      '<button type="button" data-tch-act="refresh">Connect & refresh</button></div><p>Load company records to see who is owed training.</p>';
-    const d=trainingDeskV127(c);
+      '<button type="button" data-tch-act="refresh">Connect & refresh</button></div><p>Load your company data to start.</p>';
+    const d=trainingDeskV127(c),m=staffIntelligenceV128(c),accounts=accounting(c),profile=c.profile;
+    const stars=financialAmount(profile.rating),total=financialAmount(profile.employees?.capacity);
+    const payroll=accounts&&accounts.wages!==null?money(accounts.wages):"Unknown";
+    const daily=accounts?.known?money(accounts.profit):"Incomplete";
+    const employees=(c.staff||[]).length;
+    const urgent=accounts?.known&&accounts.headroom<0;
+    const owedPreview=d.rows.slice(0,3).map(function(r){
+      return '<div class="tch-native-row"><span><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+'</small></span>'+
+        '<b>'+r.owed+'</b><b class="tch-native-ready">'+(r.give||'-')+'</b>'+
+        '<button type="button" data-tch-act="employee" data-id="'+esc(r.id)+'"'+(r.active?'':' disabled')+'>View</button></div>';
+    }).join('');
+    const timestamp=d.updated?'Updated '+esc(new Date(d.updated).toLocaleString("en-GB")):'Not refreshed';
+    const status=d.fresh?"Current":"Saved / refresh needed";
     return '<div class="tch-native-header"><div><b>CompanyStaxx / Owed trains</b><small>'+
-      esc(c.profile.name||"Company")+' / '+(d.updated?'Updated '+esc(new Date(d.updated).toLocaleString("en-GB")):'Never refreshed')+
-      '</small></div><div><button type="button" data-tch-act="refresh">Refresh</button> <button type="button" data-tch-act="queue">Full queue</button></div></div>'+
+      esc(profile.name||"Company")+' · '+timestamp+' · '+status+'</small></div>'+
+      '<div class="tch-native-actions"><button type="button" data-tch-act="refresh">Refresh</button>'+
+      '<button type="button" data-tch-act="overview">Dashboard</button></div></div>'+
+      '<div class="tch-native-dashboard">'+
+        '<div><small>Rating</small><b>'+(stars===null?'?':stars)+' / 10</b></div>'+
+        '<div><small>Daily P/L <i>est.</i></small><b class="'+(urgent?'tch-native-warning':'')+'">'+esc(daily)+'</b></div>'+
+        '<div><small>Staff</small><b>'+employees+' / '+(total===null?'?':total)+'</b></div>'+
+        '<div><small>Payroll / day</small><b>'+esc(payroll)+'</b></div></div>'+
       '<div class="tch-native-metrics"><span><b>'+d.owed+'</b> owed</span><span><b>'+d.ready+'</b> ready'+(d.fresh?' now':'*')+
       '</span><span><b>'+(d.available===null?'?':d.available)+'</b> available</span>'+
       (d.pending?'<span><b>'+d.pending+'</b> receipts to review</span>':'')+'</div>'+
-      (!d.fresh?'<p class="tch-native-warning">* Saved data: refresh before giving trains.</p>':'')+
-      (d.overflow>0?'<p class="tch-native-warning">Possible overflow: '+d.overflow+' trains at next close.</p>':'')+
-      (d.rows.length?'<div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+
-       d.rows.map(function(r){return '<div class="tch-native-row"><span><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+
-         (r.oldest?' / '+esc(day(r.oldest)):'')+'</small></span><b>'+r.owed+'</b><b class="tch-native-ready">'+(r.give||'-')+'</b>'+
-         '<button type="button" data-tch-act="employee" data-id="'+esc(r.id)+'"'+(r.active?'':' disabled')+'>View</button></div>';}).join(''):
-       '<p>No confirmed outstanding training commitments.</p>')+
-      (d.pending?'<button type="button" data-tch-act="payments">Review unconfirmed transfers (not counted as owed)</button>':'')+
-      '<small>Give trains manually in Torn. Company news is matched against the ledger after refresh.</small>';
+      '<div class="tch-native-actions tch-native-shortcuts">'+
+        '<button type="button" data-tch-act="queue">Trains</button>'+
+        '<button type="button" data-tch-act="staff">Employees</button>'+
+        '<button type="button" data-tch-act="wages">Pay optimiser</button>'+
+        '<button type="button" data-tch-act="growth">Growth</button></div>'+
+      (!d.fresh?'<p class="tch-native-warning">* Saved data: refresh before giving trains or changing salaries.</p>':'')+
+      (urgent?'<p class="tch-native-warning">Operating loss may exceed the configured daily loss limit. Review the cost breakdown.</p>':'')+
+      (d.overflow>0?'<p class="tch-native-warning">Possible overflow: '+d.overflow+' trains at the next close.</p>':'')+
+      (d.pending?'<button type="button" data-tch-act="payments" class="tch-native-review">Review '+
+        d.pending+' unconfirmed transfer(s) / not counted as owed</button>':'')+
+      nativeStaffRosterV128(c,m)+
+      (d.rows.length?'<details class="tch-native-obligations"><summary>Paid training queue · '+d.owed+' still owed</summary>'+
+        '<div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+
+        owedPreview+(d.rows.length>3?'<small>+'+(d.rows.length-3)+' further employees in the full queue</small>':'')+
+        '<button type="button" data-tch-act="queue">See all training debts</button></details>':
+        '<p class="tch-native-empty">No confirmed outstanding training commitments.</p>')+
+      '<small class="tch-native-note">Pay and position figures are local planning estimates, never automatic changes to Torn.</small>';
   }
   function trainingSpotlightV127(c){
     const d=trainingDeskV127(c);
@@ -1978,16 +2004,26 @@
       panel.setAttribute("aria-label","CompanyStaxx outstanding trains");host.prepend(panel);inlineCompanySignatureV127="";
     }
     const c=companyId&&data.byCompany?data.byCompany[companyId]:null,d=trainingDeskV127(c);
+    syncNativeStaffRowsV128(c);
+    const nativeShown=typeof document.querySelectorAll==="function"&&
+      [...document.querySelectorAll('ul.employee-list > li[data-user]')].some(li=>
+        (c?.staff||[]).some(p=>String(p.id)===String(li.getAttribute("data-user"))));
     const signature=JSON.stringify([companyId,c?.lastRefresh,d.owed,d.ready,d.pending,d.available,d.overflow,
-      d.rows.map(r=>[r.id,r.owed,r.give,r.status,r.oldest])]);
+      c?.staff?.map(p=>[p.id,p.wage,p.value,p.position?.name,p.stats,p.effectiveness?.total]),
+      nativeShown,d.rows.map(r=>[r.id,r.owed,r.give,r.status,r.oldest])]);
     if(inlineCompanySignatureV127!==signature){panel.innerHTML=nativeCompanyDeskHTMLV127(c);inlineCompanySignatureV127=signature;}
   }
   document.addEventListener?.("click",function(evt){
-    const el=evt.target?.closest?.("#tch-company-owed [data-tch-act]");if(!el)return;
-    evt.preventDefault();const act=el.dataset.tchAct;
+    const el=evt.target?.closest?.("#tch-company-owed [data-tch-act], ul.employee-list > li[data-user] .tch-staff-intel [data-tch-act]");
+    if(!el)return;
+    evt.preventDefault();evt.stopPropagation?.();
+    const act=el.dataset.tchAct;
     if(act==="refresh"){void refresh();return;}
     detailView="";message="";companyAlertFocus="";
     if(act==="employee"&&el.dataset.id){tab="employees";staffView="detail";selectedEmployee=el.dataset.id;}
+    else if(act==="wages"||act==="staff"){tab="employees";staffView=act==="wages"?"wages":"roster";}
+    else if(act==="growth"){tab="growth";growthView="performance";}
+    else if(act==="overview"){tab="overview";}
     else{tab="training";trainingView=act==="payments"?"payments":"queue";}
     if(!open)opener.click();else draw();
   });
