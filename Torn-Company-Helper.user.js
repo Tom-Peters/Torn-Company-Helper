@@ -607,11 +607,11 @@
   }
   function nativeCompanyDeskHTMLV127(c){
     if(!c||!c.profile)return '<div class="tch-native-header"><b>CompanyStaxx / Owed trains</b>'+
-      '<button data-tch-act="refresh">Connect & refresh</button></div><p>Load company records to see who is owed training.</p>';
+      '<button type="button" data-tch-act="refresh">Connect & refresh</button></div><p>Load company records to see who is owed training.</p>';
     const d=trainingDeskV127(c);
     return '<div class="tch-native-header"><div><b>CompanyStaxx / Owed trains</b><small>'+
       esc(c.profile.name||"Company")+' / '+(d.updated?'Updated '+esc(new Date(d.updated).toLocaleString("en-GB")):'Never refreshed')+
-      '</small></div><div><button data-tch-act="refresh">Refresh</button> <button data-tch-act="queue">Full queue</button></div></div>'+
+      '</small></div><div><button type="button" data-tch-act="refresh">Refresh</button> <button type="button" data-tch-act="queue">Full queue</button></div></div>'+
       '<div class="tch-native-metrics"><span><b>'+d.owed+'</b> owed</span><span><b>'+d.ready+'</b> ready'+(d.fresh?' now':'*')+
       '</span><span><b>'+(d.available===null?'?':d.available)+'</b> available</span>'+
       (d.pending?'<span><b>'+d.pending+'</b> receipts to review</span>':'')+'</div>'+
@@ -620,9 +620,9 @@
       (d.rows.length?'<div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+
        d.rows.map(function(r){return '<div class="tch-native-row"><span><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+
          (r.oldest?' / '+esc(day(r.oldest)):'')+'</small></span><b>'+r.owed+'</b><b class="tch-native-ready">'+(r.give||'-')+'</b>'+
-         '<button data-tch-act="employee" data-id="'+esc(r.id)+'"'+(r.active?'':' disabled')+'>View</button></div>';}).join(''):
+         '<button type="button" data-tch-act="employee" data-id="'+esc(r.id)+'"'+(r.active?'':' disabled')+'>View</button></div>';}).join(''):
        '<p>No confirmed outstanding training commitments.</p>')+
-      (d.pending?'<button data-tch-act="payments">Review unconfirmed transfers (not counted as owed)</button>':'')+
+      (d.pending?'<button type="button" data-tch-act="payments">Review unconfirmed transfers (not counted as owed)</button>':'')+
       '<small>Give trains manually in Torn. Company news is matched against the ledger after refresh.</small>';
   }
   function trainingSpotlightV127(c){
