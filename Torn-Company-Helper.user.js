@@ -92,7 +92,7 @@
   const PDA_APP_KEY = "###PDA-APIKEY###";
   function hasPdaKey() {return /^[A-Za-z0-9]{16,64}$/.test(PDA_APP_KEY);}
   function activeApiKey(){return key || (hasPdaKey()?PDA_APP_KEY:"");}
-  let staffView="positions",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35;
+  let staffView="compare",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35;
   let tab = "overview", detailView = "", open = false, busy = false, message = "", severity = "";
   let launcherDragged = false;
   const esc = function (value) {return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});};
@@ -2103,7 +2103,7 @@
     if(act==="refresh"){void refresh();return;}
     detailView="";message="";companyAlertFocus="";
     if(act==="employee"&&el.dataset.id){tab="employees";staffView="detail";selectedEmployee=el.dataset.id;}
-    else if(act==="wages"||act==="staff"){tab="employees";staffView=act==="wages"?"wages":"roster";}
+    else if(act==="wages"||act==="staff"){tab="employees";staffView=act==="wages"?"wages":"compare";}
     else if(act==="growth"){tab="growth";growthView="performance";}
     else if(act==="overview"){tab="overview";}
     else{tab="training";trainingView=act==="payments"?"payments":"queue";}
@@ -2335,6 +2335,17 @@
       metricV2("Selected role fit",fitText(future),selected,"","staff")+
       metricV2("Confirmed trains owed",balance.owed,"Training ledger","","training-queue")+
       metricV2("Torn effectiveness",p.effectiveness&&p.effectiveness.total==null?"Unknown":String(p.effectiveness&&p.effectiveness.total),"Reported by Torn","","staff")+'</div>'+
+      '<section class="tch-panel"><h2>Pay and role decision</h2>'+
+      (function(){
+        const r=staffIntelligenceV128(c).byId[String(p.id)];
+        return '<div class="tch-spot-kpis"><span>Actual wage <b>'+esc(r.wage===null?'Unknown':money(r.wage))+'</b></span>'+
+          '<span>Suggested action <b>'+esc(r.payStatus)+'</b></span>'+
+          '<span>Modelled pay <b>'+esc(r.payTarget===null?'Unknown':money(r.payTarget))+'</b></span></div>'+
+          '<p class="tch-hint">'+esc(r.source)+'. Actual Torn EFF response from moving positions is unknown. Best stat match '+esc(r.best?r.best.name:'unknown')+
+          (r.fitGain!==null?' / '+(r.fitGain>=0?'+':'')+r.fitGain.toFixed(1)+' pp change from current stat fit':'')+
+          '. Essential role coverage is not included in the fit percentage.</p>'+
+          (r.due?'<p>'+r.due+' confirmed train(s) owed; '+r.give+' available for this employee now. '+esc(r.trainStatus)+'</p>':'<p>No confirmed owed training.</p>');
+      })()+'</section>'+
       '<section class="tch-panel"><h2>Compare positions</h2><p>These percentages show how well employee working stats meet role requirements (capped at 100%). They are not Torn effectiveness or income predictions.</p>'+
       '<label>Test a position<select data-change="sim" data-id="'+esc(p.id)+'">'+roles.map(function(r){return '<option value="'+esc(r.name)+'" '+(selected===r.name?"selected":"")+'>'+esc(r.name)+'</option>';}).join("")+'</select></label>'+
       '<div class="tch-comparison"><div><span>Current · '+esc(current)+'</span><strong>'+fitText(actual)+'</strong></div>'+
@@ -2467,16 +2478,79 @@
       return '<button data-act="'+x.action+'" data-view="'+x.id+'" class="'+(x.active?"active":"")+'">'+esc(x.name)+'</button>';
     }).join("")+'</div>';
   }
+
+  // Staff comparison: source-backed figures with stable sorting and missing
+  // values always at the bottom, regardless of direction.
+  let companyStaffSortV129="owed",companyStaffSortDescV129=true;
+  function comparableStaffV129(c){
+    const rows=staffIntelligenceV128(c).rows.slice(),field=companyStaffSortV129,
+      mapping={name:r=>r.name,wage:r=>r.wage,eff:r=>r.eff,
+        fit:r=>r.currentFit,gain:r=>r.fitGain,owed:r=>r.due};
+    const get=mapping[field]||mapping.owed;
+    rows.sort(function(a,b){
+      const av=get(a),bv=get(b),missing=v=>v===null||v===undefined||v==="";
+      if(missing(av)||missing(bv))return Number(missing(av))-Number(missing(bv))||a.name.localeCompare(b.name);
+      const n=typeof av==="string"?String(av).localeCompare(String(bv)):av-bv;
+      return (companyStaffSortDescV129?-1:1)*n||a.name.localeCompare(b.name);
+    });
+    return rows;
+  }
+  function staffComparisonV129(c){
+    const rows=comparableStaffV129(c);
+    const sorts=[["name","Name"],["wage","Pay"],["eff","Torn EFF"],["fit","Current fit"],
+      ["gain","Fit upside"],["owed","Trains owed"]];
+    return '<section class="tch-panel tch-staff-compare"><div class="tch-sectionhead"><h2>Staff comparison</h2>'+
+      '<span class="tch-mini">'+rows.length+' employees</span></div>'+
+      '<p class="tch-hint">Compare actual salaries, reported Torn EFF, working-stat position fit and confirmed training debt. The fit change is a statistical match, not predicted EFF or income.</p>'+
+      '<div class="tch-sortbuttons" role="group" aria-label="Sort employees">'+sorts.map(function(x){
+        return '<button type="button" data-act="staff-sort" data-field="'+x[0]+'" class="'+
+          (companyStaffSortV129===x[0]?'active':'')+'" aria-pressed="'+(companyStaffSortV129===x[0])+'">'+
+          x[1]+(companyStaffSortV129===x[0]?(companyStaffSortDescV129?' ↓':' ↑'):'')+'</button>';
+      }).join('')+'</div>'+
+      '<div class="tch-compare-scroll" role="region" aria-label="Sortable staff comparison" tabindex="0">'+
+      '<table><thead><tr><th>Employee / role</th><th>Daily pay</th><th>Torn EFF</th>'+
+        '<th>Best stats fit</th><th>Fit gain</th><th>Owed / ready</th><th></th></tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr><td><strong>'+esc(r.name)+'</strong><small>'+esc(r.currentRole)+'</small></td>'+
+          '<td><strong>'+esc(r.wage===null?'Unknown':money(r.wage))+'</strong><small>'+esc(r.payStatus)+
+          (r.payStatus==="Review raise"&&r.payTarget!==null?' to '+money(r.payTarget):'')+'</small></td>'+
+          '<td><strong>'+esc(r.eff===null?'?':r.eff)+'</strong></td>'+
+          '<td><strong>'+esc(r.best?r.best.name:'Unknown')+'</strong><small>'+esc(r.best?r.best.fit.toFixed(1)+'%':'')+'</small></td>'+
+          '<td><strong>'+esc(r.fitGain===null?'?':(r.fitGain>=0?'+':'')+r.fitGain.toFixed(1)+' pp')+'</strong>'+
+          '<small>'+esc(r.roleReview?'Role review':'Stats only')+'</small></td>'+
+          '<td><strong>'+r.due+' / '+r.give+'</strong></td>'+
+          '<td><button type="button" data-act="employee-detail" data-id="'+esc(r.id)+'">Details</button></td></tr>';
+      }).join('')+'</tbody></table></div>'+
+      '<p class="tch-hint">Swipe the table horizontally to see every column on a narrow display. Tap Details to review a person individually.</p></section>';
+  }
+  function staffPayReviewV129(c){
+    const m=staffIntelligenceV128(c),accounts=accounting(c),raises=m.rows.filter(r=>r.payStatus==="Review raise");
+    return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Pay decisions</h2>'+
+      '<span class="tch-mini">'+raises.length+' salary reviews suggested</span></div>'+
+      '<p class="tch-hint">Your current wages are the baseline. We do not advise cutting pay because HR value or a cross-role calculation appears low. A raise is considered only against at least two comparable same-role employees, with known operating-loss headroom.</p>'+
+      (m.rows.map(function(r){
+        return '<button type="button" data-act="employee-detail" data-id="'+esc(r.id)+'" class="tch-pay-review-row">'+
+          '<strong>'+esc(r.name)+'</strong><span>'+esc(r.wage===null?'Pay unknown':money(r.wage))+'</span>'+
+          '<span class="'+(r.payStatus==="Review raise"?'tch-pay-raise':'')+'">'+esc(r.payStatus)+
+          (r.payStatus==="Review raise"?' '+money(r.payTarget):'')+'</span></button>';
+      }).join(''))+
+      '<p class="tch-hint">Profit/loss estimate: '+esc(accounts?.known?money(accounts.profit):'unknown')+
+      '; available daily loss allowance: '+esc(accounts?.known?money(accounts.headroom):'unknown')+
+      '. Future income or retention effects are unknown.</p></section>';
+  }
+
   function staffV2(c){
     if(!c||!c.staff||!c.staff.length)return introV2();
     if(staffView==="detail")return employeeDetail(c,selectedEmployee);
     const options=[
       {action:"staff-view",id:"positions",name:"Suggestions",active:staffView==="positions"},
+      {action:"staff-view",id:"compare",name:"Compare all",active:staffView==="compare"},
       {action:"staff-view",id:"roster",name:"Roster",active:staffView==="roster"},
       {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
       {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
-    if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+wageScenarioPanelV14(c)+compactWagePanelV13(c)+
+    if(staffView==="compare")return '<div class="tch-section"><h2>Team decisions</h2>'+buttonsV2("Staff view",options)+'</div>'+staffComparisonV129(c);
+    if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+staffPayReviewV129(c)+
       '<details class="tch-advanced"><summary>Detailed HR values, wage bands & scenarios</summary>'+wagesPanelV11(c)+wageRiskPanelV12(c)+'</details>';
     if(staffView==="simulator")return '<div class="tch-section"><h2>Staff optimiser</h2><p>Explore alternative staffing plans before making decisions.</p>'+buttonsV2("Staff view",options)+'</div>'+wageScenarioPanelV14(c)+scenarioV2(c);
     const roles=roleList(c),sc=scenarioModel(c),suggested=suggestions(c);
@@ -3217,11 +3291,17 @@
       const target=el.dataset.target;
       const routes={"growth-performance":["growth","performance"],"growth-accounts":["growth","accounts"],
         "growth-pricing":["growth","pricing"],"training-queue":["training","queue"],
-        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","roster"],"staff-sim":["employees","simulator"],"staff-wages":["employees","wages"],"growth-rivals":["growth","rivals"],"growth-review":["growth","review"],"stock":["stock",""]};
+        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","compare"],"staff-sim":["employees","simulator"],"staff-wages":["employees","wages"],"growth-rivals":["growth","rivals"],"growth-review":["growth","review"],"stock":["stock",""]};
       if(target==="refresh"){refresh();return;}
       if(!Object.prototype.hasOwnProperty.call(routes,target))return;
       const route=routes[target];tab=route[0];if(tab==="growth")growthView=route[1];
       if(tab==="training")trainingView=route[1];if(tab==="employees")staffView=route[1];detailView="";
+      draw();return;
+    }
+    if (act==="staff-sort"){
+      const field=el.dataset.field;if(!["name","wage","eff","fit","gain","owed"].includes(field))return;
+      if(field===companyStaffSortV129)companyStaffSortDescV129=!companyStaffSortDescV129;
+      else{companyStaffSortV129=field;companyStaffSortDescV129=field!=="name";}
       draw();return;
     }
     if (act==="employee-detail"){selectedEmployee=el.dataset.id;staffView="detail";tab="employees";draw();return;}
