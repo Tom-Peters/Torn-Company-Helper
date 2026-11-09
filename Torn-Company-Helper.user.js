@@ -663,8 +663,6 @@
     const rows=model.rows;
     // On other Torn company tabs the native roster is absent; expand our own
     // indexed roster so the three decisions remain usable without navigation.
-    const nativeVisible=typeof document.querySelectorAll==="function"&&
-      [...document.querySelectorAll('ul.employee-list > li[data-user]')].some(li=>Object.hasOwn(model.byId,String(li.getAttribute("data-user"))));
     return '<details class="tch-native-roster"><summary>All staff insights / '+rows.length+
       ' employees <small>Pay estimates, owed training, best position fit</small></summary>'+
       '<p class="tch-native-explain">Wages are planning estimates, not Torn salary recommendations. Best fit measures working stats, not overall business value; keep essential support roles covered.</p>'+
@@ -2049,7 +2047,7 @@
     const existing=document.getElementById("tch-company-owed");
     if(!isCompanyPage()){if(existing)existing.remove();inlineCompanySignatureV127="";return;}
     if(!document.body||typeof document.querySelector!=="function")return;
-    const host=document.querySelector("#mainContainer")||document.querySelector(".content-wrapper")||
+    const host=document.querySelector(".company-wrap")||document.querySelector("#mainContainer")||document.querySelector(".content-wrapper")||
       document.querySelector("#mainContent")||document.querySelector("#body")||document.querySelector("main");
     if(!host||typeof host.prepend!=="function")return;
     let panel=existing;
@@ -3114,11 +3112,11 @@
   function scheduleNativeCompanySyncV128(){
     if(nativeCompanyRenderQueuedV128)return;
     nativeCompanyRenderQueuedV128=true;
-    const schedule=typeof requestAnimationFrame==="function"?requestAnimationFrame:
-      function(fn){if(typeof setTimeout==="function")setTimeout(fn,50);else fn();};
+    const schedule=typeof setTimeout==="function"?function(fn){setTimeout(fn,120);}:
+      typeof requestAnimationFrame==="function"?requestAnimationFrame:function(fn){fn();};
     schedule(function(){
       nativeCompanyRenderQueuedV128=false;
-      syncCompanyVisibility();
+      syncInlineCompanyV127();
     });
   }
   // Watch route and native employee-list changes: Torn updates tabs without reloading.
