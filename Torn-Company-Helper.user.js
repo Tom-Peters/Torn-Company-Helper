@@ -2313,15 +2313,29 @@
     ]);
     let body="";
     if(trainingView==="queue"){
-      body='<section class="tch-panel"><div class="tch-sectionhead"><h2>Oldest commitments first</h2><span class="tch-mini">'+due.length+' waiting</span></div>'+
-        '<p>Paid purchases include directly confirmed receipts and labelled, inferred exact-price transfers. Ineligible employees are skipped until their first 72 hours pass. Training credits offset later purchases.</p>'+
-        (due.length?due.map(function(e){
-          const id=e[0],p=c.staff.find(function(x){return String(x.id)===id;}),locked=p&&num(p.days_in_company)<3;
-          return '<button type="button" data-act="employee-detail" data-id="'+esc(id)+'" class="tch-queueitem tch-taprow"><div><strong>'+esc(people[id]||"#"+id)+'</strong><small>'+esc(e[1].oldest?day(e[1].oldest):"Historical opening balance")+(locked?" · Not yet eligible":"")+'</small></div><div><b>'+e[1].owed+'</b><small>owed</small></div><span class="tch-tilearrow">↗</span></button>';
-        }).join(""):'<div class="tch-empty">Nobody has confirmed outstanding paid training.</div>')+
-        '</section>'+trainPacePanelV3(c)+'<section class="tch-panel"><h2>Record a completed train</h2><p>Use this for a train not already imported from company history.</p>'+
-        '<div class="tch-fieldrow"><select id="tch-train-person">'+opts+'</select><input aria-label="Number of trains" id="tch-train-units" type="number" min="1" max="20" value="1">'+
-        '<button class="primary" data-act="add-training">Record</button></div></section>';
+      const desk=trainingDeskV127(c);
+      body='<section class="tch-panel"><div class="tch-sectionhead"><h2>Oldest commitments first</h2>'+
+        '<span class="tch-mini">'+desk.owed+' owed</span></div>'+
+        '<p>Confirmed local purchases minus completed training. Oldest eligible debts are first. Giving trains always happens manually in Torn.</p>'+
+        '<div class="tch-spot-kpis"><span>Ready to give <b>'+desk.ready+'</b></span>'+
+        '<span>Company bank <b>'+(desk.available===null?'?':desk.available)+'</b></span>'+
+        '<span>Employees owed <b>'+desk.rows.length+'</b></span></div>'+
+        (!desk.fresh?'<p class="tch-hint">Saved information needs a refresh before assigning trains.</p>':'')+
+        (desk.rows.length?desk.rows.map(function(r){
+          return '<button type="button" class="tch-queueitem tch-taprow" data-act="'+
+            (r.active?'employee-detail':'training-view')+'" '+(r.active?'data-id="'+esc(r.id)+'"':'data-view="records"')+'>'+
+            '<div><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+
+            (r.oldest?' / '+esc(day(r.oldest)):'')+'</small></div>'+
+            '<div><b>'+r.owed+' owed</b><small>'+(r.give?r.give+' can give':'Not ready')+
+            '</small></div><span class="tch-tilearrow">›</span></button>';
+        }).join(''):'<div class="tch-empty">No outstanding confirmed training commitments.</div>')+
+        '<div class="tch-actionrow"><button class="primary" data-act="rescan-news">Sync completed trains</button>'+
+        (desk.pending?'<button data-act="goto" data-target="training-payments">Review '+desk.pending+' receipts</button>':'')+'</div>'+
+        '</section><details class="tch-deep-dive"><summary>Record a completed train manually</summary>'+
+        '<section class="tch-panel"><p>Only for trains missing from Torn company history. A duplicate entry could make a balance incorrect.</p>'+
+        '<div class="tch-fieldrow"><select id="tch-train-person">'+opts+'</select>'+
+        '<input aria-label="Number of trains" id="tch-train-units" type="number" min="1" max="20" value="1">'+
+        '<button class="primary" data-act="add-training">Record</button></div></section></details>';
     } else if(trainingView==="payments"){
       body='<section class="tch-panel"><h2>Money receipts & purchased trains</h2>'+
          '<p>On opening, incoming logs are checked. New, exact-price transfers from identifiable employees are locally credited as likely training purchases. Review Records and void any mistaken credit. Other transfers still require approval.</p>'+
@@ -2372,7 +2386,8 @@
             (!e.voided?'<button data-act="void-entry" data-id="'+esc(e.id)+'">Void</button>':"")+'</div></div>';
         }).join("")+'</section>';
     }
-    return '<div class="tch-section"><h2>Training ledger</h2><p>Paid commitments, automatic history matching and account corrections.</p>'+switches+'</div>'+body+(trainingView==="queue"?weekPanelV11(c):'');
+    return '<div class="tch-section"><h2>Training ledger</h2><p>Paid commitments, reconciled history and corrections.</p>'+switches+'</div>'+body+
+      (trainingView==="queue"?'<details class="tch-deep-dive"><summary>Seven-day capacity forecast</summary>'+trainPacePanelV3(c)+weekPanelV11(c)+'</details>':'');
   }
 
   function recentObservations(c,days) {
