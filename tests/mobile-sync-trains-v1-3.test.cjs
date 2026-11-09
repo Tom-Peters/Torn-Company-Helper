@@ -30,7 +30,7 @@ function fixture(responses){
  const script=source.replace('const PDA_APP_KEY = "###PDA-APIKEY###";','const PDA_APP_KEY = "AAAAAAAAAAAAAAAA";')
   .replace(hook, '  globalThis.__v13={autoCreditPurchasesV13,exactPaidTrainingV13,backfillTrainingReceiptsV13,'+
     'mergeIncomingLogsV13,mergeTrainingNewsV13,supportWageModelV13,compactWagePanelV13,growthMovesV13,'+
-    'homeV13,rosterBenchV12,rivalRostersPanelV12,seed(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;}};\n'+hook);
+    'homeV13,trainingDeskV127,nativeCompanyDeskHTMLV127,trainingSpotlightV127,rosterBenchV12,rivalRostersPanelV12,seed(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;}};\n'+hook);
  const sandbox={window,document,URL,URLSearchParams,Date,Math,Number,JSON,Set,Map,Blob,console,
    PDA_storage:{get:async()=>null,set:async()=>true},
    PDA_httpGet:async(url)=>{calls.push(url);return {status:200,responseText:JSON.stringify(responses?responses(url):{})};}};
@@ -115,7 +115,8 @@ test("Priority star growth names weak employee and specific train overflow risk"
  assert.ok(moves.some(x=>/Alice/.test(x.detail)));
  assert.ok(moves.some(x=>/training|train/i.test(x.title)));
  assert.match(app.homeV13(c),/Priority moves/);
- assert.match(app.homeV13(c),/Wage analysis/);
+ assert.match(app.homeV13(c),/Wage helper/);
+ assert.match(app.homeV13(c),/Training \/ next actions/);
 });
 test("Competitor positions are normalised for own roster size, not blindly copied from large peers",()=>{
  const {app}=fixture(),c=company();
@@ -150,7 +151,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.26\.1/);
+ assert.match(source,/\/\/ @version\s+1\.27\.0/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
@@ -172,4 +173,45 @@ test("Torn news near a manually recorded train attaches to existing row and does
  assert.equal(c.training.length,1);
  assert.equal(c.training[0].sourceId,"news:n-manual");
  assert.equal(c.news[0].matchStatus,"matched-manual");
+});
+
+test("Native company desk shows each recorded obligation without opening the helper",()=>{
+ const {app}=fixture(),c=company();c.lastRefresh=new Date().toISOString();
+ c.profile.trains=4;
+ c.staff[1].days_in_company=1;
+ c.payments=[
+  {id:"p1",playerId:11,trains:5,confirmed:true,ts:now()-4000},
+  {id:"p2",playerId:12,trains:2,confirmed:true,ts:now()-3000},
+  {id:"p3",playerId:99,trains:3,confirmed:true,ts:now()-2000}
+ ];
+ c.training=[{id:"t1",playerId:11,units:2,ts:now()-1000}];
+ c.logs=[{id:"unknown",matchStatus:"review"}];
+ const d=app.trainingDeskV127(c);
+ assert.equal(d.owed,8);assert.equal(d.ready,3);assert.equal(d.pending,1);
+ assert.equal(d.rows.find(x=>x.id==="12").give,0);
+ assert.match(d.rows.find(x=>x.id==="12").status,/72h/);
+ assert.match(d.rows.find(x=>x.id==="99").status,/Former/);
+ const html=app.nativeCompanyDeskHTMLV127(c);
+ assert.match(html,/CompanyStaxx \/ Owed trains/);
+ assert.match(html,/data-tch-act="refresh"/);
+ assert.match(html,/data-tch-act="employee"/);
+ assert.match(html,/data-tch-act="payments"/);
+ assert.match(html,/3<\/b> ready now/);
+});
+test("Stale data cannot claim a train is ready, but never hides owed balances",()=>{
+ const {app}=fixture(),c=company();
+ c.profile.trains=8;c.lastRefresh=new Date(Date.now()-2*86400000).toISOString();
+ c.payments=[{id:"confirmed",playerId:11,trains:5,ts:now(),confirmed:true}];
+ const d=app.trainingDeskV127(c);
+ assert.equal(d.ready,0);assert.equal(d.owed,5);assert.equal(d.fresh,false);
+ assert.match(app.nativeCompanyDeskHTMLV127(c),/Saved data/);
+});
+test("Employee names are escaped on the live company-page training panel",()=>{
+ const {app}=fixture(),c=company();
+ c.lastRefresh=new Date().toISOString();
+ c.staff[0].name='<img src=x onerror=alert(1)>';
+ c.payments=[{id:"p1",playerId:11,trains:1,ts:now(),confirmed:true}];
+ const html=app.nativeCompanyDeskHTMLV127(c);
+ assert.match(html,/&lt;img/);
+ assert.doesNotMatch(html,/<img/);
 });

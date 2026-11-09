@@ -1,3 +1,12 @@
+## 1.27.0 — company-page owed trains and daily-desk overhaul
+
+- **Company page:** a compact, inline CompanyStaxx training desk displays confirmed trains owed to each employee, what can currently be given, the available train bank and the oldest recorded commitment. Staff within their first 72 hours and former employees remain visible but not actionable.
+- **Fast actions:** from the normal Torn company page, refresh official data, open an individual employee's details, review pending receipts or jump to the full training queue without first opening the main CompanyStaxx panel.
+- **Simpler Today view:** a focused company overview with training first, three high-priority actions, one-tap staffing/wage/growth shortcuts, and trends and what-if scenarios under an expandable section. Previous tools and records are preserved.
+- **Training flow:** the queue shows ready-versus-waiting balances and hides manual training entry under an explicit fallback. Automatic news matching and payment reconciliation remain unchanged.
+- **Integrity:** a shared read-only queue model powers both surfaces; stale company data never claims a train is ready, and training alerts avoid stale readiness. Invalid saved timestamps no longer break date rendering. Existing API permissions and 15-minute foreground refresh limits remain in force.
+- **Compatibility:** unchanged userscript URL, local storage schema, TornStaxx hub ID and module messages. No automated Torn gameplay actions.
+
 ## 1.20.0 — Paid-training alerts require available trains
 
 - Outstanding confirmed paid-training purchases remain in the employee ledger, but generate a badge, Alerts card or StaxxHub action only when Torn reports available company trains **and** an eligible employee can actually receive at least one under the oldest-first allocation plan.
