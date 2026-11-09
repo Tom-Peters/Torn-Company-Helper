@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.26.1
+// @version      1.27.0
 // @description  Read-only Torn PDA director command centre: staff, trains, stock, finance and growth
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -98,7 +98,7 @@
   const esc = function (value) {return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});};
   const money = function (v) {return v == null || !Number.isFinite(Number(v)) ? "Unknown" : "$" + Math.round(Number(v)).toLocaleString("en-US");};
   const num = function (v) {return Number.isFinite(Number(v)) ? Number(v) : 0;};
-  const day = function (ts) {return ts ? new Date(Number(ts) * 1000).toISOString().slice(0,10) : "Unknown";};
+  const day = function (ts) {const n=Number(ts),d=new Date(n*1000);return Number.isFinite(n)&&n>0&&Number.isFinite(d.getTime())?d.toISOString().slice(0,10):"Unknown";};
   const stamp = function () {return Math.floor(Date.now()/1000);};
   const id = function () {return "local:" + Date.now() + ":" + Math.random().toString(36).slice(2,10);};
   const current = function () {
@@ -581,6 +581,65 @@
         return '<div class="tch-quality"><div><strong>'+esc(r.label)+'</strong><small>'+esc(r.note)+'</small></div>'+
         '<span class="tch-mini '+(r.state==="complete"||r.state==="recent"?"good":"warn")+'">'+esc(r.state)+'</span></div>';
       }).join("")+'</section>';
+  }
+
+
+  // Authoritative training desk: recorded obligations are not actionable until
+  // an eligible employee and a verified, available train both exist.
+  function trainingDeskV127(c){
+    if(!c||!c.profile)return {rows:[],owed:0,ready:0,pending:0,available:null,overflow:null,fresh:false,updated:null};
+    const ledger=aggregates(c),plan=trainPlanV3(c),staff=new Map((c.staff||[]).map(p=>[String(p.id),p]));
+    const ready=new Map(plan.queue.map(p=>[String(p.id),p]));
+    const updated=Date.parse(c.lastRefresh||"");
+    const fresh=Number.isFinite(updated)&&updated<=Date.now()+60000&&Date.now()-updated<86400000;
+    const rows=Object.keys(ledger.balance).filter(k=>ledger.balance[k].owed>0).map(function(k){
+      const b=ledger.balance[k],person=staff.get(k),q=ready.get(k),give=fresh&&q?q.give:0;
+      return {id:k,name:ledger.people[k]||"Player #"+k,owed:b.owed,oldest:b.oldest,give,active:!!person,
+        status:!person?"Former employee":!q?"Not eligible yet (72h)":!fresh?"Refresh to verify":
+          give>0?"Ready to train":"Awaiting available trains"};
+    }).sort(function(a,b){
+      const rank=r=>r.give>0?0:r.active?1:2;
+      return rank(a)-rank(b)||(a.oldest||Infinity)-(b.oldest||Infinity)||a.name.localeCompare(b.name);
+    });
+    return {rows,owed:rows.reduce((n,r)=>n+r.owed,0),ready:rows.reduce((n,r)=>n+r.give,0),
+      pending:pendingPaymentLogs(c).length,available:plan.available,overflow:plan.overflow,
+      fresh,updated:Number.isFinite(updated)?updated:null};
+  }
+  function nativeCompanyDeskHTMLV127(c){
+    if(!c||!c.profile)return '<div class="tch-native-header"><b>CompanyStaxx / Owed trains</b>'+
+      '<button data-tch-act="refresh">Connect & refresh</button></div><p>Load company records to see who is owed training.</p>';
+    const d=trainingDeskV127(c);
+    return '<div class="tch-native-header"><div><b>CompanyStaxx / Owed trains</b><small>'+
+      esc(c.profile.name||"Company")+' / '+(d.updated?'Updated '+esc(new Date(d.updated).toLocaleString("en-GB")):'Never refreshed')+
+      '</small></div><div><button data-tch-act="refresh">Refresh</button> <button data-tch-act="queue">Full queue</button></div></div>'+
+      '<div class="tch-native-metrics"><span><b>'+d.owed+'</b> owed</span><span><b>'+d.ready+'</b> ready'+(d.fresh?' now':'*')+
+      '</span><span><b>'+(d.available===null?'?':d.available)+'</b> available</span>'+
+      (d.pending?'<span><b>'+d.pending+'</b> receipts to review</span>':'')+'</div>'+
+      (!d.fresh?'<p class="tch-native-warning">* Saved data: refresh before giving trains.</p>':'')+
+      (d.overflow>0?'<p class="tch-native-warning">Possible overflow: '+d.overflow+' trains at next close.</p>':'')+
+      (d.rows.length?'<div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+
+       d.rows.map(function(r){return '<div class="tch-native-row"><span><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+
+         (r.oldest?' / '+esc(day(r.oldest)):'')+'</small></span><b>'+r.owed+'</b><b class="tch-native-ready">'+(r.give||'-')+'</b>'+
+         '<button data-tch-act="employee" data-id="'+esc(r.id)+'"'+(r.active?'':' disabled')+'>View</button></div>';}).join(''):
+       '<p>No confirmed outstanding training commitments.</p>')+
+      (d.pending?'<button data-tch-act="payments">Review unconfirmed transfers (not counted as owed)</button>':'')+
+      '<small>Give trains manually in Torn. Company news is matched against the ledger after refresh.</small>';
+  }
+  function trainingSpotlightV127(c){
+    const d=trainingDeskV127(c);
+    return '<section class="tch-panel tch-training-spot"><div class="tch-sectionhead"><h2>Training / next actions</h2>'+
+      '<span class="tch-mini">'+d.owed+' owed</span></div>'+
+      '<div class="tch-spot-kpis"><span>Ready <b>'+d.ready+'</b></span><span>In bank <b>'+(d.available===null?'?':d.available)+
+      '</b></span><span>Receipts <b>'+d.pending+'</b></span></div>'+
+      (!d.fresh?'<p class="tch-hint">Company figures need a refresh before training.</p>':'')+
+      d.rows.slice(0,5).map(function(r){return '<button type="button" class="tch-spot-person" data-act="'+
+        (r.active?'employee-detail':'goto')+'" '+(r.active?'data-id="'+esc(r.id)+'"':'data-target="training-queue"')+
+        '><span><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+'</small></span><span><b>'+r.owed+' owed</b>'+
+        '<small>'+(r.give?r.give+' can give':'Review')+'</small></span></button>';}).join('')+
+      (d.rows.length>5?'<p class="tch-hint">+'+(d.rows.length-5)+' further employees in the queue.</p>':'')+
+      (!d.rows.length?'<p class="tch-hint">No outstanding confirmed training commitments.</p>':'')+
+      '<div class="tch-actionrow"><button data-act="goto" data-target="training-queue" class="primary">Full queue</button>'+
+      (d.pending?'<button data-act="goto" data-target="training-payments">Review transfers</button>':'')+'</div></section>';
   }
 
   // v1 advisory engine. Never changes Torn gameplay state.
@@ -1780,9 +1839,47 @@
   style.textContent+="#tch-root .tch-taprow{position:relative;width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;background:transparent;border:0;padding:13px 4px}#tch-root .tch-taprow .tch-tilearrow{position:static;margin-left:8px}#tch-root.theme-light .tch-taprow{background:transparent;color:#15394c}";
   style.textContent += "#tch-open{display:none!important}#tch-root:not(.theme-light){background:#08192d!important;color:#e7f2ff!important}#tch-root:not(.theme-light) header,#tch-root:not(.theme-light) .tch-top{background:linear-gradient(120deg,#0c3358,#0b203b)!important;border-color:#28506e!important}#tch-root:not(.theme-light) .tch-bottom,#tch-root:not(.theme-light) .nav{background:#0b223b!important;border-color:#284b6b!important}#tch-root:not(.theme-light) .card,#tch-root:not(.theme-light) .tch-panel,#tch-root:not(.theme-light) .tch-person,#tch-root:not(.theme-light) .tch-wagerow,#tch-root:not(.theme-light) .tch-wage-risk{background:#0d2945!important;border:1px solid #284b6b!important;border-radius:12px!important;box-shadow:none!important}#tch-root:not(.theme-light) .tch-hero{background:linear-gradient(130deg,#103d61,#0c2945)!important;border-color:#3f7ea6!important}#tch-root:not(.theme-light) .tch-metric,#tch-root:not(.theme-light) .tch-radar>div{background:#102844!important;border-color:#294661!important}#tch-root:not(.theme-light) .tch-eyebrow,#tch-root:not(.theme-light) .tch-kicker{color:#75ddff!important}#tch-root:not(.theme-light) button.primary,#tch-root:not(.theme-light) button.active{background:#1c5080!important;border-color:#67c7ff!important}#tch-root:not(.theme-light) button{border-radius:9px;border-color:#356181;color:#edf7ff}#tch-root:not(.theme-light) input,#tch-root:not(.theme-light) select,#tch-root:not(.theme-light) textarea{background:#061b31;border-color:#325c79;color:#fff}#tch-root:not(.theme-light) .tch-bottom{padding-bottom:calc(4px + env(safe-area-inset-bottom))!important}#tch-root:not(.theme-light) .tch-bottom button{font-size:10px!important;height:40px!important;min-height:40px!important}";
   style.textContent += "#tch-open{display:none!important}#tch-root[hidden]{display:none!important}#tch-root:not([hidden]){position:fixed!important;inset:0!important;display:flex!important;align-items:flex-end!important;justify-content:center!important;background:#020a17c7!important;z-index:2147483646!important;overflow:hidden!important;padding:0!important;color:#e7f2ff!important;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif!important}#tch-root .tch-staxx-panel{display:flex!important;flex-direction:column!important;flex:0 1 auto!important;width:min(650px,100vw)!important;height:min(93dvh,900px)!important;min-height:0!important;background:#08192d!important;border:1px solid #28506e!important;border-bottom:0!important;border-radius:19px 19px 0 0!important;overflow:hidden!important;box-shadow:0 0 45px #000c!important;position:relative!important}#tch-root .tch-staxx-panel *{box-sizing:border-box}#tch-root .tch-staxx-panel .tch-top{position:static!important;display:flex!important;flex-shrink:0!important;min-height:66px!important;padding:12px 15px!important;background:linear-gradient(120deg,#0c3358,#0b203b)!important;border:0!important;border-bottom:1px solid #28506e!important;box-shadow:none!important}#tch-root .tch-staxx-panel .tch-headline strong{font-size:18px!important;letter-spacing:-.2px!important;color:#f0faff!important}#tch-root .tch-staxx-panel .tch-eyebrow{color:#75ddff!important;font-size:10px!important}#tch-root .tch-staxx-panel .tch-timestamp{color:#8fb1cf!important;font-size:10px!important}#tch-root .tch-staxx-panel .tch-top button{min-height:34px!important;width:36px!important;padding:4px!important;background:#1c3b59!important;border:1px solid #365d78!important;color:#fff!important}#tch-root .tch-staxx-panel .tch-bottom{position:static!important;inset:auto!important;flex-shrink:0!important;order:0!important;width:100%!important;display:flex!important;grid-template-columns:none!important;gap:5px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;padding:7px 8px!important;background:#0b223b!important;border:0!important;border-bottom:1px solid #284b6b!important;box-shadow:none!important}#tch-root .tch-staxx-panel .tch-bottom button{height:42px!important;min-height:42px!important;min-width:60px!important;flex:1 0 60px!important;display:flex!important;flex-direction:row!important;gap:4px!important;padding:5px 6px!important;border:1px solid transparent!important;background:transparent!important;border-radius:8px!important;color:#97b5ce!important;font-size:11px!important;font-weight:650!important;line-height:1!important}#tch-root .tch-staxx-panel .tch-bottom button.active{background:#1c5080!important;border:1px solid #579ed4!important;color:#fff!important}#tch-root .tch-staxx-panel .tch-bottom .tch-navicon{font-size:14px!important;color:inherit!important}#tch-root .tch-staxx-panel .tch-main{position:static!important;flex:1 1 auto!important;order:1!important;min-height:0!important;min-width:0!important;max-width:none!important;width:100%!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;padding:13px 13px 28px!important;margin:0!important;background:#08192d!important}#tch-root .tch-staxx-panel .tch-homehead,#tch-root .tch-staxx-panel .tch-hero{background:linear-gradient(130deg,#103d61,#0c2945)!important;border:1px solid #3f7ea6!important;border-radius:12px!important}#tch-root .tch-staxx-panel .card,#tch-root .tch-staxx-panel .tch-panel,#tch-root .tch-staxx-panel .tch-person,#tch-root .tch-staxx-panel .tch-wagerow,#tch-root .tch-staxx-panel .tch-wage-risk,#tch-root .tch-staxx-panel .tch-stockrow{background:#0d2945!important;border:1px solid #284b6b!important;border-radius:12px!important;box-shadow:none!important}#tch-root .tch-staxx-panel .tch-metric,#tch-root .tch-staxx-panel .tch-radar>div,#tch-root .tch-staxx-panel .tch-homekpis .tch-metric{background:#102844!important;border:1px solid #294661!important;border-radius:11px!important}#tch-root .tch-staxx-panel .tch-metric strong,#tch-root .tch-staxx-panel .tch-home-number{color:#f0f8ff!important}#tch-root .tch-staxx-panel .tch-mini,#tch-root .tch-staxx-panel .tch-kicker{color:#8fdbff!important}#tch-root .tch-staxx-panel .tch-main button.primary,#tch-root .tch-staxx-panel .tch-main button.active{background:#0879bd!important;border:1px solid #4db8ec!important;color:#fff!important}#tch-root .tch-staxx-panel .tch-main button{border-radius:9px!important}#tch-root .tch-staxx-panel .tch-main input,#tch-root .tch-staxx-panel .tch-main select,#tch-root .tch-staxx-panel .tch-main textarea{background:#061b31!important;border:1px solid #325c79!important;color:#fff!important;border-radius:8px!important}#tch-root .tch-staxx-panel p,#tch-root .tch-staxx-panel .muted,#tch-root .tch-staxx-panel .tch-hint{color:#aac3d9!important}#tch-root .tch-staxx-panel .good{color:#49e2ad!important}#tch-root .tch-staxx-panel .bad{color:#ff8c9b!important}#tch-root .tch-staxx-panel .tch-main .scroll{max-width:100%;overflow-x:auto!important}@media(min-width:800px){#tch-root:not([hidden]){align-items:center!important}#tch-root .tch-staxx-panel{height:min(85vh,880px)!important;border-radius:18px!important;border-bottom:1px solid #28506e!important}}@media(max-width:390px){#tch-root .tch-staxx-panel .tch-bottom button{font-size:10px!important;flex-basis:52px!important;min-width:52px!important;padding:5px 3px!important}#tch-root .tch-staxx-panel .tch-bottom .tch-navicon{font-size:12px!important}}";
+
+  style.textContent += "\n#tch-company-owed.tch-native-owed{clear:both;box-sizing:border-box;width:calc(100% - 16px);max-width:1020px;margin:12px auto;padding:12px;background:#0a233b;color:#f1f9ff;border:1px solid #327ba6;border-radius:11px;font:13px/1.45 system-ui,Arial,sans-serif;color-scheme:dark}#tch-company-owed *{box-sizing:border-box}"+
+    "#tch-company-owed small{display:block;font-size:11px;color:#b2d3e5}#tch-company-owed .tch-native-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:9px;padding-bottom:8px;border-bottom:1px solid #33617e}#tch-company-owed .tch-native-header b{font-size:15px}"+
+    "#tch-company-owed button{background:#16517a;border:1px solid #68b4dc;border-radius:7px;color:#fff;font:inherit;padding:6px 9px;min-height:34px;cursor:pointer}#tch-company-owed button:focus-visible{outline:3px solid #73d9ff}#tch-company-owed button:disabled{opacity:.4}"+
+    "#tch-company-owed .tch-native-metrics{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}#tch-company-owed .tch-native-metrics span{background:#173c5b;border-radius:8px;padding:6px 10px}#tch-company-owed .tch-native-metrics b{font-size:17px;color:#8ae0ff;margin-right:4px}#tch-company-owed .tch-native-warning{color:#ffd08c}"+
+    "#tch-company-owed .tch-native-cols,#tch-company-owed .tch-native-row{display:grid;grid-template-columns:minmax(0,1fr) 52px 47px 58px;gap:5px;align-items:center}#tch-company-owed .tch-native-cols{font-size:11px;color:#9ecde4;padding:6px;border-bottom:1px solid #467696}#tch-company-owed .tch-native-row{padding:6px;border-bottom:1px solid #294f6d;min-height:46px}#tch-company-owed .tch-native-row:nth-child(even){background:#11314d}#tch-company-owed .tch-native-row strong{overflow-wrap:anywhere}#tch-company-owed .tch-native-ready{color:#84e5c7}"+
+    "#tch-root .tch-spot-kpis{display:flex;gap:8px;margin:10px 0}#tch-root .tch-spot-kpis span{flex:1;background:#143653;padding:10px;border:1px solid #39698b;border-radius:8px;font-size:11px}#tch-root .tch-spot-kpis b{display:block;color:#8adfff;font-size:22px}#tch-root .tch-spot-person{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:10px;width:100%;min-height:49px;margin:4px 0}#tch-root .tch-spot-person strong,#tch-root .tch-spot-person small,#tch-root .tch-spot-person b{display:block}#tch-root .tch-spot-person small{font-size:11px;color:#b2d4e8}"+
+    "#tch-root details.tch-deep-dive{margin:10px 0}#tch-root details.tch-deep-dive>summary{padding:12px;border:1px solid #3b7698;border-radius:9px;font-weight:700;cursor:pointer}"+
+    "@media(max-width:450px){#tch-company-owed .tch-native-row,#tch-company-owed .tch-native-cols{grid-template-columns:minmax(0,1fr) 36px 34px 42px;gap:3px}#tch-company-owed button{padding:5px;font-size:11px}#tch-company-owed .tch-native-row{padding:5px 2px}}";
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
   const root=document.createElement("div");root.id="tch-root";root.hidden=true;document.body.appendChild(root);
+
+  let inlineCompanySignatureV127="";
+  function syncInlineCompanyV127(){
+    const existing=document.getElementById("tch-company-owed");
+    if(!isCompanyPage()){if(existing)existing.remove();inlineCompanySignatureV127="";return;}
+    if(!document.body||typeof document.querySelector!=="function")return;
+    const host=document.querySelector("#mainContainer")||document.querySelector(".content-wrapper")||
+      document.querySelector("#mainContent")||document.querySelector("#body")||document.querySelector("main");
+    if(!host||typeof host.prepend!=="function")return;
+    let panel=existing;
+    if(!panel){
+      panel=document.createElement("section");panel.id="tch-company-owed";panel.className="tch-native-owed";
+      panel.setAttribute("aria-label","CompanyStaxx outstanding trains");host.prepend(panel);inlineCompanySignatureV127="";
+    }
+    const c=companyId&&data.byCompany?data.byCompany[companyId]:null,d=trainingDeskV127(c);
+    const signature=JSON.stringify([companyId,c?.lastRefresh,d.owed,d.ready,d.pending,d.available,d.overflow,
+      d.rows.map(r=>[r.id,r.owed,r.give,r.status,r.oldest])]);
+    if(inlineCompanySignatureV127!==signature){panel.innerHTML=nativeCompanyDeskHTMLV127(c);inlineCompanySignatureV127=signature;}
+  }
+  document.addEventListener?.("click",function(evt){
+    const el=evt.target?.closest?.("#tch-company-owed [data-tch-act]");if(!el)return;
+    evt.preventDefault();const act=el.dataset.tchAct;
+    if(act==="refresh"){void refresh();return;}
+    detailView="";message="";companyAlertFocus="";
+    if(act==="employee"&&el.dataset.id){tab="employees";staffView="detail";selectedEmployee=el.dataset.id;}
+    else{tab="training";trainingView=act==="payments"?"payments":"queue";}
+    if(!open)opener.click();else draw();
+  });
+
   const cell=function(label,val,cls){
     const detail=/revenue|income/i.test(label)?"revenue":/wage/i.test(label)?"wages":/advertising/i.test(label)?"ad":"profit";
     return '<button type="button" data-act="finance-focus" data-field="'+detail+'" class="tch-metric tch-clickable '+(cls||"")+'">'+
@@ -2329,7 +2426,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.12.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.27.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -2369,6 +2466,7 @@
   function focusCompanyAlert(){if(!companyAlertFocus)return;const el=root.querySelector('#tch-alert-'+companyAlertFocus);if(el)el.scrollIntoView?.({block:'nearest'});companyAlertFocus='';}
   function draw() {
     updateLauncherV11();
+    syncInlineCompanyV127();
     opener.hidden=open || !isCompanyPage();
     root.hidden=!open;
     const visible=Boolean(open);
@@ -2735,6 +2833,7 @@
     opener.hidden=!show || open;
     // Navigating away from the company page must not close a Hub-opened panel.
     if (show) {updateLauncherV11();positionLauncher();}
+    syncInlineCompanyV127();
   }
   let drag=null;
   opener.addEventListener("pointerdown",function(e){
@@ -2779,7 +2878,7 @@
   document.addEventListener?.("staxx:closeall",function(){if(open){open=false;draw();}});
   document.addEventListener?.("staxx:diagnostics-request",function(){
     const c=companyId&&data.byCompany?.[companyId],t=Date.parse(c?.lastRefresh||"");
-    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.25.6",
+    document.dispatchEvent?.(new CustomEvent("staxx:diagnostics",{detail:{id:"company",version:"1.27.0",
       api:!activeApiKey()?"missing":!Number.isFinite(t)||Date.now()-t>86400000?"stale":"ready",
       storage:typeof PDA_storage!=="undefined"?"ready":"missing",ui:root?"ready":"missing",
       detail:!c?"Company not loaded":busy?"Company refresh in progress":"Latest company snapshot "+(Number.isFinite(t)?"available":"missing")}}));
@@ -2798,6 +2897,8 @@
       if(observedPath!==window.location.pathname){
         observedPath=window.location.pathname;
         syncCompanyVisibility();
+      }else if(isCompanyPage()&&!document.getElementById("tch-company-owed")){
+        syncInlineCompanyV127();
       }
     });
     routeObserver.observe(document.body,{childList:true,subtree:true});
@@ -3034,6 +3135,7 @@
         positionLauncher();
       }
       updateLauncherV11();
+      syncInlineCompanyV127();
       try{
         const pending=sessionStorage.getItem("staxx-open-company")==="1";
         const at=Number(sessionStorage.getItem("staxx-open-company-at")||0);
