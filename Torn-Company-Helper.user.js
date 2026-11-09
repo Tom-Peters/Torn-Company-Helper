@@ -767,49 +767,50 @@
 
   function nativeCompanyDeskHTMLV127(c){
     if(!c||!c.profile)return '<div class="tch-native-header"><b>CompanyStaxx / Director</b>'+
-      '<button type="button" data-tch-act="refresh">Connect & refresh</button></div><p>Load your company data to start.</p>';
-    const d=trainingDeskV127(c),m=staffIntelligenceV128(c),accounts=accounting(c),profile=c.profile;
-    const stars=financialAmount(profile.rating),total=financialAmount(profile.employees?.capacity);
-    const payroll=accounts&&accounts.wages!==null?money(accounts.wages):"Unknown";
-    const daily=accounts?.known?money(accounts.profit):"Incomplete";
-    const employees=(c.staff||[]).length;
-    const urgent=accounts?.known&&accounts.headroom<0;
-    const owedPreview=d.rows.slice(0,3).map(function(r){
+      '<button type="button" data-tch-act="refresh">Connect & refresh</button></div><p>Load company data to start.</p>';
+    const d=trainingDeskV127(c),m=staffIntelligenceV128(c),a=accounting(c),profile=c.profile,
+      stars=financialAmount(profile.rating),slots=financialAmount(profile.employees?.capacity);
+    const timestamp=d.updated?new Date(d.updated).toLocaleString("en-GB"):"Not refreshed";
+    const urgent=a?.known&&a.headroom<0;
+    const preview=d.rows.slice(0,3).map(function(r){
       return '<div class="tch-native-row"><span><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+'</small></span>'+
         '<b>'+r.owed+'</b><b class="tch-native-ready">'+(r.give||'-')+'</b>'+
         '<button type="button" data-tch-act="employee" data-id="'+esc(r.id)+'"'+(r.active?'':' disabled')+'>View</button></div>';
     }).join('');
-    const timestamp=d.updated?'Updated '+esc(new Date(d.updated).toLocaleString("en-GB")):'Not refreshed';
-    const status=d.fresh?"Current":"Saved / refresh needed";
     return '<div class="tch-native-header"><div><b>CompanyStaxx / Director</b><small>'+
-      esc(profile.name||"Company")+' · '+timestamp+' · '+status+'</small></div>'+
+      esc(profile.name||"Company")+' / '+esc(timestamp)+(d.fresh?'':' / refresh needed')+'</small></div>'+
       '<div class="tch-native-actions"><button type="button" data-tch-act="refresh">Refresh</button>'+
-      '<button type="button" data-tch-act="overview">Dashboard</button></div></div>'+
+      '<button type="button" data-tch-act="overview">Open</button></div></div>'+
+      '<div class="tch-native-metrics tch-native-essentials">'+
+      '<span><b>'+(stars===null?'?':stars)+' / 10</b> rating</span>'+
+      '<span><b>'+m.rows.length+'</b> staff</span>'+
+      '<span><b>'+d.owed+'</b> owed trains</span>'+
+      '<span><b>'+d.ready+'</b> ready'+(d.fresh?' now':'*')+'</span></div>'+
+      (urgent?'<p class="tch-native-warning">Daily operating-loss estimate exceeds your configured limit.</p>':'')+
+      (!d.fresh?'<p class="tch-native-warning">* Refresh before training or pay decisions.</p>':'')+
+      (d.pending?'<button type="button" data-tch-act="payments" class="tch-native-review">'+
+        d.pending+' unconfirmed transfer(s) / review</button>':'')+
+      '<details class="tch-native-more"><summary>Company KPIs, pay, training and growth</summary>'+
       '<div class="tch-native-dashboard">'+
-        '<div><small>Rating</small><b>'+(stars===null?'?':stars)+' / 10</b></div>'+
-        '<div><small>Daily P/L <i>est.</i></small><b class="'+(urgent?'tch-native-warning':'')+'">'+esc(daily)+'</b></div>'+
-        '<div><small>Staff</small><b>'+employees+' / '+(total===null?'?':total)+'</b></div>'+
-        '<div><small>Payroll / day</small><b>'+esc(payroll)+'</b></div></div>'+
-      '<div class="tch-native-metrics"><span><b>'+d.owed+'</b> owed</span><span><b>'+d.ready+'</b> ready'+(d.fresh?' now':'*')+
-      '</span><span><b>'+(d.available===null?'?':d.available)+'</b> available</span>'+
-      (d.pending?'<span><b>'+d.pending+'</b> receipts to review</span>':'')+'</div>'+
+        '<div><small>Daily P/L (est.)</small><b>'+esc(a?.known?money(a.profit):'Incomplete')+'</b></div>'+
+        '<div><small>Payroll / day</small><b>'+esc(a?.wages===null?'Unknown':money(a.wages))+'</b></div>'+
+        '<div><small>Available trains</small><b>'+(d.available===null?'?':d.available)+'</b></div>'+
+        '<div><small>Staff places</small><b>'+m.rows.length+' / '+(slots===null?'?':slots)+'</b></div></div>'+
       '<div class="tch-native-actions tch-native-shortcuts">'+
         '<button type="button" data-tch-act="queue">Trains</button>'+
         '<button type="button" data-tch-act="staff">Employees</button>'+
         '<button type="button" data-tch-act="wages">Pay optimiser</button>'+
         '<button type="button" data-tch-act="growth">Growth</button></div>'+
-      (!d.fresh?'<p class="tch-native-warning">* Saved data: refresh before giving trains or changing salaries.</p>':'')+
-      (urgent?'<p class="tch-native-warning">Operating loss may exceed the configured daily loss limit. Review the cost breakdown.</p>':'')+
-      (d.overflow>0?'<p class="tch-native-warning">Possible overflow: '+d.overflow+' trains at the next close.</p>':'')+
-      (d.pending?'<button type="button" data-tch-act="payments" class="tch-native-review">Review '+
-        d.pending+' unconfirmed transfer(s) / not counted as owed</button>':'')+
-      directorOpportunitiesPanelV129(c,"native")+nativeStaffRosterV128(c,m)+
-      (d.rows.length?'<details class="tch-native-obligations"><summary>Paid training queue · '+d.owed+' still owed</summary>'+
+      (d.overflow>0?'<p class="tch-native-warning">Potential train overflow: '+d.overflow+' at next close.</p>':'')+
+      directorOpportunitiesPanelV129(c,"native")+
+      nativeStaffRosterV128(c,m)+
+      (d.rows.length?'<details class="tch-native-obligations"><summary>Training queue / '+d.owed+' owed</summary>'+
         '<div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+
-        owedPreview+(d.rows.length>3?'<small>+'+(d.rows.length-3)+' further employees in the full queue</small>':'')+
-        '<button type="button" data-tch-act="queue">See all training debts</button></details>':
+        preview+(d.rows.length>3?'<small>+'+(d.rows.length-3)+' more employees in full queue</small>':'')+
+        '<button type="button" data-tch-act="queue">Open training queue</button></details>':
         '<p class="tch-native-empty">No confirmed outstanding training commitments.</p>')+
-      '<small class="tch-native-note">Pay and position figures are local planning estimates, never automatic changes to Torn.</small>';
+      '<small class="tch-native-note">Salary and stat-fit reviews are only estimates; Torn actions stay manual.</small>'+
+      '</details>';
   }
 
   function directorOpportunitiesV129(c){
@@ -2152,6 +2153,9 @@
 
   style.textContent += "\n#tch-company-owed .tch-native-next{display:flex;justify-content:space-between;align-items:center;gap:9px;margin:6px 0;padding:6px 8px;border-left:3px solid #48bfe7;background:#15344f;border-radius:4px;color:#e9f8ff}#tch-company-owed .tch-native-next span{min-width:0;flex:1}#tch-company-owed .tch-native-next b{display:block;font-size:12px}#tch-company-owed .tch-native-next small{display:block;font-size:10px;color:#aacce1}#tch-company-owed .tch-native-next button{flex-shrink:0;min-height:30px;padding:4px 8px;font-size:11px}"+
     "#tch-root .tch-director-action{display:flex;gap:9px;align-items:center;width:100%;text-align:left;margin:4px 0;padding:9px 6px;min-height:48px}#tch-root .tch-director-action>span{flex:1;min-width:0}#tch-root .tch-director-action strong,#tch-root .tch-director-action small{display:block}#tch-root .tch-director-action strong{font-size:12px;color:#f3fcff}#tch-root .tch-director-action small{font-size:11px;color:#b8d3e6;font-weight:400}#tch-root .tch-director-action .tch-source{color:#83c7e4}#tch-root .tch-action-number{background:#145986;color:#dff8ff;border-radius:6px;min-width:22px;height:24px;text-align:center;padding-top:2px}";
+
+
+  style.textContent += "\n#tch-company-owed{padding:8px!important;margin-bottom:8px!important}#tch-company-owed .tch-native-essentials{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:6px 0}#tch-company-owed .tch-native-essentials span{min-width:0;display:block;padding:6px 3px;text-align:center;white-space:normal;background:#133752;border:1px solid #2b5874;border-radius:6px;font-size:10px;color:#b8d5e8}#tch-company-owed .tch-native-essentials b{display:block;font-size:14px;line-height:1.3;color:#edf9ff}#tch-company-owed details.tch-native-more{margin:5px 0 0;border-top:1px solid #345c77;padding-top:4px}#tch-company-owed details.tch-native-more>summary{padding:5px 6px;font-size:12px;cursor:pointer;color:#95d9fa;font-weight:700}#tch-company-owed .tch-native-header{margin:0}#tch-company-owed .tch-native-header button{min-height:31px;padding:4px 7px;font-size:11px}@media(max-width:400px){#tch-company-owed .tch-native-essentials{grid-template-columns:repeat(2,minmax(0,1fr))}}";
 
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
