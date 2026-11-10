@@ -1,3 +1,9 @@
+## 1.31.0 - Workspace and native-page separation
+
+Fixed Today / Staff / Trains / Growth navigation, with secondary tools in a separate directory. Today separates the training queue and supporting checks from priorities. Native summaries mount immediately before a detected employee roster; employee explanations remain attached to their rows. No roster means no aggregate page panel. Disclosure state is preserved correctly through refresh on the same page.
+
+Validated with existing regression suites, parser checks and DOM integration scenarios. Live Torn PDA visual/device validation remains separate.
+
 ## 1.30.0 - In-game guidance
 
 Employee strips now expand explanations directly below the employee without leaving Torn. The company page surfaces its highest-priority director action with section-specific routing. Owed trains with no available allocation remain visible without becoming a false ready-to-act priority. Today groups secondary staff and company checks into expandable sections. Existing wage evidence, training debts and loss guardrails remain intact.

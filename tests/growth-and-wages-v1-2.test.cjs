@@ -123,5 +123,5 @@ test("All remote company actions remain GET-only and no real keys are committed"
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
  assert.match(source,/const PDA_APP_KEY = "###PDA-APIKEY###";/);
  assert.match(source,/\/\/ @author\s+IamEEKY/);
- assert.match(source,/\/\/ @version\s+1\.30\.0/);
+ assert.match(source,/\/\/ @version\s+1\.31\.0/);
 });

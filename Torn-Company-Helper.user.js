@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.30.0
+// @version      1.31.0
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -2067,7 +2067,7 @@
         metricV2("Employees",c.staff.length+" / "+num(c.profile.employees&&c.profile.employees.capacity),"Current company roster","","staff")+
         metricV2("Training ready",d.ready,d.owed+" confirmed outstanding","","training-queue")+
         metricV2("Efficiency",c.profile.efficiency==null?"Unknown":c.profile.efficiency+"%","Torn reported","","growth-performance")+
-      '</div>'+directorOpportunitiesPanelV129(c,"today")+trainingSpotlightV127(c)+
+      '</div>'+directorOpportunitiesPanelV129(c,"today")+'<details class="tch-deep-dive"><summary>Training queue and allocation</summary>'+trainingSpotlightV127(c)+'</details>'+
       '<details class="tch-deep-dive"><summary>Staff pay, training and role decisions</summary>'+staffBriefV128(c,"today")+'</details>'+
       '<details class="tch-deep-dive"><summary>Other company checks</summary>'+
       '<section class="tch-panel"><div class="tch-sectionhead"><h2>What needs attention</h2>'+
@@ -2160,6 +2160,7 @@
   style.textContent += "\n#tch-company-owed{padding:8px!important;margin-bottom:8px!important}#tch-company-owed .tch-native-essentials{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:6px 0}#tch-company-owed .tch-native-essentials span{min-width:0;display:block;padding:6px 3px;text-align:center;white-space:normal;background:#133752;border:1px solid #2b5874;border-radius:6px;font-size:10px;color:#b8d5e8}#tch-company-owed .tch-native-essentials b{display:block;font-size:14px;line-height:1.3;color:#edf9ff}#tch-company-owed details.tch-native-more{margin:5px 0 0;border-top:1px solid #345c77;padding-top:4px}#tch-company-owed details.tch-native-more>summary{padding:5px 6px;font-size:12px;cursor:pointer;color:#95d9fa;font-weight:700}#tch-company-owed .tch-native-header{margin:0}#tch-company-owed .tch-native-header button{min-height:31px;padding:4px 7px;font-size:11px}@media(max-width:400px){#tch-company-owed .tch-native-essentials{grid-template-columns:repeat(2,minmax(0,1fr))}}";
 
   style.textContent+=".tch-native-person-detail{padding:10px 8px;margin-top:6px;background:#10283f;border-top:1px solid #3b6b8a;color:#eaf6ff;font:12px/1.5 system-ui;overflow-wrap:anywhere}.tch-native-person-detail p{margin:6px 0}.tch-native-person-detail button{background:#16466a;color:white;border:1px solid #4c87ab;border-radius:6px;min-height:36px}#tch-company-owed .tch-native-next button{min-height:36px}#tch-root .tch-deep-dive>summary{padding:12px;cursor:pointer;color:#b9e6ff}";
+  style.textContent+="#tch-root .tch-workspace-tools{order:0;padding:8px 13px;border-bottom:1px solid #31516a;color:#cde9fa}#tch-root .tch-workspace-tools summary{cursor:pointer;padding:5px}#tch-root .tch-workspace-tools>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}#tch-root .tch-workspace-tools button{background:#14324c;color:#effaff;border:1px solid #396380;padding:9px;border-radius:6px}#tch-root .tch-homekpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}";
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
   const root=document.createElement("div");root.id="tch-root";root.hidden=true;document.body.appendChild(root);
@@ -2169,13 +2170,13 @@
     const existing=document.getElementById("tch-company-owed");
     if(!isCompanyPage()){if(existing)existing.remove();inlineCompanySignatureV127="";return;}
     if(!document.body||typeof document.querySelector!=="function")return;
-    const host=document.querySelector(".company-wrap")||document.querySelector("#mainContainer")||document.querySelector(".content-wrapper")||
-      document.querySelector("#mainContent")||document.querySelector("#body")||document.querySelector("main");
-    if(!host||typeof host.prepend!=="function")return;
+    const roster=document.querySelector("ul.employee-list");
+    const host=roster?.parentElement;
+    if(!host||typeof host.insertBefore!=="function"){existing?.remove();inlineCompanySignatureV127="";return;}
     let panel=existing;
     if(!panel){
       panel=document.createElement("section");panel.id="tch-company-owed";panel.className="tch-native-owed";
-      panel.setAttribute("aria-label","CompanyStaxx outstanding trains");host.prepend(panel);inlineCompanySignatureV127="";
+      panel.setAttribute("aria-label","CompanyStaxx outstanding trains");host.insertBefore(panel,roster);inlineCompanySignatureV127="";
     }
     const c=companyId&&data.byCompany?data.byCompany[companyId]:null,d=trainingDeskV127(c);
     syncNativeStaffRowsV128(c);
@@ -2512,17 +2513,16 @@
   let companyTabsExpanded=false;
   const simpleCompanyTabs=new Set(['overview','alerts','employees','training']);
   function tabsV2(){
-    const tabs=[["overview","⌂","Today"],["alerts","!","Alerts"],["employees","♟","Staff"],["training","◇","Trains"],["growth","▥","Growth"],["stock","▣",["service","no-products"].includes(stockModeV117(current()))?"Services":"Stock"]];
-    let simpleMode=true;try{simpleMode=JSON.parse(localStorage.getItem('staxx-hub-mode-v1')||'"simple"')!=='advanced';}catch(_){}
-    const visibleTabs=(!simpleMode||companyTabsExpanded)?tabs:tabs.filter(x=>simpleCompanyTabs.has(x[0])||x[0]===tab);
-    return '<nav class="tch-bottom" aria-label="Company Helper sections">'+visibleTabs.map(function(x){
-      return '<button data-act="tab" data-tab="'+x[0]+'" class="'+(tab===x[0]?"active":"")+'"><span class="tch-navicon">'+x[1]+'</span><span>'+x[2]+'</span></button>';
-    }).join("")+(simpleMode?'<button data-act="staxx-more-tabs" aria-expanded="'+companyTabsExpanded+'" aria-label="'+(companyTabsExpanded?'Show fewer sections':'Show all sections')+'"><span class="tch-navicon">⋯</span><span>'+(companyTabsExpanded?'Less':'More')+'</span></button>':'')+'</nav>';
+    const primary=[["overview","Today"],["employees","Staff"],["training","Trains"],["growth","Growth"]];
+    const extra=[["alerts","Alerts"],["stock","Stock / services"],["settings","Settings"],["diagnostics","Diagnostics"]];
+    const buttons=rows=>rows.map(([id,label])=>'<button data-act="tab" data-tab="'+id+'" class="'+(tab===id?'active':'')+'">'+label+'</button>').join('');
+    return '<nav class="tch-bottom" aria-label="Company workspace">'+buttons(primary)+'</nav>'+
+      '<details class="tch-workspace-tools"'+(extra.some(([id])=>id===tab)?' open':'')+'><summary>Company tools</summary><div>'+buttons(extra)+'</div></details>';
   }
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.30.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.31.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2861,7 +2861,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.30.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.31.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -2919,7 +2919,8 @@
       const values=form?[...form.querySelectorAll('input,select,textarea')].map(x=>({id:x.id,name:x.name,value:x.value,checked:x.type==='checkbox'?x.checked:null})):[];
       savedForm={id:oldFocused.id,name:oldFocused.name,values,page:companyRenderedPage};
     }
-    const detailsOpen=[...(root.querySelectorAll?.('details[open]')||[])].map((x,i)=>x.id||String(i));
+    const sameCompanyPage=companyRenderedPage===pageKey;
+    const detailsOpen=[...(root.querySelectorAll?.('details')||[])].map((x,i)=>x.open?(x.id||String(i)):null).filter(x=>x!==null);
     try {
       const c=current();
       let body="";
@@ -2949,7 +2950,7 @@
         const focus=[...(root.querySelectorAll?.('input,select,textarea')||[])].find(x=>savedForm.id?x.id===savedForm.id:x.name===savedForm.name);
         if(focus)focus.focus({preventScroll:true});
       }
-      for(const [i,detail] of [...(root.querySelectorAll?.('details')||[])].entries())if(detailsOpen.includes(detail.id||String(i)))detail.open=true;
+      if(sameCompanyPage)for(const [i,detail] of [...(root.querySelectorAll?.('details')||[])].entries())detail.open=detailsOpen.includes(detail.id||String(i));
     } catch (error) {
       // Render a usable, non-destructive fallback instead of a blank screen.
       // Never clear or reset local storage in response to a rendering error.
