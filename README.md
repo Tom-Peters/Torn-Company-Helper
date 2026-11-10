@@ -1,3 +1,7 @@
+## 1.32.0 - Native action details
+
+Pay, trains and stat-fit cells are now individual inline controls. Train details include recent payment/training ledger records with confirmed versus unconfirmed labels. Disclosures survive roster refresh. All wage, training and role changes stay manual.
+
 ## 1.31.0 - Workspace and native-page separation
 
 Fixed Today / Staff / Trains / Growth navigation, with secondary tools in a separate directory. Today separates the training queue and supporting checks from priorities. Native summaries mount immediately before a detected employee roster; employee explanations remain attached to their rows. No roster means no aggregate page panel. Disclosure state is preserved correctly through refresh on the same page.

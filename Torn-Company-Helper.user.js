@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.31.0
+// @version      1.32.0
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -680,15 +680,22 @@
     const fitDelta=info.fitGain!==null?(info.fitGain>=0?"+":"")+info.fitGain.toFixed(1)+" pp":"unknown";
     const more="Current "+info.currentRole+" / stats-fit change "+fitDelta+
       " / actual effectiveness change cannot be forecast reliably";
-    return '<div class="tch-staff-insight-grid">'+
-      '<span class="tch-staff-intel-cell" title="'+esc(info.source)+
-      '"><small>PAY</small><b>'+esc(pay)+'</b></span>'+
-      '<span class="tch-staff-intel-cell '+(info.give>0?'tch-intel-due':'')+
-      '" title="'+esc(info.trainStatus)+'"><small>TRAINS</small><b>'+esc(training)+'</b></span>'+
-      '<span class="tch-staff-intel-cell" title="'+esc(more)+
-      '"><small>BEST STAT FIT</small><b>'+esc(role)+' <em>'+esc(fit)+'</em></b></span>'+
-      '<button type="button" data-tch-act="'+(compact?'employee':'employee-inline')+'" aria-expanded="false" data-id="'+esc(info.id)+
-      '" class="tch-intel-open" title="Open employee breakdown" aria-label="CompanyStaxx details for '+esc(info.name)+'">›</button></div>';
+    const cell=(part,label,value,tip)=>'<button type="button" class="tch-staff-intel-cell" data-tch-act="employee-inline" data-part="'+part+'" data-id="'+esc(info.id)+'" title="'+esc(tip)+'" aria-expanded="false"><small>'+label+'</small><b>'+value+'</b></button>';
+    return '<div class="tch-staff-insight-grid">'+cell('pay','PAY',esc(pay),info.source)+
+      cell('trains','TRAINS',esc(training),info.trainStatus)+cell('fit','BEST STAT FIT',esc(role)+' <em>'+esc(fit)+'</em>',more)+
+      '<button type="button" data-tch-act="'+(compact?'employee':'employee-inline')+'" data-id="'+esc(info.id)+'" class="tch-intel-open" aria-label="Details for '+esc(info.name)+'">&#8250;</button></div>';
+  }
+  function nativeEmployeeDetail(c,info,view){
+    let body='';
+    if(view==='pay'||view==='all')body+='<p><b>Pay basis:</b> '+esc(info.source)+'</p><p>Current '+esc(money(info.wage))+' / day. '+esc(info.payStatus)+'.</p>';
+    if(view==='trains'||view==='all'){
+      body+='<p><b>'+info.due+' owed / '+info.give+' ready</b> / '+esc(info.trainStatus)+'</p>';
+      const events=[...(c.payments||[]).filter(x=>!x.voided&&String(x.playerId)===info.id).map(x=>({ts:x.ts,text:(x.confirmed?'Confirmed payment ':'Unconfirmed payment ')+money(x.amount)+' / '+(x.trains||0)+' credits'})),
+        ...(c.training||[]).filter(x=>!x.voided&&String(x.playerId)===info.id).map(x=>({ts:x.ts,text:'Recorded training / '+(x.units??'?')+' train(s)'}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
+      body+=events.length?'<ul>'+events.map(x=>'<li>'+esc(new Date(Number(x.ts)*1000).toLocaleDateString('en-GB'))+' / '+esc(x.text)+'</li>').join('')+'</ul>':'<p>No payment or training records for this employee.</p>';
+    }
+    if(view==='fit'||view==='all')body+='<p>Current role: <b>'+esc(info.currentRole)+'</b> / '+(info.currentFit===null?'Unknown':info.currentFit.toFixed(0)+'%')+' stat fit.</p><p>Best stat match: <b>'+esc(info.best?.name||'Unknown')+'</b>. Keep essential roles covered; this is not predicted effectiveness or revenue.</p>';
+    return '<div class="tch-native-person-detail"><b>'+esc(info.name)+'</b>'+body+'<button type="button" data-tch-act="employee" data-id="'+esc(info.id)+'">Full employee details</button></div>';
   }
 
   function nativeStaffRosterV128(c,model){
@@ -727,7 +734,8 @@
       const signature=JSON.stringify([c.lastRefresh,info.wage,info.payTarget,info.low,info.high,info.currentFit,
         info.best?.name,info.best?.fit,info.due,info.give,info.trainStatus,info.roleReview,model.stale,info.payStatus,info.fitGain]);
       if(panel.dataset.signature!==signature){
-        panel.innerHTML=staffInsightHTMLV128(info,false);
+        panel.innerHTML=staffInsightHTMLV128(info,false)+(panel.dataset.view?nativeEmployeeDetail(c,info,panel.dataset.view):"");
+        for(const button of panel.querySelectorAll?.('[data-tch-act="employee-inline"]')||[])button.setAttribute("aria-expanded",String((button.dataset.part||"all")===panel.dataset.view));
         panel.dataset.signature=signature;
       }
     }
@@ -2161,6 +2169,7 @@
 
   style.textContent+=".tch-native-person-detail{padding:10px 8px;margin-top:6px;background:#10283f;border-top:1px solid #3b6b8a;color:#eaf6ff;font:12px/1.5 system-ui;overflow-wrap:anywhere}.tch-native-person-detail p{margin:6px 0}.tch-native-person-detail button{background:#16466a;color:white;border:1px solid #4c87ab;border-radius:6px;min-height:36px}#tch-company-owed .tch-native-next button{min-height:36px}#tch-root .tch-deep-dive>summary{padding:12px;cursor:pointer;color:#b9e6ff}";
   style.textContent+="#tch-root .tch-workspace-tools{order:0;padding:8px 13px;border-bottom:1px solid #31516a;color:#cde9fa}#tch-root .tch-workspace-tools summary{cursor:pointer;padding:5px}#tch-root .tch-workspace-tools>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}#tch-root .tch-workspace-tools button{background:#14324c;color:#effaff;border:1px solid #396380;padding:9px;border-radius:6px}#tch-root .tch-homekpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}";
+  style.textContent+="ul.employee-list>li[data-user]>.tch-staff-intel button.tch-staff-intel-cell,#tch-company-owed button.tch-staff-intel-cell{cursor:pointer;text-align:left;min-height:38px!important;border:0!important;border-bottom:1px dotted #5486a8!important}ul.employee-list>li[data-user]>.tch-staff-intel button[aria-expanded=true]{background:#174b70!important}.tch-native-person-detail ul{margin:6px 0;padding-left:18px}";
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
   const root=document.createElement("div");root.id="tch-root";root.hidden=true;document.body.appendChild(root);
@@ -2195,16 +2204,15 @@
     const act=el.dataset.tchAct;
     if(act==="refresh"){void refresh();return;}
     if(act==="employee-inline"){
-      const panel=el.closest(".tch-staff-intel"),old=panel?.querySelector(".tch-native-person-detail");
-      if(old){old.remove();el.setAttribute("aria-expanded","false");return;}
+      const panel=el.closest(".tch-staff-intel")||el.closest(".tch-native-compactstaff"),view=el.dataset.part||'all';
       const c=data.byCompany?.[companyId],info=c&&staffIntelligenceV128(c).byId[el.dataset.id];
       if(!panel||!info)return;
-      const detail=document.createElement("div");detail.className="tch-native-person-detail";
-      detail.innerHTML='<b>'+esc(info.name)+'</b><p>Pay: '+esc(info.source)+'</p><p>Training: '+
-        info.due+' owed / '+info.give+' ready. '+esc(info.trainStatus)+'</p><p>Current role: '+esc(info.currentRole)+
-        '. Best stat fit: '+esc(info.best?.name||"Unknown")+'. Fit is not predicted effectiveness.</p>'+
-        '<button type="button" data-tch-act="employee" data-id="'+esc(info.id)+'">Full employee details</button>';
-      panel.appendChild(detail);el.setAttribute("aria-expanded","true");return;
+      const previous=panel.dataset.view;
+      panel.querySelector(".tch-native-person-detail")?.remove();
+      panel.dataset.view=previous===view?'':view;
+      if(panel.dataset.view)panel.insertAdjacentHTML('beforeend',nativeEmployeeDetail(c,info,view));
+      for(const button of panel.querySelectorAll('[data-tch-act="employee-inline"]'))button.setAttribute('aria-expanded',String((button.dataset.part||'all')===panel.dataset.view));
+      return;
     }
     if(act==="priority"){
       const target=el.dataset.target;
@@ -2522,7 +2530,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.31.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.32.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2861,7 +2869,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.31.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.32.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
