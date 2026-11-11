@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.32.0
+// @version      1.33.0
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -626,12 +626,12 @@
     let target=wage,decision="Hold",change=0;
     let basis=comparable?"Same-role peer check ("+peers.length+" peers)":"Current wage / no reliable comparable pay evidence";
     if(wage!==null&&wage>0&&comparable&&peerPay>wage*1.15){
-      const step=Math.ceil(wage*1.2/1000)*1000;
+      const step=wage+Math.floor(wage/5);
       const suggestion=Math.min(peerPay,step);
       const increase=suggestion-wage;
       if(!a?.known||a.headroom===null){
         basis="Raise candidate / check missing operating data";
-      }else if(a.headroom>=increase){
+      }else if(increase>0&&a.headroom>=increase){
         target=suggestion;change=increase;decision="Review raise";
         basis="Same-role EFF peers ("+peers.length+"), capped at 20% per review";
       }else{
@@ -2530,7 +2530,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.32.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.33.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2647,11 +2647,34 @@
       }).join('')+'</tbody></table></div>'+
       '<p class="tch-hint">Swipe the table horizontally to see every column on a narrow display. Tap Details to review a person individually.</p></section>';
   }
+  // Choices are a temporary scenario for the selected company.
+  let payScenarioCompany=null;
+  const payScenarioIds=new Set();
+  function payrollScenario(c,raises,accounts){
+    if(payScenarioCompany!==c){payScenarioCompany=c;payScenarioIds.clear();}
+    const selected=raises.filter(row=>payScenarioIds.has(row.id));
+    const daily=selected.reduce((sum,row)=>sum+row.payChange,0);
+    const refreshedAt=Date.parse(c.lastRefresh);
+    const age=Date.now()-refreshedAt;
+    const fresh=age>=0&&age<86400000;
+    const headroom=accounts?.known&&fresh?accounts.headroom-daily:null;
+    return '<details class="tch-advanced" id="tch-pay-scenario"'+(selected.length?' open':'')+'>'+
+      '<summary>Compare combined wage changes</summary>'+
+      '<p class="tch-hint">Select the proposed raises you want to review. Income and advertising stay fixed in this scenario.</p>'+
+      (raises.length?raises.map(row=>'<button type="button" data-act="pay-scenario" data-id="'+esc(row.id)+
+        '" aria-pressed="'+payScenarioIds.has(row.id)+'">'+(payScenarioIds.has(row.id)?'Selected: ':'Add ')+
+        esc(row.name)+' +'+esc(money(row.payChange))+'/day</button>').join(' '):'<p>No raises meet the current peer and budget checks.</p>')+
+      '<div class="tch-roleline"><span>Added payroll per day / week</span><strong>'+esc(money(daily))+' / '+esc(money(daily*7))+'</strong></div>'+
+      '<p role="status">'+(headroom===null?'Refresh complete operating figures to check the daily loss limit.':
+        headroom<0?'Over the daily loss limit by '+esc(money(-headroom)):
+        esc(money(headroom))+' left before reaching the daily loss limit')+'</p></details>';
+  }
   function staffPayReviewV129(c){
     const m=staffIntelligenceV128(c),accounts=accounting(c),raises=m.rows.filter(r=>r.payStatus==="Review raise");
     return '<section class="tch-panel"><div class="tch-sectionhead"><h2>Pay decisions</h2>'+
       '<span class="tch-mini">'+raises.length+' salary reviews suggested</span></div>'+
       '<p class="tch-hint">Your current wages are the baseline. We do not advise cutting pay because HR value or a cross-role calculation appears low. A raise is considered only against at least two comparable same-role employees, with known operating-loss headroom.</p>'+
+      payrollScenario(c,raises,accounts)+
       (m.rows.map(function(r){
         return '<button type="button" data-act="employee-detail" data-id="'+esc(r.id)+'" class="tch-pay-review-row">'+
           '<strong>'+esc(r.name)+'</strong><span>'+esc(r.wage===null?'Pay unknown':money(r.wage))+'</span>'+
@@ -2869,7 +2892,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.32.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.33.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -3422,6 +3445,18 @@
       const route=routes[target];tab=route[0];if(tab==="growth")growthView=route[1];
       if(tab==="training")trainingView=route[1];if(tab==="employees")staffView=route[1];detailView="";
       draw();return;
+    }
+    if(act==="pay-scenario"){
+      if(!c||!/^\d+$/.test(el.dataset.id||""))return;
+      const id=el.dataset.id;
+      if(payScenarioIds.has(id))payScenarioIds.delete(id);else payScenarioIds.add(id);
+      draw();
+      const scenario=root.querySelector("#tch-pay-scenario");
+      if(scenario){
+        scenario.open=true;
+        scenario.querySelector('[data-id="'+id+'"]')?.focus({preventScroll:true});
+      }
+      return;
     }
     if (act==="staff-sort"){
       const field=el.dataset.field;if(!["name","wage","eff","fit","gain","owed"].includes(field))return;

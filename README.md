@@ -1,3 +1,7 @@
+## 1.33.0
+
+Select proposed raises together in the Wage helper and see the combined daily and weekly payroll cost and daily loss-limit headroom.
+
 ## 1.32.0 - Native action details
 
 Pay, trains and stat-fit cells are now individual inline controls. Train details include recent payment/training ledger records with confirmed versus unconfirmed labels. Disclosures survive roster refresh. All wage, training and role changes stay manual.
