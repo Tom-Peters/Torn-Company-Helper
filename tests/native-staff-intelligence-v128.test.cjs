@@ -33,7 +33,7 @@ function fixture(){
   addEventListener(){},confirm(){return true;}};window.top=window;window.self=window;
  const marker='  const style=document.createElement("style");';
  assert.ok(source.includes(marker));
- const extra='  globalThis.__staffV128={staffIntelligenceV128,staffInsightHTMLV128,nativeStaffRosterV128,'+
+ const extra='  globalThis.__staffV128={companyDeskV134,staffDeskV134,staffIntelligenceV128,staffInsightHTMLV128,nativeStaffRosterV128,'+
   'syncNativeStaffRowsV128,nativeCompanyDeskHTMLV127,staffBriefV128,staffComparisonV129,'+
   'comparableStaffV129,directorOpportunitiesV129,responsiblePayV129,setCompany(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;}};\n'+marker;
  const sandbox={window,document,location:window.location,Date,Math,Number,Set,Map,JSON,URL,URLSearchParams,Blob,console,
@@ -131,4 +131,24 @@ test("Thin employee markup never renders a large card or a full-width detail but
  assert.doesNotMatch(html,/Recommended pay <i>/);
  assert.doesNotMatch(html,/View employee</);
  assert.match(html,/class="tch-intel-open"/);
+});
+
+test("Director desk prioritises stale data and incomplete or breached accounts before paid trains",()=>{
+ const {api}=fixture(),c=company();
+ assert.match(api.companyDeskV134(c).next.title,/Train Sample Alpha next/);
+ c.profile.income.daily=0;c.lossLimit=0;
+ assert.equal(api.companyDeskV134(c).next.target,"growth-accounts");
+ c.profile.income.daily=null;
+ assert.match(api.companyDeskV134(c).next.title,/missing operating costs/);
+ c.lastRefresh=new Date(Date.now()-3600000).toISOString();
+ assert.equal(api.companyDeskV134(c).next.target,"refresh");
+ assert.match(api.staffInsightHTMLV128(api.staffIntelligenceV128(c).byId["11"],false),/Refresh to verify/);
+});
+test("Phone staff desk exposes owed debt and readiness without requiring the wide comparison table",()=>{
+ const {api}=fixture(),c=company(),html=api.staffDeskV134(c);
+ assert.match(html,/Sample Alpha/);assert.match(html,/Sample Beta/);
+ assert.match(html,/3 owed/);assert.match(html,/2 ready/);
+ assert.match(html,/data-act="staff-filter"/);assert.match(html,/Current fit/);
+ assert.doesNotMatch(html,/<table/);
+ assert.match(api.nativeCompanyDeskHTMLV127(c),/Next paid trains/);
 });

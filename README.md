@@ -1,3 +1,13 @@
+## 1.34.0 - Director and staff workspace overhaul
+
+- Today leads with one next action: stale-data refresh, incomplete accounts, operating-loss breach, oldest eligible paid training or transfer review. Ready paid trains are visible on the page.
+- Staff opens a compact decision view with pay, owed/ready trains, Torn EFF and current stat fit. Filter ready trains, debts, roles or pay reviews; sort without opening a wide table. The full comparison, simulator, wage scenarios and employee history remain available.
+- Growth puts accounts and operating checks first, with star progress and stress scenarios in disclosures.
+- The native company roster shows the next ready paid allocations plus employee-specific pay/train/fit controls. Stale pay guidance requests a refresh. Native disclosures survive data refresh.
+- Scroll and form restoration distinguish companies and individual workspace subpages.
+
+Existing payment reconciliation, oldest-first training, service-company support and loss-limit calculations are preserved. All game changes stay manual. Validated with the unit suite and synthetic DOM flows; live Torn PDA visual validation remains outstanding.
+
 ## 1.33.0
 
 Select proposed raises together in the Wage helper and see the combined daily and weekly payroll cost and daily loss-limit headroom.

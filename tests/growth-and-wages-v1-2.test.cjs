@@ -113,7 +113,7 @@ test("Sunday rating delta needs two separate Sunday data points",()=>{
 });
 test("New UI sections appear only in existing Staff and Growth destinations",()=>{
  const {app,calls}=fixture(),c=company();
- assert.match(app.staffV2(c),/Staff comparison/);
+ assert.match(app.staffV2(c),/Your staff/);
  app.changeView("review");
  assert.match(app.growthV2(c),/Before & after company changes/);
  assert.match(app.growthV2(c),/Sunday star review/);
@@ -123,5 +123,5 @@ test("All remote company actions remain GET-only and no real keys are committed"
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
  assert.match(source,/const PDA_APP_KEY = "###PDA-APIKEY###";/);
  assert.match(source,/\/\/ @author\s+IamEEKY/);
- assert.match(source,/\/\/ @version\s+1\.33\.0/);
+ assert.match(source,/\/\/ @version\s+1\.34\.0/);
 });

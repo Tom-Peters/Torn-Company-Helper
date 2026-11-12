@@ -114,9 +114,9 @@ test("Priority star growth names weak employee and specific train overflow risk"
  const {app}=fixture(),c=company(),moves=app.growthMovesV13(c);
  assert.ok(moves.some(x=>/Alice/.test(x.detail)));
  assert.ok(moves.some(x=>/training|train/i.test(x.title)));
- assert.match(app.homeV13(c),/Priority moves/);
- assert.match(app.homeV13(c),/Wage helper/);
- assert.match(app.homeV13(c),/Training \/ next actions/);
+ assert.match(app.homeV13(c),/DO THIS NEXT/);
+ assert.match(app.homeV13(c),/Payroll review/);
+ assert.match(app.homeV13(c),/Next in the training queue/);
 });
 test("Competitor positions are normalised for own roster size, not blindly copied from large peers",()=>{
  const {app}=fixture(),c=company();
@@ -151,7 +151,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.33\.0/);
+ assert.match(source,/\/\/ @version\s+1\.34\.0/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });

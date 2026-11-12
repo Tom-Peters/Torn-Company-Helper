@@ -57,7 +57,7 @@ test("Mobile UI contains four action-first sections and compact status cards",()
 test("Staff roster and optimisation UI render without Torn writes",()=>{
  const v=app(source);
  const html=v.ui.staffV2(data);
- assert.match(html,/Staff comparison/);
+ assert.match(html,/Your staff/);
  assert.match(html,/SampleEmployee/);
  assert.match(html,/Current fit/);
  assert.match(html,/data-act="employee-detail"/);
@@ -99,7 +99,7 @@ test("Current-role fit is visible independently of Torn effectiveness",()=>{
  const html=ui.staffV2(c);
  assert.match(html,/Current fit/);
  assert.match(html,/100\.0%/);
- assert.match(html,/Torn EFF/);
+ assert.match(html,/TORN EFF/);
 });
 test("Team what-if returns explicit changed roles and score delta",()=>{
  const {ui}=app(source);

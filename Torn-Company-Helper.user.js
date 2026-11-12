@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.33.0
+// @version      1.34.0
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -92,7 +92,7 @@
   const PDA_APP_KEY = "###PDA-APIKEY###";
   function hasPdaKey() {return /^[A-Za-z0-9]{16,64}$/.test(PDA_APP_KEY);}
   function activeApiKey(){return key || (hasPdaKey()?PDA_APP_KEY:"");}
-  let staffView="compare",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35;
+  let staffView="desk",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35;
   let tab = "overview", detailView = "", open = false, busy = false, message = "", severity = "";
   let launcherDragged = false;
   const esc = function (value) {return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});};
@@ -659,7 +659,7 @@
       const due=ledger[key]?.owed||0,readyRow=readyById.get(key),give=readyRow?.give||0;
       const pay=responsiblePayV129(c,p,accounts);
       return {id:key,name:String(p.name||"Employee"),currentRole,currentFit,best,fitGain,
-        roleReview:Boolean(approved?.recommend),due,give,trainStatus:readyRow?.status||(due?"Waiting":"No outstanding debt"),
+        stale:!ready.fresh,roleReview:Boolean(approved?.recommend),due,give,trainStatus:readyRow?.status||(due?"Waiting":"No outstanding debt"),
         wage:pay.wage,payTarget:pay.target,payStatus:pay.decision,payChange:pay.change,
         low:null,high:null,source:pay.basis,peerPay:pay.peerPay,peerCount:pay.peerCount,
         compare:pay.decision==="Review raise"?"Raise review":"Hold / unknown",eff:financialAmount(p.effectiveness?.total),
@@ -673,7 +673,7 @@
   // One thin strip below Torn's own employee row. Detailed explanation stays
   // in the tool, never as repeated multi-card text on the game page.
   function staffInsightHTMLV128(info,compact){
-    const pay=info.payTarget===null?"Unknown":(info.payStatus==="Review raise"?"Review ":"Hold ")+money(info.payTarget);
+    const pay=info.stale?"Refresh to verify":info.payTarget===null?"Unknown":(info.payStatus==="Review raise"?"Review ":"Hold ")+money(info.payTarget);
     const training=info.due?info.due+(info.give?" / "+info.give+" ready":" owed"):"None";
     const role=info.best?info.best.name:"Unknown";
     const fit=info.best?info.best.fit.toFixed(0)+"%":"—";
@@ -681,7 +681,7 @@
     const more="Current "+info.currentRole+" / stats-fit change "+fitDelta+
       " / actual effectiveness change cannot be forecast reliably";
     const cell=(part,label,value,tip)=>'<button type="button" class="tch-staff-intel-cell" data-tch-act="employee-inline" data-part="'+part+'" data-id="'+esc(info.id)+'" title="'+esc(tip)+'" aria-expanded="false"><small>'+label+'</small><b>'+value+'</b></button>';
-    return '<div class="tch-staff-insight-grid">'+cell('pay','PAY',esc(pay),info.source)+
+    return (info.stale?'<small class="tch-native-warning">Saved staff data / refresh needed</small>':'')+'<div class="tch-staff-insight-grid">'+cell('pay','PAY',esc(pay),info.source)+
       cell('trains','TRAINS',esc(training),info.trainStatus)+cell('fit','BEST STAT FIT',esc(role)+' <em>'+esc(fit)+'</em>',more)+
       '<button type="button" data-tch-act="'+(compact?'employee':'employee-inline')+'" data-id="'+esc(info.id)+'" class="tch-intel-open" aria-label="Details for '+esc(info.name)+'">&#8250;</button></div>';
   }
@@ -780,7 +780,7 @@
       stars=financialAmount(profile.rating),slots=financialAmount(profile.employees?.capacity);
     const timestamp=d.updated?new Date(d.updated).toLocaleString("en-GB"):"Not refreshed";
     const urgent=a?.known&&a.headroom<0;
-    const preview=d.rows.slice(0,3).map(function(r){
+    const preview=d.rows.filter(r=>r.give>0).slice(0,3).map(function(r){
       return '<div class="tch-native-row"><span><strong>'+esc(r.name)+'</strong><small>'+esc(r.status)+'</small></span>'+
         '<b>'+r.owed+'</b><b class="tch-native-ready">'+(r.give||'-')+'</b>'+
         '<button type="button" data-tch-act="employee" data-id="'+esc(r.id)+'"'+(r.active?'':' disabled')+'>View</button></div>';
@@ -799,6 +799,7 @@
       (d.pending?'<button type="button" data-tch-act="payments" class="tch-native-review">'+
         d.pending+' unconfirmed transfer(s) / review</button>':'')+
       directorOpportunitiesPanelV129(c,"native")+
+      (d.fresh&&d.ready>0?'<div class="tch-native-queue-preview"><b>Next paid trains</b><div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+preview+'<button type="button" data-tch-act="queue">Review full queue</button></div>':'')+
       '<details class="tch-native-more"><summary>Company KPIs, pay, training and growth</summary>'+
       '<div class="tch-native-dashboard">'+
         '<div><small>Daily P/L (est.)</small><b>'+esc(a?.known?money(a.profit):'Incomplete')+'</b></div>'+
@@ -814,7 +815,7 @@
       nativeStaffRosterV128(c,m)+
       (d.rows.length?'<details class="tch-native-obligations"><summary>Training queue / '+d.owed+' owed</summary>'+
         '<div class="tch-native-cols"><span>Employee</span><span>Owed</span><span>Give</span><span></span></div>'+
-        preview+(d.rows.length>3?'<small>+'+(d.rows.length-3)+' more employees in full queue</small>':'')+
+        d.rows.slice(0,3).map(r=>'<div class="tch-native-row"><span>'+esc(r.name)+'</span><b>'+r.owed+'</b><b>'+r.give+'</b><button data-tch-act="queue">View</button></div>').join('')+(d.rows.length>3?'<small>+'+(d.rows.length-3)+' more employees in full queue</small>':'')+
         '<button type="button" data-tch-act="queue">Open training queue</button></details>':
         '<p class="tch-native-empty">No confirmed outstanding training commitments.</p>')+
       '<small class="tch-native-note">Salary and stat-fit reviews are only estimates; Torn actions stay manual.</small>'+
@@ -824,7 +825,7 @@
   function directorOpportunitiesV129(c){
     if(!c?.profile)return [];
     const moves=[],a=accounting(c),d=trainingDeskV127(c),m=staffIntelligenceV128(c),p=c.profile,
-      updated=Date.parse(c.lastRefresh||""),stale=!Number.isFinite(updated)||Date.now()-updated>1800000;
+      updated=Date.parse(c.lastRefresh||""),stale=!d.fresh;
     function add(rank,title,detail,target,evidence){
       moves.push({rank,title,detail,target,evidence,stale});
     }
@@ -2062,36 +2063,47 @@
     return h;
   }
 
+  function companyDeskV134(c){
+    const a=accounting(c),d=trainingDeskV127(c),staff=staffIntelligenceV128(c);
+    const moves=directorOpportunitiesV129(c);
+    let next=moves[0];
+    if(!d.fresh)next={title:"Refresh before making changes",detail:"Training availability, wages and role advice are based on saved figures. Check the current company first.",target:"refresh"};
+    else if(!a.known)next={title:"Check missing operating costs",detail:"Cannot assess your loss limit without "+a.missing.join(", ")+".",target:"growth-accounts"};
+    else if(a.headroom>=0&&d.ready===0&&d.pending>0)next={title:"Review "+d.pending+" incoming transfers",detail:"Confirm which payments bought training before adding them to the queue.",target:"training-payments"};
+    return {a,d,staff,next,moves,raises:staff.rows.filter(r=>r.payChange>0),roles:staff.rows.filter(r=>r.roleReview)};
+  }
   function homeV13(c){
     if(!c||!c.profile)return introV2();
-    const a=accounting(c),d=trainingDeskV127(c),star=financialAmount(c.profile.rating);
-    const actions=directorBriefV110(c).items.slice(0,3);
-    return '<section class="tch-homehead"><div><small>COMPANY / DAILY DESK</small><h2>'+esc(c.profile.name||"Company")+'</h2>'+
-      '<span class="tch-mini">'+(d.fresh?'Figures current':'Saved figures - refresh recommended')+'</span></div>'+
-      '<div class="tch-home-number">'+(star===null?'?':star)+' / 10 ★</div></section>'+
-      '<div class="tch-homekpis">'+
-        metricV2("Estimated P/L",a.known?money(a.profit):"Incomplete","Revenue less wages and advertising",
-          a.known&&a.headroom<0?"tch-danger":"","growth-accounts")+
-        metricV2("Employees",c.staff.length+" / "+num(c.profile.employees&&c.profile.employees.capacity),"Current company roster","","staff")+
-        metricV2("Training ready",d.ready,d.owed+" confirmed outstanding","","training-queue")+
-        metricV2("Efficiency",c.profile.efficiency==null?"Unknown":c.profile.efficiency+"%","Torn reported","","growth-performance")+
-      '</div>'+directorOpportunitiesPanelV129(c,"today")+'<details class="tch-deep-dive"><summary>Training queue and allocation</summary>'+trainingSpotlightV127(c)+'</details>'+
-      '<details class="tch-deep-dive"><summary>Staff pay, training and role decisions</summary>'+staffBriefV128(c,"today")+'</details>'+
-      '<details class="tch-deep-dive"><summary>Other company checks</summary>'+
-      '<section class="tch-panel"><div class="tch-sectionhead"><h2>What needs attention</h2>'+
-      '<span class="tch-mini">'+actions.length+' prioritised</span></div>'+
-      (actions.length?actions.map(function(r){
-        return '<button type="button" class="tch-insight" data-act="goto" data-target="'+esc(r.target)+'">'+
-          '<strong>'+esc(r.title)+'</strong><small>'+esc(r.why)+'</small><span>Review</span></button>';
-      }).join(''):'<p class="tch-hint">No urgent exception in the saved data.</p>')+'</section></details>'+
-      '<section class="tch-panel"><h2>Quick access</h2><div class="tch-actionrow">'+
-      '<button data-act="goto" data-target="staff-sim">Optimise staff</button>'+
-      '<button data-act="goto" data-target="staff-wages">Wage helper</button>'+
-      '<button data-act="goto" data-target="growth-performance">Growth to 10 stars</button>'+
-      '<button data-act="refresh">Refresh data</button></div></section>'+
-      '<details class="tch-deep-dive"><summary>Detailed trends, diagnostics and what-if scenarios</summary>'+
-      starMomentumPanelV14(c)+growthMovesPanelV13(c)+companyDeltaPanelV111(c)+
-      profitBridgePanelV191(c)+companyStressLabV115(c)+'</details>';
+    const {a,d,staff,next,moves,raises,roles}=companyDeskV134(c);
+    const ready=d.rows.filter(r=>r.give>0),star=financialAmount(c.profile.rating);
+    return '<section class="tch-homehead"><div><small>DIRECTOR DESK</small><h2>'+esc(c.profile.name||"Company")+'</h2><span class="tch-mini">'+(d.fresh?'Current company snapshot':'Saved snapshot')+'</span></div><div class="tch-home-number">'+(star===null?'?':star)+' / 10 ★</div></section>'+
+      '<section class="tch-panel tch-next-decision"><small>DO THIS NEXT</small><h2>'+esc(next.title)+'</h2><p>'+esc(next.detail)+'</p><button class="primary" data-act="goto" data-target="'+esc(next.target)+'">'+(next.target==='refresh'?'Refresh company':'Review next action')+'</button></section>'+
+      '<div class="tch-homekpis">'+metricV2('Estimated P/L',a.known?money(a.profit):'Incomplete','Revenue less wages and advertising',a.known&&a.headroom<0?'tch-danger':'','growth-accounts')+
+      metricV2('Loss headroom',a.known?money(a.headroom):'Unknown','Against your '+money(c.lossLimit)+' daily limit','','growth-accounts')+
+      metricV2('Trains ready',d.ready,d.owed+' owed / '+(d.available===null?'?':d.available)+' available','','training-queue')+
+      metricV2('Staff to review',roles.length+' roles / '+raises.length+' pay',staff.rows.length+' employees; proposals only','','staff')+'</div>'+
+      '<section class="tch-panel"><div class="tch-sectionhead"><h2>Next in the training queue</h2><button data-act="goto" data-target="training-queue">Full queue</button></div>'+
+      (ready.length?ready.slice(0,3).map(r=>'<button class="tch-queueitem tch-taprow" data-act="employee-detail" data-id="'+esc(r.id)+'"><span><strong>'+esc(r.name)+'</strong><small>'+r.owed+' owed / oldest '+esc(day(r.oldest))+'</small></span><b>Give '+r.give+'</b></button>').join(''):
+        '<p>'+(!d.fresh?'Refresh to check who can receive trains.':d.owed?'No paid allocation is ready. Check available trains and employee eligibility.':'No outstanding confirmed paid trains.')+'</p>')+
+      (d.pending?'<button data-act="goto" data-target="training-payments">Review '+d.pending+' unconfirmed transfers</button>':'')+
+      '<p class="tch-hint">Oldest eligible paid debt first. Training is performed in Torn; sync history afterwards.</p></section>'+
+      '<section class="tch-panel"><h2>Manage the company</h2><div class="tch-actiongrid"><button data-act="goto" data-target="staff">Staff decisions<span>Pay, roles and trains together</span></button><button data-act="goto" data-target="growth-performance">Grow toward 10 stars<span>Costs, coverage and observed progress</span></button><button data-act="goto" data-target="staff-wages">Payroll review<span>Check combined changes against the loss limit</span></button><button data-act="tab" data-tab="stock">'+(['service','no-products'].includes(stockModeV117(c))?'Service performance':'Stock and supplies')+'<span>Company-specific operations</span></button></div></section>'+
+      '<details class="tch-deep-dive" id="tch-desk-other"><summary>Other checks ('+moves.length+')</summary>'+directorOpportunitiesPanelV129(c,'today')+'</details>'+
+      '<details class="tch-deep-dive" id="tch-desk-history"><summary>Trends, changes and scenarios</summary>'+starMomentumPanelV14(c)+growthMovesPanelV13(c)+companyDeltaPanelV111(c)+profitBridgePanelV191(c)+companyStressLabV115(c)+'</details>';
+  }
+  let staffDeskFilter='all';
+  function staffDeskV134(c){
+    const m=staffIntelligenceV128(c),all=comparableStaffV129(c);
+    const filters={all:'All staff',ready:'Ready to train',owed:'Trains owed',roles:'Role reviews',pay:'Pay reviews'};
+    const rows=all.filter(r=>staffDeskFilter==='ready'?r.give>0:staffDeskFilter==='owed'?r.due>0:staffDeskFilter==='roles'?r.roleReview:staffDeskFilter==='pay'?r.payChange>0:true);
+    return '<section class="tch-panel"><h2>Your staff / '+rows.length+' of '+all.length+'</h2>'+
+      (!m.stale?'':'<p class="tch-hint">Saved staff snapshot. Refresh before acting on pay or role suggestions.</p>')+
+      '<div class="tch-sortbuttons" aria-label="Filter staff">'+Object.entries(filters).map(([id,label])=>'<button data-act="staff-filter" data-value="'+id+'" aria-pressed="'+(staffDeskFilter===id)+'" class="'+(staffDeskFilter===id?'active':'')+'">'+label+'</button>').join('')+'</div>'+
+      '<div class="tch-sortbuttons" aria-label="Sort staff">'+[['name','Name'],['owed','Owed'],['eff','EFF'],['wage','Pay']].map(([id,label])=>'<button data-act="staff-sort" data-field="'+id+'" aria-pressed="'+(companyStaffSortV129===id)+'">'+label+(companyStaffSortV129===id?(companyStaffSortDescV129?' ↓':' ↑'):'')+'</button>').join('')+'</div>'+
+      (rows.length?rows.map(r=>'<article class="tch-staff-card"><div class="tch-sectionhead"><div><strong>'+esc(r.name)+'</strong><small>'+esc(r.currentRole)+'</small></div><button data-act="employee-detail" data-id="'+esc(r.id)+'">Review</button></div>'+
+        '<div class="tch-staff-facts"><div><small>PAY / DAY</small><b>'+esc(r.wage===null?'Unknown':money(r.wage))+'</b><small>'+esc(r.payChange?'Review +'+money(r.payChange):r.payStatus)+'</small></div><div><small>TRAINS</small><b>'+r.due+' owed</b><small>'+esc(r.give?r.give+' ready':r.trainStatus)+'</small></div><div><small>TORN EFF</small><b>'+esc(r.eff===null?'Unknown':r.eff)+'</b><small>Current fit '+fitText(r.currentFit)+'</small></div></div>'+
+        (r.roleReview?'<p class="tch-staff-change">Review '+esc(r.best?.name||'position')+' / '+esc(r.fitGain===null?'unknown fit change':'+'+r.fitGain.toFixed(1)+' pp stat fit')+'</p>':'')+
+        '<details id="tch-staff-basis-'+r.id+'"><summary>Pay and role evidence</summary><p>'+esc(r.source)+'</p><p>Best stat match: '+esc(r.best?.name||'Unknown')+'. Preserve essential team roles. Fit does not predict effectiveness or revenue.</p></details></article>').join(''):'<p>No staff match this filter.</p>')+'</section>';
   }
   const style=document.createElement("style"); style.id="tch-css";
   style.textContent="#tch-open{position:fixed;right:16px;bottom:72px;z-index:2147483645;background:#1d8b81;color:white;border:0;border-radius:24px;padding:12px 17px;font-weight:800;box-shadow:0 5px 20px #000a}#tch-root{position:fixed;inset:0;z-index:2147483646;background:#0e141e;color:#eef5fa;overflow:auto;font:14px/1.45 system-ui,Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}#tch-root *{box-sizing:border-box}#tch-root header{position:sticky;top:0;background:#151f2d;border-bottom:1px solid #354257;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:1}#tch-root main{padding:12px;max-width:1100px;margin:auto}#tch-root h2{font-size:17px;margin:15px 0 8px}#tch-root h3{font-size:15px;margin:4px 0 10px}#tch-root p{margin:8px 0;color:#b6c7d7}#tch-root .muted{font-size:12px;color:#a1b4c6}#tch-root .nav{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;background:#141e2b}#tch-root button,#tch-root select,#tch-root input,#tch-root textarea{font:inherit}#tch-root button{background:#273a50;border:1px solid #45617a;color:#f2faff;border-radius:9px;padding:9px 11px;cursor:pointer}#tch-root button.primary,#tch-root .nav button.active{background:#13877e;border-color:#22aaa0}#tch-root button:disabled{opacity:.5}#tch-root .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}#tch-root .card{background:#192637;border:1px solid #30465a;border-radius:12px;padding:13px;margin-bottom:10px;min-width:0}#tch-root .value{font-size:22px;font-weight:800;word-break:break-word}#tch-root .good{color:#57dab3}#tch-root .bad{color:#ff8585}#tch-root .warn{color:#ffcf7c}#tch-root .tag{background:#243a4f;border-radius:5px;padding:2px 5px}#tch-root table{border-collapse:collapse;width:100%;min-width:510px}#tch-root th,#tch-root td{border-bottom:1px solid #334558;text-align:left;padding:10px 7px}#tch-root th{color:#a7bdcf;font-weight:600}#tch-root .scroll{overflow:auto}#tch-root input,#tch-root select,#tch-root textarea{background:#101b28;color:#fff;border:1px solid #4b6279;border-radius:7px;padding:10px;max-width:100%;min-width:0}#tch-root input[type=number]{width:130px}#tch-root label{display:block;margin:9px 0 5px}#tch-root .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#tch-root .pill{background:#34485d;padding:4px 8px;border-radius:20px}#tch-root .notice{padding:11px;border:1px solid #876f41;background:#393220;border-radius:9px;margin:10px 0}#tch-root .actions{display:flex;gap:7px;flex-wrap:wrap}#tch-root .bar{height:8px;background:#314559;border-radius:6px;overflow:hidden}#tch-root .bar b{display:block;height:100%;background:#1fc5ad}#tch-root .spacer{height:12px}@media(min-width:750px){#tch-root .grid{grid-template-columns:repeat(4,minmax(0,1fr))}#tch-root main{padding:20px}}";
@@ -2170,6 +2182,7 @@
   style.textContent+=".tch-native-person-detail{padding:10px 8px;margin-top:6px;background:#10283f;border-top:1px solid #3b6b8a;color:#eaf6ff;font:12px/1.5 system-ui;overflow-wrap:anywhere}.tch-native-person-detail p{margin:6px 0}.tch-native-person-detail button{background:#16466a;color:white;border:1px solid #4c87ab;border-radius:6px;min-height:36px}#tch-company-owed .tch-native-next button{min-height:36px}#tch-root .tch-deep-dive>summary{padding:12px;cursor:pointer;color:#b9e6ff}";
   style.textContent+="#tch-root .tch-workspace-tools{order:0;padding:8px 13px;border-bottom:1px solid #31516a;color:#cde9fa}#tch-root .tch-workspace-tools summary{cursor:pointer;padding:5px}#tch-root .tch-workspace-tools>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}#tch-root .tch-workspace-tools button{background:#14324c;color:#effaff;border:1px solid #396380;padding:9px;border-radius:6px}#tch-root .tch-homekpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}";
   style.textContent+="ul.employee-list>li[data-user]>.tch-staff-intel button.tch-staff-intel-cell,#tch-company-owed button.tch-staff-intel-cell{cursor:pointer;text-align:left;min-height:38px!important;border:0!important;border-bottom:1px dotted #5486a8!important}ul.employee-list>li[data-user]>.tch-staff-intel button[aria-expanded=true]{background:#174b70!important}.tch-native-person-detail ul{margin:6px 0;padding-left:18px}";
+  style.textContent += '#tch-root .tch-next-decision{border-left:4px solid #59cfff!important}#tch-root .tch-next-decision>small{letter-spacing:.1em;color:#88ddff}#tch-root .tch-staff-card{padding:14px 0;border-top:1px solid #355570}#tch-root .tch-staff-card .tch-sectionhead small{display:block;color:#b4cede}#tch-root .tch-staff-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}#tch-root .tch-staff-facts b,#tch-root .tch-staff-facts small{display:block;overflow-wrap:anywhere}#tch-root .tch-staff-facts b{font-size:16px}#tch-root .tch-staff-facts small{font-size:11px;color:#b4cede}#tch-root .tch-staff-change{border-left:2px solid #59cfff;padding-left:9px}#tch-root .tch-staff-card details{font-size:12px}#tch-root .tch-sortbuttons{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0}#tch-root .tch-sortbuttons button{min-height:40px}#tch-root summary{cursor:pointer;min-height:40px;padding:9px 0}#tch-root .tch-queueitem small{display:block}#tch-company-owed .tch-native-queue-preview{border-top:1px solid #355570;margin-top:10px;padding-top:10px}#tch-root.theme-light .tch-staff-facts small,#tch-root.theme-light .tch-staff-card .tch-sectionhead small{color:#34576b}@media(max-width:420px){#tch-root .tch-staff-facts{gap:5px}#tch-root .tch-staff-facts b{font-size:14px}}';
   document.documentElement.appendChild(style);
   const opener=document.createElement("button"); opener.id="tch-open";opener.type="button";opener.textContent="Company Helper";document.body.appendChild(opener);
   const root=document.createElement("div");root.id="tch-root";root.hidden=true;document.body.appendChild(root);
@@ -2192,10 +2205,15 @@
     const nativeShown=typeof document.querySelectorAll==="function"&&
       [...document.querySelectorAll('ul.employee-list > li[data-user]')].some(li=>
         (c?.staff||[]).some(p=>String(p.id)===String(li.getAttribute("data-user"))));
-    const signature=JSON.stringify([companyId,c?.lastRefresh,d.owed,d.ready,d.pending,d.available,d.overflow,
+    const signature=JSON.stringify([companyId,c?.lastRefresh,d.fresh,d.owed,d.ready,d.pending,d.available,d.overflow,
       c?.staff?.map(p=>[p.id,p.wage,p.value,p.position?.name,p.stats,p.effectiveness?.total]),
       nativeShown,d.rows.map(r=>[r.id,r.owed,r.give,r.status,r.oldest])]);
-    if(inlineCompanySignatureV127!==signature){panel.innerHTML=nativeCompanyDeskHTMLV127(c);inlineCompanySignatureV127=signature;}
+    if(inlineCompanySignatureV127!==signature){
+      const expanded=new Set([...(panel.querySelectorAll?.('details')||[])].filter(x=>x.open).map(x=>x.className));
+      panel.innerHTML=nativeCompanyDeskHTMLV127(c);
+      for(const detail of panel.querySelectorAll?.('details')||[])detail.open=expanded.has(detail.className);
+      inlineCompanySignatureV127=signature;
+    }
   }
   document.addEventListener?.("click",function(evt){
     const el=evt.target?.closest?.("#tch-company-owed [data-tch-act], ul.employee-list > li[data-user] .tch-staff-intel [data-tch-act]");
@@ -2222,13 +2240,13 @@
       // Explicit section routing also works when the target is not on the current tab.
       detailView="";message="";
       if(target?.startsWith("training")){tab="training";trainingView="queue";}
-      else if(target?.startsWith("staff")){tab="employees";staffView=target==="staff-wages"?"wages":target==="staff-sim"?"simulator":"compare";}
+      else if(target?.startsWith("staff")){tab="employees";staffView=target==="staff-wages"?"wages":target==="staff-sim"?"simulator":"desk";}
       else {tab="growth";growthView=target==="growth-accounts"?"accounts":"performance";}
       draw();return;
     }
     detailView="";message="";companyAlertFocus="";
     if(act==="employee"&&el.dataset.id){tab="employees";staffView="detail";selectedEmployee=el.dataset.id;}
-    else if(act==="wages"||act==="staff"){tab="employees";staffView=act==="wages"?"wages":"compare";}
+    else if(act==="wages"||act==="staff"){tab="employees";staffView=act==="wages"?"wages":"desk";}
     else if(act==="growth"){tab="growth";growthView="performance";}
     else if(act==="overview"){tab="overview";}
     else{tab="training";trainingView=act==="payments"?"payments":"queue";}
@@ -2530,7 +2548,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.33.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.34.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2690,12 +2708,14 @@
     if(!c||!c.staff||!c.staff.length)return introV2();
     if(staffView==="detail")return employeeDetail(c,selectedEmployee);
     const options=[
+      {action:"staff-view",id:"desk",name:"Decisions",active:staffView==="desk"},
       {action:"staff-view",id:"positions",name:"Suggestions",active:staffView==="positions"},
       {action:"staff-view",id:"compare",name:"Compare all",active:staffView==="compare"},
       {action:"staff-view",id:"roster",name:"Roster",active:staffView==="roster"},
       {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
       {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
+    if(staffView==="desk")return '<div class="tch-section"><h2>Staff</h2>'+buttonsV2("Staff view",options)+'</div>'+staffDeskV134(c);
     if(staffView==="compare")return '<div class="tch-section"><h2>Team decisions</h2>'+buttonsV2("Staff view",options)+'</div>'+staffComparisonV129(c);
     if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+staffPayReviewV129(c)+
       '<details class="tch-advanced"><summary>Detailed HR values, wage bands & scenarios</summary>'+wagesPanelV11(c)+wageRiskPanelV12(c)+'</details>';
@@ -2879,20 +2899,20 @@
       {action:"growth-view",id:"rivals",name:"Rivals",active:growthView==="rivals"},
       {action:"growth-view",id:"review",name:"Sunday review",active:growthView==="review"}]);
     return '<div class="tch-section"><h2>10-star growth</h2><p>Revenue improvement within your daily loss limit of '+esc(money(c.lossLimit))+'. Estimates are labelled.</p>'+switches+'</div>'+
-      (growthView==="performance"?starMomentumPanelV14(c)+directorOpportunitiesPanelV129(c,"growth")+growthMovesPanelV13(c)+companyStressLabV115(c)+'<div class="tch-metrics">'+
+      (growthView==="performance"?'<div class="tch-metrics">'+
          metricV2("Current rating",c.profile.rating+" / 10","Competitive star progression","","growth-performance")+
          metricV2("Daily revenue",money(a.revenue),"Reported by Torn","","growth-accounts")+
          metricV2("Wages",money(a.wages),"Current daily staff wages","","growth-accounts")+
          metricV2("Advertising",money(a.ad),"Current daily spend","","growth-pricing")+'</div>'+
          '<section class="tch-panel"><h2>Profit and growth</h2><div class="tch-highlight-number">'+esc(a.known?money(a.profit):"Incomplete")+'</div><p>Estimated operating P/L after current wages and advertising, excluding unknown costs.</p>'+
-         '<div class="tch-priority '+(!a.known?"warning":a.headroom<0?"danger":"ok")+'"><span>'+(!a.known?"?":a.headroom<0?"!":"✓")+'</span><div><strong>'+esc(a.known?money(a.headroom):"Unknown")+' headroom</strong><small>'+(!a.known?"Financial inputs are incomplete; loss policy cannot be assessed.":"Relative to permitted −"+esc(money(c.lossLimit))+" daily operating result")+'</small></div></div></section>'+growthAdvisorV2(c):
+         '<div class="tch-priority '+(!a.known?"warning":a.headroom<0?"danger":"ok")+'"><span>'+(!a.known?"?":a.headroom<0?"!":"✓")+'</span><div><strong>'+esc(a.known?money(a.headroom):"Unknown")+' headroom</strong><small>'+(!a.known?"Financial inputs are incomplete; loss policy cannot be assessed.":"Relative to permitted −"+esc(money(c.lossLimit))+" daily operating result")+'</small></div></div></section>'+growthAdvisorV2(c)+'<details class="tch-deep-dive" id="tch-growth-progress"><summary>Star progress and priority moves</summary>'+starMomentumPanelV14(c)+directorOpportunitiesPanelV129(c,"growth")+growthMovesPanelV13(c)+'</details><details class="tch-deep-dive" id="tch-growth-stress"><summary>What if revenue changes?</summary>'+companyStressLabV115(c)+'</details>':
       growthView==="pricing"?growth(c):growthView==="rivals"?rivalsPanelV11(c)+rivalRostersPanelV12(c):
       growthView==="review"?sundayPanelV12(c)+changeTrackingPanelV12(c):finances(c));
   }
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.33.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.34.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -2941,7 +2961,9 @@
       document.dispatchEvent?.(new CustomEvent('staxx:panel',{detail:{id:'company',open:visible}}));
     }
     if(!open)return;
-    const pageKey=detailView?'detail:'+detailView:tab;
+    const pageKey=String(companyId||'none')+':'+(detailView?'detail:'+detailView:
+      tab==='employees'?tab+':'+staffView+':'+(selectedEmployee||''):
+      tab==='training'?tab+':'+trainingView:tab==='growth'?tab+':'+growthView:tab);
     const oldMain=root.querySelector?.('.tch-main'),oldFocused=document.activeElement;
     if(companyRenderedPage)companyScrollPositions[companyRenderedPage]={root:root.scrollTop,main:oldMain?.scrollTop||0};
     let savedForm=null;
@@ -3439,7 +3461,7 @@
       const target=el.dataset.target;
       const routes={"growth-performance":["growth","performance"],"growth-accounts":["growth","accounts"],
         "growth-pricing":["growth","pricing"],"training-queue":["training","queue"],
-        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","compare"],"staff-sim":["employees","simulator"],"staff-wages":["employees","wages"],"growth-rivals":["growth","rivals"],"growth-review":["growth","review"],"stock":["stock",""]};
+        "training-payments":["training","payments"],"training-history":["training","history"],"staff":["employees","desk"],"staff-sim":["employees","simulator"],"staff-wages":["employees","wages"],"growth-rivals":["growth","rivals"],"growth-review":["growth","review"],"stock":["stock",""]};
       if(target==="refresh"){refresh();return;}
       if(!Object.prototype.hasOwnProperty.call(routes,target))return;
       const route=routes[target];tab=route[0];if(tab==="growth")growthView=route[1];
@@ -3458,6 +3480,7 @@
       }
       return;
     }
+    if (act==="staff-filter"){if(["all","ready","owed","roles","pay"].includes(el.dataset.value))staffDeskFilter=el.dataset.value;draw();return;}
     if (act==="staff-sort"){
       const field=el.dataset.field;if(!["name","wage","eff","fit","gain","owed"].includes(field))return;
       if(field===companyStaffSortV129)companyStaffSortDescV129=!companyStaffSortDescV129;

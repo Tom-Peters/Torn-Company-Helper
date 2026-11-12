@@ -90,8 +90,8 @@ test("Runway respects funds and excludes unreported stock costs",()=>{
 test("All reworked screens render without API requests or gameplay actions",()=>{
   const {app,calls}=fixture(),c=example();
   assert.match(app.todayV2(c),/Director radar/);
-  assert.match(app.staffV2(c),/Staff comparison/);
-  assert.match(app.staffV2(c),/Sort employees/);
+  assert.match(app.staffV2(c),/Your staff/);
+  assert.match(app.staffV2(c),/Sort staff/);
   assert.match(app.trainingV2(c),/Train capacity & allocation/);
   assert.match(app.stockV3(c),/Service operations/);
   assert.ok(!app.stockAdviceV3(c).length,"Fitness Center must not report phantom products");
@@ -99,7 +99,7 @@ test("All reworked screens render without API requests or gameplay actions",()=>
   assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
 test("Version remains in one userscript URL and private key placeholder remains intact",()=>{
-  assert.match(script,/\/\/ @version\s+1\.33\.0/);
+  assert.match(script,/\/\/ @version\s+1\.34\.0/);
   assert.match(script,/https:\/\/raw\.githubusercontent\.com\/Tom-Peters\/Torn-Company-Helper\/main\/Torn-Company-Helper\.user\.js|@namespace\s+https:\/\/github\.com\/Tom-Peters\/Torn-Company-Helper/);
   assert.match(script,/const PDA_APP_KEY = "###PDA-APIKEY###";/);
 });
