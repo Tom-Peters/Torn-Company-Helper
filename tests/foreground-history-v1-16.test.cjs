@@ -34,3 +34,13 @@ test("all auto reads remain GET-only and scheduled only while visible",()=>{
  assert.match(source,/setInterval\(function\(\)\{void autoCompanyRefreshV112\(true\);\},60000\)/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
+test("Numeric money-log filters permit one bounded automatic payment-history page",async()=>{
+ const calls=[],c={profile:{id:1},logTypes:"1000,1001",logNext:{to:"40"},autoHistoryNextV116:"money"};
+ const sync=vm.runInNewContext(code+";autoHistoryBackfillV116",{
+   read:async(path)=>{calls.push(path);return {log:[{id:"receipt",timestamp:30}]};},
+   importPageDecision:()=>({next:null,warning:null}),mergeIncomingLogsV13:x=>{x.merged=true;},
+   normaliseNewsResponse:x=>x,mergeTrainingNewsV13:()=>{throw Error("Wrong route");}
+ });
+ await sync(c);
+ assert.deepEqual(calls,["user/log"]);assert.equal(c.merged,true);assert.equal(c.autoMoneyHistoryDoneV116,true);
+});

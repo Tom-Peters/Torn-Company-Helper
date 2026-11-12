@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.34.0
+// @version      1.35.0
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -172,42 +172,101 @@
     });
   }
 
+  // Roster membership changes never rewrite the player-ID keyed ledger.
+  function reconcileRosterV135(c,profile,incoming){
+    if(!Array.isArray(incoming))throw Error("Employee response is missing; saved roster preserved.");
+    const ids=new Set();
+    for(const person of incoming){
+      const id=Number(person?.id);
+      if(!Number.isSafeInteger(id)||id<=0||typeof person.name!=="string"||!person.name.trim()||ids.has(String(id)))
+        throw Error("Employee response is invalid or duplicated; saved roster preserved.");
+      ids.add(String(id));
+    }
+    const expected=financialAmount(profile?.employees?.hired);
+    if(expected!==null&&(!Number.isSafeInteger(expected)||expected<0||expected!==incoming.length))
+      throw Error("Employee count does not match the company profile; saved roster preserved. Refresh again.");
+    if(incoming.length===0&&expected!==0)throw Error("Empty roster is not confirmed by the company profile; saved roster preserved.");
+    const previous=new Map(),archive=new Map(),at=new Date().toISOString();
+    for(const person of [...(c.previousStaff||[]),...(c.staff||[])])if(person?.id)previous.set(String(person.id),person);
+    for(const person of c.archived||[])if(person?.id)archive.set(String(person.id),person);
+    let departed=0,returned=0;
+    for(const [id,person] of previous)if(!ids.has(id)){
+      if(!archive.has(id))departed++;
+      archive.set(id,{...archive.get(id),...person,archivedAt:archive.get(id)?.archivedAt||at});
+    }
+    const staff=incoming.map(person=>{
+      const id=String(person.id),old=previous.get(id),archived=archive.get(id);
+      const names=[...(old?.aliases||[]),...(archived?.aliases||[]),old?.name,archived?.name]
+        .filter(name=>typeof name==='string'&&name&&name!==person.name);
+      const back=Boolean(archived&&!old);
+      if(back)returned++;
+      archive.delete(id);
+      return {...person,aliases:[...new Set(names)],returnedAt:back?at:old?.returnedAt||null};
+    });
+    c.staff=staff;c.archived=[...archive.values()];
+    c.previousStaff=staff.map(p=>({id:p.id,name:p.name,aliases:p.aliases,returnedAt:p.returnedAt}));
+    c.rosterSync={at,departed,returned};
+    return {departed,returned};
+  }
+
   function cleanNews(source) {
     return String(source||"").replace(/<[^>]*>/g," ").replace(/&(?:nbsp|amp|quot|lt|gt);/gi,function(v){
       return {"&nbsp;":" ","&amp;":"&","&quot;":'"',"&lt;":"<","&gt;":">"}[v.toLowerCase()]||" ";
     }).replace(/\s+/g," ").trim();
   }
   function matchTrainingNews(news,c) {
-    const raw=String(news.text||""), text=cleanNews(raw);
-    if(!/\btrain(?:ed|ing)?\b/i.test(text)) return {status:"review",reason:"Training action not identified"};
-    const candidates=[], seen={};
-    (c.staff||[]).concat(c.archived||[]).forEach(function(p){
-      if (!p || !p.id || !p.name || seen[p.id]) return;
-      seen[p.id]=true;
-      const escaped=String(p.name).replace(/[^a-zA-Z0-9_]/g,function(ch){return String.fromCharCode(92)+ch;});
-      const re=new RegExp("(^|[^A-Za-z0-9_-])"+escaped+"(?=$|[^A-Za-z0-9_-])","i");
-      if(re.test(text)) candidates.push(p);
+    const raw=String(news.text||"");
+    const people=new Map();
+    for(const p of [...(c.archived||[]),...(c.staff||[])])if(p?.id&&p.name)people.set(String(p.id),p);
+    // Profile links identify renamed staff independently of the visible name.
+    const linked=raw.replace(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>[\s\S]*?<\/a>/gi,function(anchor,quote,href){
+      try{
+        const u=new URL(href.replace(/&amp;/gi,"&"),"https://www.torn.com/");
+        const id=u.searchParams.get("XID")||u.searchParams.get("xid");
+        if(u.protocol==='https:'&&['www.torn.com','torn.com'].includes(u.hostname)&&u.pathname==='/profiles.php'&&/^[1-9][0-9]*$/.test(id||''))return ' __tch_player_'+id+'__ ';
+      }catch(_){}
+      return anchor;
     });
+    const text=cleanNews(linked);
+    if(!/\btrain(?:ed|ing)?\b/i.test(text)) return {status:"review",reason:"Training action not identified"};
+    const candidates=[];
+    for(const p of people.values()){
+      for(const name of new Set([p.name,...(p.aliases||[]),'__tch_player_'+p.id+'__'])){
+        const escaped=String(name).replace(/[^a-zA-Z0-9_]/g,function(ch){return String.fromCharCode(92)+ch;});
+        const re=new RegExp("(^|[^A-Za-z0-9_-])"+escaped+"(?=$|[^A-Za-z0-9_-])","i");
+        if(re.test(text))candidates.push({...p,matchName:name});
+      }
+    }
     let recipient=null;
     const targeted=candidates.filter(function(p){
-      const escaped=String(p.name).replace(/[^a-zA-Z0-9_]/g,function(ch){return String.fromCharCode(92)+ch;});
+      const escaped=String(p.matchName||p.name).replace(/[^a-zA-Z0-9_]/g,function(ch){return String.fromCharCode(92)+ch;});
       return new RegExp("\\btrained?\\s+(?:employee\\s+)?"+escaped+"(?=$|\\W)","i").test(text) ||
         new RegExp("(^|\\W)"+escaped+"\\s+(?:was\\s+trained|has\\s+been\\s+trained|received\\s+(?:a\\s+)?train)","i").test(text) ||
         new RegExp("\\b(?:training\\s+(?:for|to)|train\\s+given\\s+to)\\s+"+escaped+"(?=$|\\W)","i").test(text);
     });
-    if(targeted.length===1) recipient=targeted[0];
+    if(new Set(targeted.map(p=>String(p.id))).size===1) recipient=targeted[0];
     // A lone employee name without recipient language is not reliable enough to debit training.
     if(!recipient) return {status:"review",reason:candidates.length>1?"Multiple employees mentioned":"Employee not recognised"};
-    const amount=text.match(/\btrained\s+(\d{1,2})\s+times\b/i) || text.match(/\b(\d{1,2})\s+training\s+sessions?\b/i);
-    const units=amount?Number(amount[1]):1;
+    const counts=[...text.matchAll(/\b(\d+)\s+(?:times|training\s+sessions?)\b/gi)].map(m=>Number(m[1]));
+    if(new Set(counts).size>1)return {status:"review",reason:"Conflicting training counts"};
+    const units=counts.length?counts[0]:1;
     if(units<1 || units>20) return {status:"review",reason:"Invalid training count"};
-    return {status:"matched",playerId:Number(recipient.id),units:units,name:recipient.name};
+    return {status:"matched",playerId:Number(recipient.id),units:units,name:recipient.name,explicitCount:counts.length>0};
   }
   function reconcileTraining(c) {
-    let matched=0,review=0;
+    let matched=0,review=0,corrected=0;
     c.news.forEach(function(n){
-      if(c.training.some(function(t){return canonicalTrainingSource(t)==="news:"+n.id;}))return;
+      const existing=c.training.find(t=>canonicalTrainingSource(t)==="news:"+n.id);
       const result=matchTrainingNews(n,c);
+      if(existing){
+        // Repair only our own automatic count, never a director's correction or void.
+        if(!existing.voided&&existing.source==="company-news-auto"&&result.status==="matched"&&result.explicitCount&&
+          Number(existing.playerId)===Number(result.playerId)&&Number(existing.units)!==result.units){
+          existing.previousUnits=existing.units;existing.units=result.units;existing.correctedAt=stamp();
+          existing.correctionReason="Re-read explicit training count from the same Torn news ID";corrected++;
+        }
+        return;
+      }
       if(result.status!=="matched"){n.matchStatus="review";n.matchReason=result.reason;review++;return;}
       // If the director manually recorded a train within 15 minutes of Torn news,
       // bind its existing ledger row to the source rather than counting a second train.
@@ -226,7 +285,7 @@
         sourceId:"news:"+n.id,source:"company-news-auto",confirmed:true});
       n.matchStatus="matched";n.matchedPlayerId=result.playerId;matched++;
     });
-    return {matched:matched,review:review};
+    return {matched:matched,review:review,corrected:corrected};
   }
   function findMoneyTypes(raw) {
     return assertArray(raw.logtypes).filter(function(t){
@@ -1596,7 +1655,7 @@
       if(!n || (onlyNew && !onlyNew.has(String(n.id))) || n.matchStatus==="ignored" || isApprovedLog(c,n.id))return;
       const source="log:"+String(n.id);
       if((c.payments||[]).some(function(p){return p.sourceId===source && (p.voided || isApprovedLogPayment(p));}))return;
-      if(!Number.isFinite(Number(c.autoCreditSince)) || Number(n.timestamp)<Number(c.autoCreditSince))return;
+      if(!Number.isFinite(Number(c.autoCreditSince)) || !Number.isFinite(Number(n.timestamp)) || Number(n.timestamp)<=0 || Number(n.timestamp)>stamp()+60 || Number(n.timestamp)<Number(c.autoCreditSince))return;
       const match=exactPaidTrainingV13(c,n);
       if(!match){result.review++;return;}
       const manualOverlap=(c.payments||[]).some(function(p){
@@ -1655,7 +1714,7 @@
           detail:'Official training-news record matched to a non-voided training entry'}))}}));
     }
     c.newsSyncAt=new Date().toISOString();
-    return {added:added,matched:result.matched,review:result.review};
+    return {added:added,matched:result.matched,review:result.review,corrected:result.corrected};
   }
   async function syncRecentNewsV13(c){
     const result=await read("company/news",{cat:"training",limit:"100",sort:"DESC"});
@@ -1676,7 +1735,6 @@
       return Object.assign({id:pair[0]},pair[1]);
     });
     let added=0;
-    const newlySeen=new Set();
     list.forEach(function(log){
       if(!log || log.id==null || !Number.isFinite(Number(log.timestamp)))return;
       const k=String(log.id),guess=parseIncomingLog(log,c);
@@ -1685,13 +1743,13 @@
         if(!existing.suggestion || existing.suggestion.status==="review")existing.suggestion=guess;
         return;
       }
-      newlySeen.add(k);added++;
+      added++;
       c.logs.push({id:k,timestamp:Number(log.timestamp),
         title:String(log.details&&log.details.title||log.title||"Incoming money").slice(0,160),
         suggestion:guess});
     });
     repairImportDuplicates(c);
-    const credited=autoCreditPurchasesV13(c,newlySeen);
+    const credited=autoCreditPurchasesV13(c);
     const classified=applyMatchedPayments(c);
     c.moneySyncAt=new Date().toISOString();
     return {added:added,credited:credited.credited,trains:credited.trains,review:classified.review};
@@ -2548,7 +2606,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.34.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.35.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2704,17 +2762,27 @@
       '. Future income or retention effects are unknown.</p></section>';
   }
 
+  function archivedStaffV135(c){
+    const balances=aggregates(c).balance;
+    return '<section class="tch-panel"><h2>Former employees / '+(c.archived||[]).length+'</h2><p>Archived automatically from a complete roster refresh. Rejoining with the same Torn ID restores the existing balance; it does not copy or reset trains.</p>'+
+      ((c.archived||[]).length?(c.archived||[]).map(p=>{
+        const b=balances[p.id]||{purchased:0,delivered:0,owed:0,credit:0};
+        return '<article class="tch-staff-card"><strong>'+esc(p.name)+'</strong><small> #'+esc(p.id)+'</small><p>'+b.owed+' trains owed / '+b.purchased+' purchased / '+b.delivered+' delivered'+(b.credit?' / '+b.credit+' advance credit':'')+'</p><small>'+esc(p.archivedAt?'Departure observed '+new Date(p.archivedAt).toLocaleDateString('en-GB'):'Departure date not recorded')+'</small></article>';
+      }).join(''):'<p>No former employees recorded.</p>')+'</section>';
+  }
   function staffV2(c){
-    if(!c||!c.staff||!c.staff.length)return introV2();
+    if(!c||!c.profile)return introV2();
     if(staffView==="detail")return employeeDetail(c,selectedEmployee);
     const options=[
       {action:"staff-view",id:"desk",name:"Decisions",active:staffView==="desk"},
       {action:"staff-view",id:"positions",name:"Suggestions",active:staffView==="positions"},
       {action:"staff-view",id:"compare",name:"Compare all",active:staffView==="compare"},
       {action:"staff-view",id:"roster",name:"Roster",active:staffView==="roster"},
+      {action:"staff-view",id:"archive",name:"Archived ("+(c.archived||[]).length+")",active:staffView==="archive"},
       {action:"staff-view",id:"simulator",name:"Team simulator",active:staffView==="simulator"},
       {action:"staff-view",id:"wages",name:"Wage helper",active:staffView==="wages"}
     ];
+    if(staffView==="archive")return buttonsV2("Staff view",options)+archivedStaffV135(c);
     if(staffView==="desk")return '<div class="tch-section"><h2>Staff</h2>'+buttonsV2("Staff view",options)+'</div>'+staffDeskV134(c);
     if(staffView==="compare")return '<div class="tch-section"><h2>Team decisions</h2>'+buttonsV2("Staff view",options)+'</div>'+staffComparisonV129(c);
     if(staffView==="wages")return '<div class="tch-section"><h2>Wages & contribution</h2>'+buttonsV2("Staff view",options)+'</div>'+staffPayReviewV129(c)+
@@ -2776,6 +2844,9 @@
       body='<section class="tch-panel"><div class="tch-sectionhead"><h2>Training order / ready first</h2>'+
         '<span class="tch-mini">'+desk.owed+' owed</span></div>'+
         '<p>Confirmed local purchases minus completed training. Oldest eligible debts are first. Giving trains always happens manually in Torn.</p>'+
+        '<p class="tch-hint">Automatic checks every 2 minutes while this tool or the company page is open. Last training sync: '+esc(c.newsSyncAt?new Date(c.newsSyncAt).toLocaleString('en-GB'):'Not yet')+'</p>'+
+        (c.newsSyncError?'<p class="tch-hint">Training sync failed: '+esc(c.newsSyncError)+'</p>':'')+
+        (c.moneySyncError?'<p class="tch-hint">Payment sync failed: '+esc(c.moneySyncError)+'</p>':'')+
         '<div class="tch-spot-kpis"><span>Ready to give <b>'+desk.ready+'</b></span>'+
         '<span>Company bank <b>'+(desk.available===null?'?':desk.available)+'</b></span>'+
         '<span>Employees owed <b>'+desk.rows.length+'</b></span></div>'+
@@ -2797,8 +2868,8 @@
         '<button class="primary" data-act="add-training">Record</button></div></section></details>';
     } else if(trainingView==="payments"){
       body='<section class="tch-panel"><h2>Money receipts & purchased trains</h2>'+
-         '<p>On opening, incoming logs are checked. New, exact-price transfers from identifiable employees are locally credited as likely training purchases. Review Records and void any mistaken credit. Other transfers still require approval.</p>'+
-         '<div class="tch-actionrow"><button data-act="toggle-auto-package" class="'+(c.autoPackageMode!==false?"primary":"")+'">Auto-credit new packages: '+(c.autoPackageMode!==false?"ON":"OFF")+'</button>'+
+         '<p>On opening, incoming logs are checked. Exact-price transfers since auto-credit was enabled are retried when matching data becomes available and locally credited as likely training purchases. Review Records and void any mistaken credit. Other transfers still require approval.</p>'+
+         '<div class="tch-actionrow"><button data-act="toggle-auto-package" class="'+(c.autoPackageMode!==false?"primary":"")+'">Auto-credit exact packages: '+(c.autoPackageMode!==false?"ON":"OFF")+'</button>'+
          '<button data-act="backfill-packages">Review & credit old matches</button></div>'+
          (c.moneySyncError?'<p class="tch-hint">Recent money-log sync could not complete: '+esc(c.moneySyncError)+'</p>':'')+
          (c.newsSyncError?'<p class="tch-hint">Recent training-history sync could not complete: '+esc(c.newsSyncError)+'</p>':'')+
@@ -2835,13 +2906,14 @@
         '</section>';
     } else {
       const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,inferred:p.assumed,unverified:p.source==="log-auto"&&!p.voided};})
-        .concat(c.training.map(function(t){return {id:t.id,ts:t.ts,type:"Training",person:t.playerId,units:t.units,money:null,voided:t.voided};}))
+        .concat(c.training.map(function(t){return {id:t.id,ts:t.ts,type:"Training",person:t.playerId,units:t.units,money:null,voided:t.voided,correction:t.correctionReason,previousUnits:t.previousUnits};}))
         .sort(function(a,b){return b.ts-a.ts;});
       body='<section class="tch-panel"><h2>Audit records</h2><p>Automatic package classifications are inferred, not guaranteed. Void a mistaken credit here. Duplicate Torn IDs cannot increase balances twice.</p>'+
         '<button data-act="repair-duplicates">Check duplicate imports</button>'+
         logs.slice(0,70).map(function(e){
           return '<div class="tch-record"><div><strong>'+esc(e.type)+(e.voided?" · VOID":e.unverified?" · NOT VERIFIED":e.inferred?" · INFERRED":"")+'</strong><small>'+esc(people[e.person]||"#"+e.person)+' · '+esc(day(e.ts))+'</small></div>'+
             '<div><b>'+esc(e.type==="Payment"?money(e.money):e.units+" trains")+'</b>'+
+            (e.correction?'<small>Automatic count corrected from '+esc(e.previousUnits)+' / '+esc(e.correction)+'</small>':'')+
             (!e.voided?'<button data-act="void-entry" data-id="'+esc(e.id)+'">Void</button>':"")+'</div></div>';
         }).join("")+'</section>';
     }
@@ -2912,7 +2984,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.34.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.35.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -3043,7 +3115,7 @@
       if(!cursor||paused||done)continue;
       const path=isNews?"company/news":"user/log";
       const filter=isNews?"training":String(c.logTypes||"");
-      if(!isNews&&!/^\\d+(,\\d+){0,9}$/.test(filter))continue;
+      if(!isNews&&!/^\d+(,\d+){0,9}$/.test(filter))continue;
       const params=isNews?{cat:"training",limit:"100",sort:"DESC"}:{log:filter,limit:"100",sort:"DESC"};
       Object.assign(params,cursor);
       c.autoHistoryLastAttemptV116=now; // Persisted even on errors, preventing rapid retries after reload.
@@ -3076,8 +3148,9 @@
     if(!activeApiKey())return; // Missing permissions remain visible in Settings; no blind retries.
     const last=Date.parse(current()?.lastRefresh||"");
     const now=Date.now();
-    if(Number.isFinite(last)&&now-last<15*60000)return;
-    if(now-lastAutoCompanyAttemptV112<15*60000)return; // Back off even on API failure.
+    const interval=(open||isCompanyPage())?2*60000:15*60000;
+    if(Number.isFinite(last)&&now-last>=0&&now-last<interval)return;
+    if(now-lastAutoCompanyAttemptV112<interval)return; // Back off even on API failure.
     lastAutoCompanyAttemptV112=now;
     await refresh(); // Already syncs training news and incoming money with de-duplication.
   }
@@ -3107,17 +3180,9 @@
         }catch(e){c.stockFetchError=String(e.message||e);}
       }
       try {const a=await read("company/applications");c.applications=assertArray(a.applications);c.applicationsError=null;}catch(e){c.applicationsError=String(e.message||e);}
-      const staff=assertArray(e.employees);
-      if (!staff.length && num(p.employees && p.employees.hired)>0) throw Error("Employee data unavailable; check director permissions.");
-      c.staff=staff;
+      const rosterChange=reconcileRosterV135(c,p,e.employees);
       c.profile=p;
       c.lastRefresh=new Date().toISOString();
-      c.archived=c.archived || [];
-      const activeIds=new Set(staff.map(function (x) {return String(x.id);}));
-      c.previousStaff && c.previousStaff.forEach(function (old) {
-        if (!activeIds.has(String(old.id)) && !c.archived.some(function (x) {return String(x.id)===String(old.id);})) c.archived.push({id:old.id,name:old.name});
-      });
-      c.previousStaff=staff.map(function (p) {return {id:p.id,name:p.name};});
       if (companyType(p)) {
         try {
           const r=await read("torn/"+companyType(p)+"/companies");
@@ -3142,8 +3207,8 @@
       catch(err){c.moneySyncError=String(err&&err.message||err);}
       if(newsResult||moneyResult)await autoHistoryBackfillV116(c);
       c.lastAutoSync={news:newsResult,money:moneyResult,observedAt:c.lastRefresh};
-      message="Company and roster updated."+(stockModeV117(c)==="service"?" No stock required for this service company.":"")+
-        (newsResult?" Matched "+newsResult.matched+" new training entries.":" Training history unavailable.")+
+      message="Company and roster updated. "+rosterChange.departed+" archived / "+rosterChange.returned+" returned (existing balances retained)."+(stockModeV117(c)==="service"?" No stock required for this service company.":"")+
+        (newsResult?" Matched "+newsResult.matched+" new training entries; corrected "+newsResult.corrected+" automatic batch counts.":" Training history unavailable.")+
         (moneyResult?" Auto-credited "+moneyResult.trains+" trains from "+moneyResult.credited+" new receipt(s).":" Payment logs unavailable.");
       severity=(!newsResult||!moneyResult)?"warn":"good";
       await persist();
@@ -3213,7 +3278,6 @@
       }
       const page=newest?{next:null,warning:null}:importPageDecision(response,"user/log",c.logTypes,list);
       let added=0,updated=0,minTs=Infinity;
-      const newIds=new Set();
       list.forEach(function(log){
         if(!log || !log.id || !Number.isFinite(Number(log.timestamp)))return;
         const entryId=String(log.id),ts=Number(log.timestamp);
@@ -3227,7 +3291,7 @@
           return;
         }
         c.logs.push({id:entryId,timestamp:ts,title:String(log.details&&log.details.title||"Incoming money").slice(0,160),suggestion:suggestion});
-        newIds.add(entryId);added++;
+        added++;
       });
       if(!newest){
         if(added===0 && list.length>=100)c.logHistoryWarning="This full money-log page contained no new IDs. The API continuation may be repeating; history has NOT advanced.";
@@ -3235,7 +3299,7 @@
         else {c.logNext=page.next;c.logHistoryWarning=null;if(!page.next && Number.isFinite(minTs))c.logCursor=minTs-1;}
       }
       const duplicates=repairImportDuplicates(c);
-      const credits=autoCreditPurchasesV13(c,newIds);
+      const credits=autoCreditPurchasesV13(c);
       const classified=applyMatchedPayments(c);
       await persist();
       message="Imported "+added+" incoming transfers; auto-credited "+credits.trains+" trains from "+credits.credited+" exact-price new receipt(s). "+classified.suggested+" have suggestions, "+

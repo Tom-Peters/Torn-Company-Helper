@@ -38,7 +38,7 @@ test("No gameplay HTTP writes or remote website scraping",()=>{
   assert.match(script,/function autoCompanyRefreshV112\(/);
   assert.ok(script.includes('if(document.hidden||busy'));
   assert.match(script,/staxx:refresh-request/);
-  assert.match(script,/now-lastAutoCompanyAttemptV112<15\*60000/);
+  assert.match(script,/now-lastAutoCompanyAttemptV112<interval/);
   assert.match(script,/await refresh\(\)/);
 });
 test("HTML escaping safely handles remote player names",()=>{

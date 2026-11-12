@@ -1,3 +1,13 @@
+## 1.35.0 - Automatic training reconciliation and employee lifecycle
+
+Complete roster refreshes archive missing staff automatically, using the current saved roster even when the older previous-roster cache is absent. Returning Torn player IDs leave the archive and retain their original payments, delivered trains, outstanding balance and advance credit. Current rejoin eligibility still applies. Invalid, duplicate or count-mismatched roster responses preserve existing membership. Staff has an Archived view.
+
+Training news uses recognised profile-link IDs and retained name aliases, supports explicit batch counts, and repairs miscounted automatic entries only when the same news source gives an explicit count. Manual corrections and voids remain intact. Source IDs prevent duplicate debits. Eligible recent package receipts are retried when matching data becomes available; older receipts still require deliberate backfill and ambiguous payments remain reviewable. Fixed a numeric-filter bug blocking automatic money-history pagination.
+
+Automatic read-only checks run at most every two minutes on the company page or with the tool open, and every fifteen minutes elsewhere while visible. The queue displays the last news sync and any sync errors. No game training, wages or positions are submitted automatically.
+
+Validated with departure/rejoin, renamed-player batch training, duplicate import, incomplete-roster and historical-payment scenarios, plus the existing suite. Live account reconciliation still needs checking after installing and refreshing.
+
 ## 1.34.0 - Director and staff workspace overhaul
 
 - Today leads with one next action: stale-data refresh, incomplete accounts, operating-loss breach, oldest eligible paid training or transfer review. Ready paid trains are visible on the page.

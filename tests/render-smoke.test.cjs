@@ -82,6 +82,6 @@ test("Recovery UI can close and leave the launcher available",async()=>{
 });
 test("Non-navigation metric markup has a matching button closure",()=>{
  assert.match(script,/data-act="metric-detail"[\s\S]{0,160}\+inner\+'<\/button>'/);
- assert.match(script,/\/\/ @version\s+1\.34\.0/);
+ assert.match(script,/\/\/ @version\s+1\.35\.0/);
  assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });

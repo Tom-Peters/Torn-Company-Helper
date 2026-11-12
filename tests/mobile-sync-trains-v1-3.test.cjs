@@ -28,7 +28,7 @@ function fixture(responses){
  window.top=window;window.self=window;
  const hook='  const style=document.createElement("style");';
  const script=source.replace('const PDA_APP_KEY = "###PDA-APIKEY###";','const PDA_APP_KEY = "AAAAAAAAAAAAAAAA";')
-  .replace(hook, '  globalThis.__v13={autoCreditPurchasesV13,exactPaidTrainingV13,backfillTrainingReceiptsV13,'+
+  .replace(hook, '  globalThis.__v13={reconcileRosterV135,aggregates,matchTrainingNews,reconcileTraining,trainPlanV3,autoCreditPurchasesV13,exactPaidTrainingV13,backfillTrainingReceiptsV13,'+
     'mergeIncomingLogsV13,mergeTrainingNewsV13,supportWageModelV13,compactWagePanelV13,growthMovesV13,'+
     'homeV13,trainingDeskV127,nativeCompanyDeskHTMLV127,trainingSpotlightV127,rosterBenchV12,rivalRostersPanelV12,seed(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;}};\n'+hook);
  const sandbox={window,document,URL,URLSearchParams,Date,Math,Number,JSON,Set,Map,Blob,console,
@@ -151,7 +151,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.34\.0/);
+ assert.match(source,/\/\/ @version\s+1\.35\.0/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
@@ -214,4 +214,55 @@ test("Employee names are escaped on the live company-page training panel",()=>{
  const html=app.nativeCompanyDeskHTMLV127(c);
  assert.match(html,/&lt;img/);
  assert.doesNotMatch(html,/<img/);
+});
+
+test("Departures archive without previousStaff and returning IDs regain balances without duplicate credits",()=>{
+ const {app}=fixture(),c=company();
+ const original=c.staff.map(p=>({...p}));
+ c.payments=[{id:"paid",playerId:11,trains:5,amount:1000000,ts:100,confirmed:true}];
+ c.training=[{id:"delivered",playerId:11,units:2,ts:200}];
+ const out=app.reconcileRosterV135(c,{employees:{hired:2}},original.slice(1));
+ assert.equal(out.departed,1);assert.equal(c.archived[0].id,11);
+ assert.equal(app.aggregates(c).balance[11].owed,3);
+ const back={...original[0],name:"Renamed Alice",days_in_company:1};
+ const returned=app.reconcileRosterV135(c,{employees:{hired:3}},[back,...original.slice(1)]);
+ assert.equal(returned.returned,1);assert.equal(c.archived.length,0);
+ assert.equal(app.aggregates(c).balance[11].owed,3);assert.equal(c.payments.length,1);
+ assert.equal(app.trainPlanV3(c).queue.some(p=>String(p.id)==="11"),false);
+ c.staff[0].days_in_company=3;
+ assert.equal(app.trainPlanV3(c).queue[0].give,3);
+ assert.equal(app.matchTrainingNews({text:"Alice was trained 2 times"},c).playerId,11);
+ app.reconcileRosterV135(c,{employees:{hired:3}},c.staff);
+ assert.equal(c.archived.length,0);assert.equal(app.aggregates(c).balance[11].owed,3);
+});
+test("Invalid, duplicate and incomplete employee replies preserve membership and debts",()=>{
+ const {app}=fixture(),c=company(),before=JSON.stringify(c);
+ for(const response of [undefined,[],[c.staff[0]],[c.staff[0],c.staff[0],c.staff[2]]]){
+   assert.throws(()=>app.reconcileRosterV135(c,c.profile,response));
+   assert.equal(JSON.stringify(c),before);
+ }
+ app.reconcileRosterV135(c,{employees:{hired:0}},[]);
+ assert.equal(c.staff.length,0);assert.equal(c.archived.length,3);
+});
+test("Profile identity handles rename and batch count repair without touching manually corrected trains",()=>{
+ const {app}=fixture(),c=company();
+ c.news=[{id:"batch",timestamp:now(),text:'<a href="/profiles.php?XID=12">Bob</a> trained <a href="/profiles.php?XID=11">Old Alice</a> 5 times'}];
+ assert.equal(app.reconcileTraining(c).matched,1);
+ assert.equal(c.training[0].playerId,11);assert.equal(c.training[0].units,5);
+ c.training[0].units=1;
+ assert.equal(app.reconcileTraining(c).corrected,1);assert.equal(c.training[0].units,5);
+ assert.equal(app.reconcileTraining(c).corrected,0);
+ c.training[0].source="manual";c.training[0].units=2;
+ assert.equal(app.reconcileTraining(c).corrected,0);assert.equal(c.training[0].units,2);
+ assert.equal(app.matchTrainingNews({text:"Alice was trained 30 times"},c).status,"review");
+});
+test("An existing unmatched recent transfer is retried after a returning employee is recognised",()=>{
+ const {app}=fixture(),c=company(),person=c.staff.shift(),receipt=log(801,11,1000000);
+ c.logs=[{id:"801",timestamp:receipt.timestamp,title:"Money received",suggestion:{status:"review"}}];
+ c.archived=[person];
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[receipt]}).credited,0);
+ app.reconcileRosterV135(c,{employees:{hired:3}},[person,...c.staff]);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[receipt]}).credited,1);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[receipt]}).credited,0);
+ assert.equal(app.aggregates(c).balance[11].owed,5);
 });
