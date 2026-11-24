@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.35.1
+// @version      1.35.2
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -93,6 +93,7 @@
   function hasPdaKey() {return /^[A-Za-z0-9]{16,64}$/.test(PDA_APP_KEY);}
   function activeApiKey(){return key || (hasPdaKey()?PDA_APP_KEY:"");}
   let staffView="desk",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35,recordViewLimit=70;
+  let paymentReviewGroup = "current";
   let tab = "overview", detailView = "", open = false, busy = false, message = "", severity = "";
   let launcherDragged = false;
   const esc = function (value) {return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});};
@@ -346,7 +347,8 @@
     });
     if(senders.size!==1)return {status:"review",reason:senders.size>1?"Conflicting sender IDs":"Torn did not identify the sender"};
     const sender=Array.from(senders)[0];
-    if(!staff.some(function(p){return Number(p.id)===sender;}) )return {status:"review",reason:"Money came from a player outside the current/archived staff",senderId:sender};
+    if(!staff.some(p=>Number(p.id)===sender))return {status:"review",reason:"Sender is outside the saved staff roster",senderId:sender,
+      amount:amounts.size===1 ? Array.from(amounts)[0] : null};
     if(amounts.size!==1)return {status:"review",reason:amounts.size>1?"Different payment amounts reported":"Amount not present in log",senderId:sender};
     const amount=Array.from(amounts)[0],trains=priceTrains(amount);
     if(trains===null)return {status:"review",reason:"Partial or non-standard amount: choose the number of trains",senderId:sender,amount:amount};
@@ -384,8 +386,33 @@
     const source = "log:" + log.id;
     return !(c.payments || []).some(p => p.sourceId === source && (p.voided || isApprovedLogPayment(p)));
   }
+  function paymentReviewGroups(c) {
+    const groups = {current:[], former:[], other:[]};
+    const currentIds = new Set((c.staff || []).map(p => String(p.id)));
+    const formerIds = new Set((c.archived || []).map(p => String(p.id)));
+    const hired = financialAmount(c.profile?.employees?.hired);
+    const rosterKnown = hired === null ? currentIds.size > 0 : currentIds.size === hired;
+    const settled = new Set((c.payments || []).filter(p => p.sourceId && (p.voided || isApprovedLogPayment(p))).map(p => p.sourceId));
+    for (const log of c.logs || []) {
+      if (log.matchStatus === "ignored" || settled.has("log:" + log.id)) continue;
+      const guess = log.suggestion || {};
+      const sender = String(guess.senderId || guess.playerId || "");
+      // Unidentified or conflicting senders stay visible for a director to resolve.
+      let group = "current";
+      const conflicting = guess.senderId && guess.playerId && String(guess.playerId) !== sender;
+      if (/^[1-9][0-9]*$/.test(sender) && !conflicting && !currentIds.has(sender)) {
+        if (formerIds.has(sender)) group = "former";
+        else if (rosterKnown) group = "other";
+      }
+      groups[group].push(log);
+    }
+    return groups;
+  }
   function pendingPaymentLogs(c){
-    return (c.logs || []).filter(log => needsPaymentReview(c, log));
+    return paymentReviewGroups(c).current;
+  }
+  function isAutoCreditedPayment(p) {
+    return isApprovedLogPayment(p) && p.assumed === true && !p.reviewedAt && !p.restoredAt;
   }
   function voidedPaymentStatus(c, payment) {
     const related = payment.sourceId ? c.payments.filter(p => p !== payment && p.sourceId === payment.sourceId) : [];
@@ -404,28 +431,28 @@
   }
   function migrateAutoPaymentClaims(c){
     let flagged=0;
-    (c.payments||[]).forEach(function(p){
-      if(p && !p.voided && p.source==="log-auto" && p.confirmed!==false){
+    const legacy = new Map();
+    for (const p of c.payments || []) {
+      if (!p || p.voided || p.source !== "log-auto") continue;
+      // Two saved suggestions for one receipt cannot safely identify its sender.
+      if (p.sourceId) legacy.set(p.sourceId, legacy.has(p.sourceId) ? null : p);
+      if (p.confirmed !== false) {
         p.confirmed=false;
         p.reviewRequired=true;
         p.reviewReason="Automatic sender/amount matching did not verify training purpose.";
-        const logId=String(p.sourceId||"").replace(/^log:/,"");
-        const existing=(c.logs||[]).find(function(n){return String(n.id)===logId;});
-        if(existing && (!existing.suggestion || existing.suggestion.status!=="matched")) {
-          existing.suggestion={status:"matched",playerId:p.playerId,senderId:p.playerId,amount:p.amount,trains:p.trains};
-        }
         flagged++;
       }
-    });
-    (c.logs||[]).forEach(function(n){
-      if(needsPaymentReview(c,n)){
-        n.matchStatus="review";
-        const old=(c.payments||[]).some(function(p){
-          return !p.voided && p.source==="log-auto" && p.sourceId==="log:"+n.id;
-        });
-        if(old)n.matchReason="Previously auto-credited; confirm whether this was actually a training purchase.";
+    }
+    for (const n of c.logs || []) {
+      if (!needsPaymentReview(c,n)) continue;
+      n.matchStatus="review";
+      const old=legacy.get("log:"+n.id);
+      if (!old) continue;
+      if (!n.suggestion) {
+        n.suggestion={status:"matched",playerId:old.playerId,senderId:old.playerId,amount:old.amount,trains:old.trains};
       }
-    });
+      n.matchReason="Previously auto-credited; confirm whether this was actually a training purchase.";
+    }
     return flagged;
   }
   function uniquePaymentEvents(c){
@@ -517,21 +544,21 @@
   function applyMatchedPayments(c) {
     // Match sender/amount to a candidate automatically; human review determines
     // whether an actual purchase occurred. Prices alone are not payment purpose.
-    let suggested=0,review=0;
-    (c.logs||[]).forEach(function(n){
-      if(!needsPaymentReview(c,n))return;
-      const guess=n.suggestion||{status:"review",reason:"Re-import to identify the sender and amount."};
-      if(n.matchReason && /Possible duplicate of a manually recorded purchase/.test(n.matchReason)) {n.matchStatus="review";review++;return;}
-      n.matchStatus="review";
-      if(guess.status==="matched") {
-        n.matchReason="Sender and amount identified; training purpose unverified.";
-        suggested++;
-      } else {
-        n.matchReason=guess.reason||"Please review this payment.";
-        review++;
+    const groups = paymentReviewGroups(c);
+    let suggested = 0;
+    for (const [group, logs] of Object.entries(groups)) {
+      for (const log of logs) {
+        log.matchStatus = "review";
+        if (/Possible duplicate of a manually recorded purchase/.test(log.matchReason || "")) continue;
+        if (log.suggestion?.status === "matched") {
+          log.matchReason = "Sender and amount identified; training purpose unverified.";
+          if (group === "current") suggested++;
+        } else {
+          log.matchReason = log.suggestion?.reason || "Review the sender, amount and purpose.";
+        }
       }
-    });
-    return {suggested:suggested,review:review};
+    }
+    return {suggested, review:groups.current.length-suggested};
   }
   function aggregates(c) {
     const balance={}, people={};
@@ -598,9 +625,11 @@
       const hours=Math.max(0,(now-refresh)/3600000);
       results.push({label:"Data freshness",state:hours>=24?"stale":"recent",note:hours<1?"Updated within the last hour.":"Last company refresh "+Math.floor(hours)+" hour(s) ago."});
     }
-    const reviewed=(c.payments||[]).filter(function(p){return !p.voided&&p.source==="log-auto";}).length;
+    const actionable = pendingPaymentLogs(c);
+    const actionableSources = new Set(actionable.map(log => "log:" + log.id));
+    const reviewed=(c.payments||[]).filter(p => !p.voided && p.source==="log-auto" && actionableSources.has(p.sourceId)).length;
     if(reviewed)results.push({label:"Legacy money imports",state:"review",note:reviewed+" previously auto-classified payment(s) await confirmation of training purpose."});
-    const unseen=pendingPaymentLogs(c).length;
+    const unseen=actionable.length;
     if(unseen)results.push({label:"Imported transfers",state:"review",note:unseen+" unconfirmed transfer(s); none are counted as purchased training."});
     const historical=(c.news||[]).filter(function(n){
       return !c.training.some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});
@@ -767,7 +796,7 @@
     if(view==='pay'||view==='all')body+='<p><b>Pay basis:</b> '+esc(info.source)+'</p><p>Current '+esc(money(info.wage))+' / day. '+esc(info.payStatus)+'.</p>';
     if(view==='trains'||view==='all'){
       body+='<p><b>'+info.due+' owed / '+info.give+' ready</b> / '+esc(info.trainStatus)+'</p>';
-      const events=[...(c.payments||[]).filter(x=>!x.voided&&String(x.playerId)===info.id).map(x=>({ts:x.ts,text:(x.confirmed?'Confirmed payment ':'Unconfirmed payment ')+money(x.amount)+' / '+(x.trains||0)+' credits'})),
+      const events=[...(c.payments||[]).filter(x=>!x.voided&&String(x.playerId)===info.id).map(x=>({ts:x.ts,text:(isAutoCreditedPayment(x)?'Auto-credited payment ':x.confirmed?'Confirmed payment ':'Unconfirmed payment ')+money(x.amount)+' / '+(x.trains||0)+' credits'})),
         ...(c.training||[]).filter(x=>!x.voided&&String(x.playerId)===info.id).map(x=>({ts:x.ts,text:'Recorded training / '+(x.units??'?')+' train(s)'}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
       body+=events.length?'<ul>'+events.map(x=>'<li>'+esc(new Date(Number(x.ts)*1000).toLocaleDateString('en-GB'))+' / '+esc(x.text)+'</li>').join('')+'</ul>':'<p>No payment or training records for this employee.</p>';
     }
@@ -2315,7 +2344,7 @@
       if(route){route.click();return;}
       // Explicit section routing also works when the target is not on the current tab.
       detailView="";message="";
-      if(target?.startsWith("training")){tab="training";trainingView="queue";}
+      if(target?.startsWith("training")){tab="training";trainingView=target==="training-payments"?"payments":"queue";paymentReviewGroup="current";}
       else if(target?.startsWith("staff")){tab="employees";staffView=target==="staff-wages"?"wages":target==="staff-sim"?"simulator":"desk";}
       else {tab="growth";growthView=target==="growth-accounts"?"accounts":"performance";}
       draw();return;
@@ -2325,7 +2354,7 @@
     else if(act==="wages"||act==="staff"){tab="employees";staffView=act==="wages"?"wages":"desk";}
     else if(act==="growth"){tab="growth";growthView="performance";}
     else if(act==="overview"){tab="overview";}
-    else{tab="training";trainingView=act==="payments"?"payments":"queue";}
+    else{tab="training";trainingView=act==="payments"?"payments":"queue";paymentReviewGroup="current";}
     if(!open)opener.click();else draw();
   });
 
@@ -2622,7 +2651,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.35.1</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.35.2</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2846,7 +2875,7 @@
       const ia=pa&&num(pa.days_in_company)<3,ib=pb&&num(pb.days_in_company)<3;
       return Number(ia)-Number(ib) || (a[1].oldest||Infinity)-(b[1].oldest||Infinity);
     });
-    const pending=pendingPaymentLogs(c);
+    const groups=paymentReviewGroups(c), pending=groups.current;
     const reviewNews=(c.news||[]).filter(function(n){return !(c.training||[]).some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});});
     const switches=buttonsV2("Training screens",[
       {action:"training-view",id:"queue",name:"Queue",active:trainingView==="queue"},
@@ -2883,6 +2912,11 @@
         '<input aria-label="Number of trains" id="tch-train-units" type="number" min="1" max="20" value="1">'+
         '<button class="primary" data-act="add-training">Record</button></div></section></details>';
     } else if(trainingView==="payments"){
+      const visible = groups[paymentReviewGroup];
+      const filters = [["current","To review"],["former","Former staff"],["other","Other senders"]];
+      const reviewFilters = buttonsV2("Payment review filters", filters.map(([id,label]) => ({
+        action:"payment-review-group", id, name:label+" ("+groups[id].length+")", active:id===paymentReviewGroup
+      })));
       body='<section class="tch-panel"><h2>Money receipts & purchased trains</h2>'+
          '<p>On opening, incoming logs are checked. Exact-price transfers since auto-credit was enabled are retried when matching data becomes available and locally credited as likely training purchases. Review Records and void any mistaken credit. Other transfers still require approval.</p>'+
          '<div class="tch-actionrow"><button data-act="toggle-auto-package" class="'+(c.autoPackageMode!==false?"primary":"")+'">Auto-credit exact packages: '+(c.autoPackageMode!==false?"ON":"OFF")+'</button>'+
@@ -2892,15 +2926,16 @@
         (c.logHistoryWarning?'<p class="tch-hint">'+esc(c.logHistoryWarning)+'</p>':"")+
         '<div class="tch-actionrow"><button class="primary" data-act="rescan-logs">Check recent</button><button data-act="import-logs">Load older</button></div>'+
         '<p class="tch-hint">If Torn rejects money logs, set a custom API key for this script in Torn PDA with user/log permission. Your ordinary PDA key can still load company figures.</p></section>'+
-        '<section class="tch-panel"><div class="tch-sectionhead"><h2>Needs review</h2><span class="tch-mini">'+pending.length+'</span></div>'+
-        (pending.length?pending.slice().sort(function(a,b){return b.timestamp-a.timestamp;}).slice(0,paymentViewLimit).map(function(n){
+        '<section class="tch-panel"><h2>Payment review</h2>'+reviewFilters+
+        '<p class="tch-hint">'+({current:"Current employees and transfers with an unidentified sender.",former:"Saved for former employees. Open receipts return to the main queue if the employee rejoins.",other:"These senders have no matching employee in your saved roster."})[paymentReviewGroup]+'</p>'+
+        (visible.length?visible.slice().sort(function(a,b){return b.timestamp-a.timestamp;}).slice(0,paymentViewLimit).map(function(n){
           const g=n.suggestion||{},id=esc(n.id),sel=g.senderId||g.playerId||"";
-          return '<article class="tch-review"><strong>'+esc(day(n.timestamp))+'</strong><p>'+esc(n.matchReason||g.reason||n.title||"Confirm the purpose of this transfer")+'</p>'+
+          return '<article class="tch-review"><strong>'+esc(day(n.timestamp))+' · '+esc(people[sel]||(sel?"Sender #"+sel:"Unidentified sender"))+'</strong><p>'+esc(n.matchReason||g.reason||n.title||"Confirm the purpose of this transfer")+'</p>'+
             '<label>Employee<select data-field="log-person" data-id="'+id+'"><option value="">Select recipient</option>'+c.staff.concat(c.archived||[]).map(function(p){return '<option value="'+esc(p.id)+'" '+(String(sel)===String(p.id)?"selected":"")+'>'+esc(p.name)+'</option>';}).join("")+'</select></label>'+
             '<div class="tch-fieldrow"><label>Money received<input data-field="log-amount" data-id="'+id+'" type="number" min="1" value="'+esc(g.amount||"")+'"></label><label>Trains to credit<input data-field="log-units" data-id="'+id+'" type="number" min="0" value="'+esc(g.trains==null?"":g.trains)+'"></label></div>'+
             '<div class="tch-actionrow"><button class="primary" data-act="approve-log" data-id="'+id+'">Confirm training purchase</button><button data-act="ignore-log" data-id="'+id+'">Not training money</button></div></article>';
-        }).join(""):'<div class="tch-empty">No pending transfer decisions. Only confirmed training purchases affect balances.</div>')+
-        (pending.length>paymentViewLimit?'<button data-act="more-payments">Show next '+Math.min(35,pending.length-paymentViewLimit)+' transfers</button>':"")+'</section>'+
+        }).join(""):'<div class="tch-empty">No receipts to review in this group.</div>')+
+        (visible.length>paymentViewLimit?'<button data-act="more-payments">Show next '+Math.min(35,visible.length-paymentViewLimit)+' transfers</button>':"")+'</section>'+
         '<section class="tch-panel"><h2>Add a manual payment</h2><div class="tch-fieldrow"><select id="tch-pay-person">'+opts+'</select>'+
         '<input id="tch-pay-amount" type="number" min="1" placeholder="$ received" aria-label="Amount received">'+
         '<input id="tch-pay-units" type="number" min="0" placeholder="Trains" aria-label="Trains purchased"></div>'+
@@ -2921,14 +2956,15 @@
         }).join(""):'<div class="tch-empty">Every imported record with a recognised recipient has been matched.</div>')+
         '</section>';
     } else {
-      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,voidStatus:p.voided?voidedPaymentStatus(c,p):null,restoredAt:p.restoredAt,inferred:p.assumed,unverified:p.source==="log-auto"&&!p.voided};})
+      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,voidStatus:p.voided?voidedPaymentStatus(c,p):null,restoredAt:p.restoredAt,autoCredited:isAutoCreditedPayment(p),reviewed:p.assumed&&isApprovedLogPayment(p)&&(p.reviewedAt||p.restoredAt),unverified:p.source==="log-auto"&&!p.voided};})
         .concat(c.training.map(function(t){return {id:t.id,ts:t.ts,type:"Training",person:t.playerId,units:t.units,money:null,voided:t.voided,correction:t.correctionReason,previousUnits:t.previousUnits};}))
         .sort(function(a,b){return b.ts-a.ts;});
-      body='<section class="tch-panel"><h2>Audit records</h2><p>Automatic package classifications are inferred, not guaranteed. You can void or restore a payment here. Duplicate Torn IDs cannot increase balances twice.</p>'+
+      body='<section class="tch-panel"><h2>Audit records</h2><p>Auto-credited payments already count towards purchased trains. You can confirm the purchase or void a mistaken match.</p>'+
         '<button data-act="repair-duplicates">Check duplicate imports</button>'+
         logs.slice(0,recordViewLimit).map(function(e){
-          return '<div class="tch-record"><div><strong>'+esc(e.type)+(e.voidStatus?" · "+esc(e.voidStatus.label.toUpperCase()):e.voided?" · VOID":e.unverified?" · NOT VERIFIED":e.inferred?" · INFERRED":"")+'</strong><small>'+esc(people[e.person]||"#"+e.person)+' · '+esc(day(e.ts))+'</small></div>'+
+          return '<div class="tch-record"><div><strong>'+esc(e.type)+(e.voidStatus?" · "+esc(e.voidStatus.label.toUpperCase()):e.voided?" · VOID":e.unverified?" · NOT VERIFIED":e.autoCredited?" · AUTO-CREDITED":e.reviewed?" · CONFIRMED":"")+'</strong><small>'+esc(people[e.person]||"#"+e.person)+' · '+esc(day(e.ts))+'</small></div>'+
             '<div><b>'+esc(e.type==="Payment"?money(e.money)+" / "+e.units+" trains":e.units+" trains")+'</b>'+
+            (e.autoCredited?'<small>Package price matched. These trains already count.</small><button data-act="confirm-credited-payment" data-id="'+esc(e.id)+'">Confirm purchase</button>':"")+
             (e.voidStatus?'<small>'+esc(e.voidStatus.detail)+'</small>':"")+
             (e.restoredAt&&!e.voided?'<small>Restored '+esc(day(e.restoredAt))+'</small>':"")+
             (e.correction?'<small>Automatic count corrected from '+esc(e.previousUnits)+' / '+esc(e.correction)+'</small>':'')+
@@ -3003,7 +3039,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.35.1',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.35.2',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -3054,7 +3090,7 @@
     if(!open)return;
     const pageKey=String(companyId||'none')+':'+(detailView?'detail:'+detailView:
       tab==='employees'?tab+':'+staffView+':'+(selectedEmployee||''):
-      tab==='training'?tab+':'+trainingView:tab==='growth'?tab+':'+growthView:tab);
+      tab==='training'?tab+':'+trainingView+(trainingView==='payments'?':'+paymentReviewGroup:''):tab==='growth'?tab+':'+growthView:tab);
     const oldMain=root.querySelector?.('.tch-main'),oldFocused=document.activeElement;
     if(companyRenderedPage)companyScrollPositions[companyRenderedPage]={root:root.scrollTop,main:oldMain?.scrollTop||0};
     let savedForm=null;
@@ -3529,8 +3565,14 @@
     if (act==="metric-detail"){detailView=el.dataset.target;draw();return;}
     if (act==="detail-back"){detailView="";draw();return;}
     if (act==="staff-view"){staffView=el.dataset.view;selectedEmployee=null;draw();return;}
-    if (act==="training-view"){trainingView=el.dataset.view;draw();return;}
+    if (act==="training-view"){trainingView=el.dataset.view;if(trainingView==="payments")paymentReviewGroup="current";draw();return;}
     if (act==="more-records"){recordViewLimit+=70;draw();return;}
+    if (act==="payment-review-group"){
+      if (["current","former","other"].includes(el.dataset.view)) {
+        paymentReviewGroup=el.dataset.view;paymentViewLimit=35;draw();
+      }
+      return;
+    }
     if (act==="more-payments"){paymentViewLimit+=35;draw();return;}
     if (act==="growth-view"){growthView=el.dataset.view;draw();return;}
     if (act==="stress-shock"){const n=Number(el.dataset.shock);if([5,10,20].includes(n)){companyStressPctV115=n;draw();}return;}
@@ -3575,7 +3617,7 @@
       if(target==="refresh"){refresh();return;}
       if(!Object.prototype.hasOwnProperty.call(routes,target))return;
       const route=routes[target];tab=route[0];if(tab==="growth")growthView=route[1];
-      if(tab==="training")trainingView=route[1];if(tab==="employees")staffView=route[1];detailView="";
+      if(tab==="training"){trainingView=route[1];if(trainingView==="payments")paymentReviewGroup="current";}if(tab==="employees")staffView=route[1];detailView="";
       draw();return;
     }
     if(act==="pay-scenario"){
@@ -3607,7 +3649,7 @@
     if (act==="toggle-advanced"){advancedSettings=!advancedSettings;draw();return;}
     if (act==="set-theme"){data.themeMode=el.dataset.theme;await work(persist);return;}
     if (act==="clear-key"){key="";notify(hasPdaKey()?"Using Torn PDA key.":"No API key supplied by PDA.","good");return;}
-    if (act==="jump-review"){tab="training";trainingView="payments";draw();return;}
+    if (act==="jump-review"){tab="training";trainingView="payments";paymentReviewGroup="current";draw();return;}
     if (act==="jump-history"){tab="training";trainingView="history";draw();return;}
     if (act==="refresh") return refresh();
     if (act==="import-news") return importNews(false);
@@ -3647,6 +3689,13 @@
       await work(persist);
       notify("Checked history. "+fixed+" definitely duplicated training records voided without deleting the audit trail.");
       return;
+    }
+    if (act==="confirm-credited-payment") {
+      if (busy) return notify("Sync in progress. Try again when it finishes.");
+      const payment = c?.payments?.find(p => String(p.id) === el.dataset.id);
+      if (!isAutoCreditedPayment(payment)) return notify("This payment has already changed.");
+      const receipt = payment.sourceId ? c.logs?.find(n => "log:" + n.id === payment.sourceId) : null;
+      return work(() => saveLedgerRecord(c.payments,payment,{...payment,reviewedAt:stamp()},receipt,"approved"));
     }
     if (act==="void-entry" || act==="restore-payment") {
       if (busy) return notify("Sync in progress. Try again when it finishes.");

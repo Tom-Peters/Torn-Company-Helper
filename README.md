@@ -1,3 +1,9 @@
+## 1.35.2 - Auto-credited payments and former staff
+
+In Trains → Records, **Auto-credited** means the receipt matched a training package and its trains already count. **Confirm purchase** records your confirmation on the same entry and preserves its train count.
+
+Trains → Payments opens on current staff and unidentified transfers. **Former staff** keeps outstanding receipts accessible after an employee leaves. **Other senders** holds identified senders outside the saved roster. Both views stay out of review alerts. A returning employee's outstanding receipts reappear under **To review** when the roster refreshes.
+
 ## 1.35.1 - Payment records and recovery
 
 Confirming an older imported receipt now updates its existing entry. In **Trains → Records**, an old suggestion with a replacement is labelled **Replaced**. The confirmed entry carries the credit. A voided payment can be restored individually after checking its employee, amount and train count. **Show older records** reaches entries beyond the first 70.

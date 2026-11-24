@@ -102,3 +102,13 @@ test("Independent bank-overflow and payment-review alerts are preserved",()=>{
   c.logs=[{id:"unverified-1",matchStatus:"review"}];
   assert.ok(app.launcherAlertsV11(c).items.some(x=>x.id==="pending-payments"));
 });
+
+test("Archived transfer reviews stay available without a launcher or hub payment reminder",()=>{
+ const {app}=fixture(),c=company(0,0);
+ c.archived=[{id:102,name:"Former employee"}];
+ c.logs=[{id:"former",suggestion:{status:"matched",playerId:"102",amount:250000,trains:1}}];
+ assert.ok(!app.launcherAlertsV11(c).items.some(x=>x.id==="pending-payments"));
+ assert.ok(!app.companyActionList(c).some(x=>x.target==="training-payments"));
+ assert.ok(!app.companyHubActions(c).some(x=>x.id==="pending-payments"||x.id==="decision-training-payments"));
+ assert.equal(c.logs.length,1);
+});

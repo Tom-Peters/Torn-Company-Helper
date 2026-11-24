@@ -151,7 +151,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.35\.1/);
+ assert.match(source,/\/\/ @version\s+1\.35\.2/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
@@ -344,4 +344,48 @@ test("Historical replacement rows cannot override a live or deliberately voided 
  await click(root,"restore-payment",previous.id);
  assert.equal(app.aggregates(c).balance[11].owed,5);
  assert.equal(c.payments[0].source,"log-confirmed");
+});
+
+test("An employee's pending receipts follow roster changes without editing the ledger",()=>{
+ const {app}=fixture(), c=company(), full=c.staff.slice();
+ const receipt=log("partial",11,125000), outsider=log("other",900,250000);
+ app.mergeIncomingLogsV13(c,{log:[receipt,outsider]});
+ const pending=()=>Array.from(app.pendingPaymentLogs(c),n=>n.id);
+ assert.deepEqual(pending(),["partial"]);
+ c.profile.employees.hired=2;
+ app.reconcileRosterV135(c,c.profile,full.slice(1));
+ assert.deepEqual(pending(),[]);
+ assert.equal(app.trainingDeskV127(c).pending,0);
+ assert.equal(c.logs.length,2);
+ assert.equal(c.payments.length,0);
+ c.profile.employees.hired=3;
+ app.reconcileRosterV135(c,c.profile,full);
+ assert.deepEqual(pending(),["partial"]);
+ assert.equal(app.trainingDeskV127(c).pending,1);
+ assert.equal(c.payments.length,0);
+});
+
+test("Confirming an auto-credited package records the decision without changing train counts",async()=>{
+ let failSave=false;
+ const {app,elements}=fixture(undefined,async()=>{if(failSave)throw Error("Storage unavailable");});
+ const c=company(), root=elements.get("tch-root");
+ app.seed(c);
+ const imported={log:[log("paid",11,1000000)]};
+ app.mergeIncomingLogsV13(c,imported);
+ const original=c.payments[0];
+ assert.equal(app.aggregates(c).balance[11].owed,5);
+ failSave=true;
+ await click(root,"confirm-credited-payment",original.id);
+ assert.equal(c.payments[0].reviewedAt,undefined);
+ failSave=false;
+ await click(root,"confirm-credited-payment",original.id);
+ const reviewed=c.payments[0].reviewedAt;
+ assert.ok(reviewed>0);
+ await click(root,"confirm-credited-payment",original.id);
+ app.mergeIncomingLogsV13(c,imported);
+ assert.equal(c.logs[0].matchStatus,"approved");
+ assert.equal(c.payments[0].sourceId,original.sourceId);
+ assert.equal(c.payments[0].reviewedAt,reviewed);
+ assert.equal(c.payments.length,1);
+ assert.equal(app.aggregates(c).balance[11].owed,5);
 });

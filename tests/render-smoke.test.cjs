@@ -82,7 +82,7 @@ test("Recovery UI can close and leave the launcher available",async()=>{
 });
 test("Non-navigation metric markup has a matching button closure",()=>{
  assert.match(script,/data-act="metric-detail"[\s\S]{0,160}\+inner\+'<\/button>'/);
- assert.match(script,/\/\/ @version\s+1\.35\.1/);
+ assert.match(script,/\/\/ @version\s+1\.35\.2/);
  assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
 test("Records distinguishes replaced credits and exposes older recoverable payments",async()=>{
@@ -102,4 +102,32 @@ test("Records distinguishes replaced credits and exposes older recoverable payme
  assert.match(t.root.innerHTML,/Payment · REPLACED/);
  assert.match(t.root.innerHTML,/data-act="restore-payment" data-id="recover"/);
  assert.doesNotMatch(t.root.innerHTML,/data-act="restore-payment" data-id="old"/);
+});
+
+test("Payments defaults to actionable receipts, with former staff and other senders accessible on demand",async()=>{
+ const t=launchFixture(), c=sample(), ts=1600000000;
+ c.archived=[{id:12,name:"Previous employee"}];
+ c.logs=[["current",11],["former",12],["other",13],["unknown",null]].map(([id,senderId])=>({
+  id,timestamp:ts,suggestion:{status:"review",senderId,amount:125000}
+ }));
+ c.payments=[{id:"credited",source:"log-package-auto",sourceId:"log:package",amount:250000,trains:1,playerId:11,ts,assumed:true,confirmed:true}];
+ t.model.seed(c);t.opener.listeners.click({preventDefault(){}});
+ const click=dataset=>t.root.listeners.click({target:{closest:()=>({dataset})}});
+ await click({act:"goto",target:"training-payments"});
+ assert.match(t.root.innerHTML,/To review \(2\)/);
+ assert.match(t.root.innerHTML,/Former staff \(1\)/);
+ assert.match(t.root.innerHTML,/data-act="approve-log" data-id="unknown"/);
+ assert.doesNotMatch(t.root.innerHTML,/data-act="approve-log" data-id="former"/);
+ await click({act:"payment-review-group",view:"former"});
+ assert.match(t.root.innerHTML,/data-act="approve-log" data-id="former"/);
+ assert.doesNotMatch(t.root.innerHTML,/data-act="approve-log" data-id="current"/);
+ await click({act:"payment-review-group",view:"other"});
+ assert.match(t.root.innerHTML,/Sender #13/);
+ await click({act:"goto",target:"training-payments"});
+ assert.match(t.root.innerHTML,/data-act="approve-log" data-id="current"/);
+ await click({act:"training-view",view:"records"});
+ assert.match(t.root.innerHTML,/Payment · AUTO-CREDITED/);
+ await click({act:"confirm-credited-payment",id:"credited"});
+ assert.match(t.root.innerHTML,/Payment · CONFIRMED/);
+ assert.doesNotMatch(t.root.innerHTML,/data-act="confirm-credited-payment"/);
 });

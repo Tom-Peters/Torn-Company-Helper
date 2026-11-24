@@ -122,7 +122,24 @@ test("Payment review interface lets users confirm purpose explicitly",()=>{
  assert.match(source,/data-act="more-payments"/);
 });
 test("There are no new automatic reads or gameplay writes",()=>{
- assert.match(source,/\/\/ @version\s+1\.35\.1/);
+ assert.match(source,/\/\/ @version\s+1\.35\.2/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
  assert.match(source,/\/\/ @author\s+IamEEKY/);
+});
+
+test("A previously migrated receipt can recover its former sender without hiding conflicting evidence",()=>{
+ const c=company();
+ c.archived=[{id:12,name:"Previous employee"}];
+ c.logs=[{id:"legacy"},{id:"ambiguous",suggestion:{status:"review",reason:"Conflicting sender IDs"}}];
+ c.payments=c.logs.map(n=>({source:"log-auto",sourceId:"log:"+n.id,confirmed:false,playerId:12,amount:250000,trains:1}));
+ m.migrateAutoPaymentClaims(c);
+ assert.equal(c.logs[0].suggestion.senderId,12);
+ assert.deepEqual(Array.from(m.pendingPaymentLogs(c),n=>n.id),["ambiguous"]);
+ assert.equal(m.uniquePaymentEvents(c).length,0);
+});
+
+test("An incomplete roster keeps unmatched senders in view",()=>{
+ const c=company();c.profile.employees.hired=2;
+ c.logs=[{id:"unmatched",suggestion:{status:"review",senderId:12}}];
+ assert.equal(m.pendingPaymentLogs(c).length,1);
 });
