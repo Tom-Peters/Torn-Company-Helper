@@ -7,11 +7,11 @@ const path = require("node:path");
 const script=fs.readFileSync(path.join(__dirname,"..","Torn-Company-Helper.user.js"),"utf8");
 const marker='  const style=document.createElement("style");';
 assert.ok(script.includes(marker));
-const inject=script.replace(marker,"  globalThis.__modelTraining={matchTrainingNews,reconcileTraining,findMoneyTypes,cleanNews,parseIncomingLog,priceTrains,aggregates,repairImportDuplicates,uniqueTrainingEvents,repairAllSavedCompanyDuplicates,normaliseNewsResponse};\n"+marker);
+const inject=script.replace(marker,"  globalThis.__modelTraining={trainingHistoryGroups,matchTrainingNews,reconcileTraining,findMoneyTypes,cleanNews,parseIncomingLog,priceTrains,aggregates,repairImportDuplicates,uniqueTrainingEvents,repairAllSavedCompanyDuplicates,normaliseNewsResponse};\n"+marker);
 const el=()=>({style:{},dataset:{},addEventListener(){},appendChild(){},hidden:false,offsetWidth:150,offsetHeight:45,getBoundingClientRect(){return {left:5,top:5,width:150,height:45};},setPointerCapture(){}});
 const document={getElementById(){return null;},createElement:el,documentElement:{appendChild(){}},body:{appendChild(){}}};
 const window={location:{pathname:"/companies.php"},innerWidth:400,innerHeight:850,addEventListener(){}};window.top=window;window.self=window;
-const sandbox={window,document,PDA_storage:{get:async()=>null},PDA_httpGet(){throw Error("No API call expected");},URLSearchParams,JSON,Date,Math,Number,Set,Map,console};
+const sandbox={window,document,PDA_storage:{get:async()=>null},PDA_httpGet(){throw Error("No API call expected");},URL,URLSearchParams,JSON,Date,Math,Number,Set,Map,console};
 vm.runInNewContext(inject,sandbox,{timeout:1000});
 const model=sandbox.__modelTraining;
 const people=[{id:123,name:"SampleAlice"},{id:456,name:"SampleBob"}];
@@ -54,7 +54,7 @@ test("Money log types are suggested rather than hard-coded",()=>{
 test("Remote script metadata remains valid",()=>{
  assert.ok(script.startsWith("// ==UserScript=="));
  assert.match(script,/\/\/ @author\s+IamEEKY/);
- assert.match(script,/\/\/ @version\s+1\.36\.0/);
+ assert.match(script,/\/\/ @version\s+1\.36\.1/);
 });
 
 test("Two imports from one Torn news source count once, even before cleanup",()=>{
@@ -138,4 +138,64 @@ test("Training history has explicit older-page and recent-rescan controls",()=>{
 test("Company launcher hides on route change without page reload",()=>{
  assert.match(script,/routeObserver\.observe\(document\.body/);
  assert.match(script,/if\(observedPath!==window\.location\.pathname\)/);
+});
+
+test("Historical role-and-name notices for departed employees stay out of review even without an archive entry",()=>{
+ const c=company();c.profile={employees:{hired:2}};
+ c.news=[
+  {id:"former",text:"Fitness Instructor FormerFixture has been trained by the director and gained 12.5 endurance."},
+  {id:"ambiguous",text:"SampleAlice and SampleBob trained together"},
+  {id:"actor",text:"FormerFixture trained somebody new"},
+  {id:"uncertain",text:"An employee has been trained by the director"}
+ ];
+ const groups=model.trainingHistoryGroups(c);
+ assert.deepEqual(Array.from(groups.former,r=>r.news.id),["former"]);
+ assert.deepEqual(Array.from(groups.current,r=>r.news.id),["ambiguous","actor","uncertain"]);
+ assert.equal(model.reconcileTraining(c).review,3);
+ assert.equal(c.news.length,4);
+ assert.equal(c.training.length,0);
+ c.profile.employees.hired=3;
+ assert.equal(model.trainingHistoryGroups(c).former.length,0);
+});
+
+test("A current recipient or shared alias cannot be hidden as former staff",()=>{
+ const c=company();c.profile={employees:{hired:2}};
+ c.staff=[{...people[0],aliases:["OldName","SharedAlias"]},people[1]];
+ c.archived=[{id:888,name:"FormerFixture",aliases:["SharedAlias"]}];
+ c.news=[
+   {id:"alias",text:"Fitness Instructor OldName has been trained by the director"},
+   {id:"ambiguous",text:"Fitness Instructor SharedAlias has been trained by the director"},
+   {id:"former-count",text:"FormerFixture was trained 31 times"},
+   {id:"active-count",text:"SampleAlice was trained 31 times"}
+ ];
+ assert.deepEqual(Array.from(model.trainingHistoryGroups(c).former,r=>r.news.id),["former-count"]);
+ assert.equal(model.reconcileTraining(c).matched,1);
+ assert.equal(c.training[0].playerId,123);
+ assert.deepEqual(Array.from(model.trainingHistoryGroups(c).current,r=>r.news.id),["ambiguous","active-count"]);
+});
+
+test("Previously unseen recipient on a later roster reconciles once and keeps their purchase",()=>{
+ const c=company();c.profile={employees:{hired:2}};
+ c.news=[{id:"old-news",timestamp:10,text:"Fitness Instructor ReturningFixture has been trained by the director."}];
+ c.payments=[{id:"saved-payment",ts:1,playerId:789,confirmed:true,trains:5}];
+ assert.equal(model.reconcileTraining(c).review,0);
+ assert.equal(model.aggregates(c).balance[789].owed,5);
+ c.staff=[...c.staff,{id:789,name:"ReturningFixture"}];c.profile.employees.hired=3;
+ assert.equal(model.trainingHistoryGroups(c).former.length,0);
+ assert.equal(model.reconcileTraining(c).matched,1);
+ assert.equal(model.reconcileTraining(c).matched,0);
+ assert.equal(model.aggregates(c).balance[789].owed,4);
+ assert.equal(model.trainingHistoryGroups(c).current.length,0);
+});
+
+test("Recipient profile IDs distinguish former and current staff when display names have changed",()=>{
+ const c=company();c.profile={employees:{hired:2}};
+ c.news=[
+   {id:"renamed",text:'Fitness Instructor <a href="/profiles.php?XID=123">DifferentName</a> has been trained by the director.'},
+   {id:"past",text:'The director trained <a href="/profiles.php?XID=999">SampleAlice</a>.'},
+   {id:"trainer",text:'<a href="/profiles.php?XID=999">FormerWorker</a> trained <a href="/profiles.php?XID=456">EarlierName</a>.'}
+ ];
+ assert.deepEqual(Array.from(model.trainingHistoryGroups(c).former,r=>r.news.id),["past"]);
+ assert.equal(model.reconcileTraining(c).matched,2);
+ assert.deepEqual(Array.from(c.training,t=>t.playerId),[123,456]);
 });

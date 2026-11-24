@@ -82,7 +82,7 @@ test("Recovery UI can close and leave the launcher available",async()=>{
 });
 test("Non-navigation metric markup has a matching button closure",()=>{
  assert.match(script,/data-act="metric-detail"[\s\S]{0,160}\+inner\+'<\/button>'/);
- assert.match(script,/\/\/ @version\s+1\.36\.0/);
+ assert.match(script,/\/\/ @version\s+1\.36\.1/);
  assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
 test("Records distinguishes replaced credits and exposes older recoverable payments",async()=>{
@@ -148,4 +148,27 @@ test("Existing auto-credited receipts link to that employee's pricing and show t
  assert.doesNotMatch(t.root.innerHTML,/Apply 6 trains/);
  await click({act:"training-view",view:"records"});
  assert.match(t.root.innerHTML,/Train rate correction from 5 trains/);
+});
+
+test("History hides 49 off-roster entries from the badge and default list while keeping every page accessible",async()=>{
+ const t=launchFixture(), c=sample(), ts=1600000000;
+ c.news=Array.from({length:49},(_,i)=>({id:"prior-"+i,timestamp:ts+i,
+   text:"Fitness Instructor PriorWorker"+i+" has been trained by the director."}));
+ c.news.push({id:"active",timestamp:ts, text:"ExampleEmployee was trained 30 times"});
+ t.model.seed(c);t.opener.listeners.click({preventDefault(){}});
+ const click=dataset=>t.root.listeners.click({target:{closest:()=>({dataset})}});
+ await click({act:"goto",target:"training-history"});
+ assert.match(t.root.innerHTML,/History \(1\)/);
+ assert.match(t.root.innerHTML,/Former staff \(49\)/);
+ assert.match(t.root.innerHTML,/ExampleEmployee was trained 30 times/);
+ assert.doesNotMatch(t.root.innerHTML,/PriorWorker/);
+ await click({act:"history-group",view:"former"});
+ assert.match(t.root.innerHTML,/PriorWorker48/);
+ assert.doesNotMatch(t.root.innerHTML,/PriorWorker0 has/);
+ assert.doesNotMatch(t.root.innerHTML,/data-act="assign-news"/);
+ await click({act:"more-training-history"});
+ assert.match(t.root.innerHTML,/PriorWorker0 has/);
+ await click({act:"goto",target:"training-history"});
+ assert.doesNotMatch(t.root.innerHTML,/PriorWorker/);
+ assert.equal(c.training.length,0);
 });

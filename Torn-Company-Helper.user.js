@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.36.0
+// @version      1.36.1
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -94,6 +94,7 @@
   function activeApiKey(){return key || (hasPdaKey()?PDA_APP_KEY:"");}
   let staffView="desk",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35,recordViewLimit=70;
   let paymentReviewGroup = "current", rateEmployeeId = "";
+  let historyGroup="current", historyLimit=30;
   let tab = "overview", detailView = "", open = false, busy = false, message = "", severity = "";
   let launcherDragged = false;
   const esc = function (value) {return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});};
@@ -215,10 +216,53 @@
       return {"&nbsp;":" ","&amp;":"&","&quot;":'"',"&lt;":"<","&gt;":">"}[v.toLowerCase()]||" ";
     }).replace(/\s+/g," ").trim();
   }
-  function matchTrainingNews(news,c) {
+  function trainingNewsRoster(c) {
+    const staff=c.staff||[], people=new Map(), current=new Set(), names=new Set(), patterns=[];
+    const roles=new Set([...rolesFallback,...(c.roles||[])].map(r=>String(r.name).toLowerCase()));
+    for (const p of [...(c.archived||[]),...staff]) {
+      if (!p?.id || !p.name) continue;
+      people.set(String(p.id),p);
+      if (p.position?.name) roles.add(p.position.name.toLowerCase());
+    }
+    for (const p of staff) if (p?.id && p.name) current.add(String(p.id));
+    for (const p of people.values()) {
+      for (const label of new Set([p.name,...(p.aliases||[]),"__tch_player_"+p.id+"__"])) {
+        if (typeof label!=="string" || !label) continue;
+        names.add(label.toLowerCase());
+        const literal=label.replace(/[^a-zA-Z0-9_]/g,ch=>String.fromCharCode(92)+ch);
+        const start="(?:^|[^A-Za-z0-9_-])", end="(?=$|[^A-Za-z0-9_-])";
+        const mention=new RegExp(start+literal+end,"i");
+        const recipient=new RegExp("\\b(?:trained\\s+(?:employee\\s+)?|training\\s+(?:for|to)\\s+|train\\s+given\\s+to\\s+)"+literal+end+
+          "|"+start+literal+"\\s+(?:was\\s+trained|has\\s+been\\s+trained|received\\s+(?:a\\s+)?train)\\b","i");
+        patterns.push({person:p,mention,recipient});
+      }
+    }
+    const hired=financialAmount(c.profile?.employees?.hired);
+    const complete=current.size===staff.length && (hired===null ? Boolean(c.rosterSync?.at) && staff.length>0 : hired===staff.length);
+    return {current,complete,names,patterns,roles};
+  }
+  // Only use a recipient slot in Torn training news to file someone never seen on the roster.
+  // Bare actor names and mentions elsewhere in the sentence cannot identify the employee.
+  function namedOffRosterRecipient(text, roster) {
+    if (!roster.complete) return false;
+    const passive=text.match(/^(.+?)\s+(?:was|has been) trained\b/i);
+    let token="";
+    if (passive) {
+      const words=passive[1].trim().split(/\s+/);
+      token=words.pop();
+      if (words.length && !roster.roles.has(words.join(" ").toLowerCase())) return false;
+      const tail=text.slice(passive[0].length).trim();
+      if (tail && !/^(?:[.!]|\d+\s+times\b|by the director\b)/i.test(tail)) return false;
+      if (/\b(?:trained|along with|together with)\b/i.test(tail)) return false;
+    } else {
+      // An explicit profile link can also identify an unknown recipient in active voice.
+      token=text.match(/\btrained\s+(?:employee\s+)?(__tch_player_\d+__)(?:\s+\d+\s+times)?\s*[.!]?$/i)?.[1]||"";
+    }
+    return /^[A-Za-z0-9_-]+$/.test(token) && !roster.names.has(token.toLowerCase()) &&
+      !/^(?:he|she|they|it|director|employee|someone|somebody|staff|worker|team|you)$/i.test(token);
+  }
+  function matchTrainingNews(news,c,roster=trainingNewsRoster(c)) {
     const raw=String(news.text||"");
-    const people=new Map();
-    for(const p of [...(c.archived||[]),...(c.staff||[])])if(p?.id&&p.name)people.set(String(p.id),p);
     // Profile links identify renamed staff independently of the visible name.
     const linked=raw.replace(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>[\s\S]*?<\/a>/gi,function(anchor,quote,href){
       try{
@@ -230,35 +274,43 @@
     });
     const text=cleanNews(linked);
     if(!/\btrain(?:ed|ing)?\b/i.test(text)) return {status:"review",reason:"Training action not identified"};
-    const candidates=[];
-    for(const p of people.values()){
-      for(const name of new Set([p.name,...(p.aliases||[]),'__tch_player_'+p.id+'__'])){
-        const escaped=String(name).replace(/[^a-zA-Z0-9_]/g,function(ch){return String.fromCharCode(92)+ch;});
-        const re=new RegExp("(^|[^A-Za-z0-9_-])"+escaped+"(?=$|[^A-Za-z0-9_-])","i");
-        if(re.test(text))candidates.push({...p,matchName:name});
-      }
+    const targets=new Map();
+    let mentions=0;
+    for (const pattern of roster.patterns) {
+      if (!pattern.mention.test(text)) continue;
+      mentions++;
+      if (pattern.recipient.test(text)) targets.set(String(pattern.person.id),pattern.person);
     }
-    let recipient=null;
-    const targeted=candidates.filter(function(p){
-      const escaped=String(p.matchName||p.name).replace(/[^a-zA-Z0-9_]/g,function(ch){return String.fromCharCode(92)+ch;});
-      return new RegExp("\\btrained?\\s+(?:employee\\s+)?"+escaped+"(?=$|\\W)","i").test(text) ||
-        new RegExp("(^|\\W)"+escaped+"\\s+(?:was\\s+trained|has\\s+been\\s+trained|received\\s+(?:a\\s+)?train)","i").test(text) ||
-        new RegExp("\\b(?:training\\s+(?:for|to)|train\\s+given\\s+to)\\s+"+escaped+"(?=$|\\W)","i").test(text);
-    });
-    if(new Set(targeted.map(p=>String(p.id))).size===1) recipient=targeted[0];
-    // A lone employee name without recipient language is not reliable enough to debit training.
-    if(!recipient) return {status:"review",reason:candidates.length>1?"Multiple employees mentioned":"Employee not recognised"};
+    if (targets.size!==1) {
+      return {status:"review",reason:mentions>1?"Multiple employees mentioned":"Employee not recognised",
+        former:targets.size===0 && namedOffRosterRecipient(text,roster)};
+    }
+    const recipient=targets.values().next().value;
+    const identity={playerId:Number(recipient.id),name:recipient.name,former:!roster.current.has(String(recipient.id))};
     const counts=[...text.matchAll(/\b(\d+)\s+(?:times|training\s+sessions?)\b/gi)].map(m=>Number(m[1]));
-    if(new Set(counts).size>1)return {status:"review",reason:"Conflicting training counts"};
+    if(new Set(counts).size>1)return {...identity,status:"review",reason:"Conflicting training counts"};
     const units=counts.length?counts[0]:1;
-    if(units<1 || units>20) return {status:"review",reason:"Invalid training count"};
-    return {status:"matched",playerId:Number(recipient.id),units:units,name:recipient.name,explicitCount:counts.length>0};
+    if(units<1 || units>20) return {...identity,status:"review",reason:"Invalid training count"};
+    return {...identity,status:"matched",units,explicitCount:counts.length>0};
+  }
+  function trainingHistoryGroups(c) {
+    const groups={current:[],former:[]};
+    const linked=new Set((c.training||[]).filter(t=>!t.voided).map(canonicalTrainingSource));
+    let roster;
+    for (const news of c.news||[]) {
+      if (linked.has("news:"+news.id)) continue;
+      roster??=trainingNewsRoster(c);
+      const match=matchTrainingNews(news,c,roster);
+      groups[match.former?"former":"current"].push({news,match});
+    }
+    return groups;
   }
   function reconcileTraining(c) {
     let matched=0,review=0,corrected=0;
+    const roster=trainingNewsRoster(c);
     c.news.forEach(function(n){
       const existing=c.training.find(t=>canonicalTrainingSource(t)==="news:"+n.id);
-      const result=matchTrainingNews(n,c);
+      const result=matchTrainingNews(n,c,roster);
       if(existing){
         // Repair only our own automatic count, never a director's correction or void.
         if(!existing.voided&&existing.source==="company-news-auto"&&result.status==="matched"&&result.explicitCount&&
@@ -268,7 +320,7 @@
         }
         return;
       }
-      if(result.status!=="matched"){n.matchStatus="review";n.matchReason=result.reason;review++;return;}
+      if(result.status!=="matched"){n.matchStatus="review";n.matchReason=result.reason;if(!result.former)review++;return;}
       // If the director manually recorded a train within 15 minutes of Torn news,
       // bind its existing ledger row to the source rather than counting a second train.
       const manual=(c.training||[]).find(function(t){
@@ -665,9 +717,7 @@
     if(reviewed)results.push({label:"Legacy money imports",state:"review",note:reviewed+" previously auto-classified payment(s) await confirmation of training purpose."});
     const unseen=actionable.length;
     if(unseen)results.push({label:"Imported transfers",state:"review",note:unseen+" unconfirmed transfer(s); none are counted as purchased training."});
-    const historical=(c.news||[]).filter(function(n){
-      return !c.training.some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});
-    }).length;
+    const historical=trainingHistoryGroups(c).current.length;
     if(historical)results.push({label:"Training history",state:"review",note:historical+" imported news item(s) need recipient verification."});
     return {status:results.some(function(r){return r.state==="incomplete"||r.state==="review"||r.state==="stale";})?"review":"checked",results:results};
   }
@@ -682,9 +732,7 @@
     const pending=pendingPaymentLogs(c).length;
     if(pending)add("review","Confirm the purpose of "+pending+" money transfer"+(pending===1?"":"s"),
       "Sender and amount may be known, but this does not prove a training purchase. Purchases are not credited before approval.","High · unverified purchase purpose","training-payments");
-    const news=(c.news||[]).filter(function(n){
-      return !c.training.some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});
-    }).length;
+    const news=trainingHistoryGroups(c).current.length;
     if(news)add("review","Reconcile "+news+" training history item"+(news===1?"":"s"),
       "Employee or training count needs confirmation before being included in the ledger.","High · unmatched source records","training-history");
     const staleHours=Number.isFinite(Date.parse(c.lastRefresh||""))?Math.max(0,(Date.now()-Date.parse(c.lastRefresh))/3600000):Infinity;
@@ -2682,7 +2730,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.36.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.36.1</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2729,7 +2777,7 @@
     const owed=Object.values(balances).reduce(function(t,b){return t+b.owed;},0);
     const due=Object.keys(balances).filter(function(k){return balances[k].owed>0;}).length;
     const lossBreach=a.known && a.profit < -num(c.lossLimit);
-    const newsReview=c.news.filter(function(n){return !(c.training||[]).some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});}).length;
+    const newsReview=trainingHistoryGroups(c).current.length;
     const moneyReview=pendingPaymentLogs(c).length;
     return '<button type="button" data-act="goto" data-target="growth-performance" class="tch-hero tch-clickable tch-hero-button"><div class="tch-kicker">YOUR '+esc(String(c.profile.type?.name||"COMPANY").toUpperCase())+' · TAP FOR GROWTH DETAILS</div>'+
       '<div class="tch-hero-line"><strong>'+esc(c.profile.name||"Company")+'</strong><span class="tch-rating">'+esc(c.profile.rating)+' ★</span></div>'+
@@ -2933,7 +2981,7 @@
       return Number(ia)-Number(ib) || (a[1].oldest||Infinity)-(b[1].oldest||Infinity);
     });
     const groups=paymentReviewGroups(c), pending=groups.current;
-    const reviewNews=(c.news||[]).filter(function(n){return !(c.training||[]).some(function(t){return !t.voided&&canonicalTrainingSource(t)==="news:"+n.id;});});
+    const newsGroups=trainingHistoryGroups(c), reviewNews=newsGroups.current;
     const switches=buttonsV2("Training screens",[
       {action:"training-view",id:"queue",name:"Queue",active:trainingView==="queue"},
       {action:"training-view",id:"payments",name:"Payments"+(pending.length?" ("+pending.length+")":""),active:trainingView==="payments"},
@@ -3001,20 +3049,26 @@
         '<input id="tch-pay-units" type="number" min="0" placeholder="Trains" aria-label="Trains purchased"></div>'+
         '<button data-act="add-payment">Save payment locally</button><p class="tch-hint">The selected employee rate fills the train count when the amount matches. You can edit it before saving.</p></section>';
     } else if(trainingView==="history"){
-      body='<section class="tch-panel"><h2>Company training history</h2><p>Each Torn news ID can count only once. Matching happens locally after you initiate the import.</p>'+
+      const visible=newsGroups[historyGroup];
+      const filters=buttonsV2("Training history filters",[
+        {action:"history-group",id:"current",name:"To check ("+reviewNews.length+")",active:historyGroup==="current"},
+        {action:"history-group",id:"former",name:"Former staff ("+newsGroups.former.length+")",active:historyGroup==="former"}
+      ]);
+      body='<section class="tch-panel"><h2>Company training history</h2><p>Training news is matched to employee IDs and known names. Each event counts once.</p>'+
         (c.newsHistoryWarning?'<p class="tch-hint">'+esc(c.newsHistoryWarning)+'</p>':"")+
         '<div class="tch-actionrow"><button class="primary" data-act="rescan-news">Check recent</button><button data-act="import-news">Load older</button><button data-act="match-news">Recheck matches</button></div>'+
         '<div class="tch-minikpis"><span>'+unique.filter(function(t){return !!t.sourceId;}).length+' matched</span><span>'+reviewNews.length+' to check</span></div></section>'+
-        '<section class="tch-panel"><h2>Unmatched records</h2>'+
-        (reviewNews.length?reviewNews.slice().sort(function(a,b){return b.timestamp-a.timestamp;}).slice(0,30).map(function(n){
-          const g=matchTrainingNews(n,c);
+        '<section class="tch-panel"><h2>Unmatched records</h2>'+filters+
+        (historyGroup==="former"?'<p>These recipients are outside the current roster. Their saved news is available here.</p>':'')+
+        (visible.length?visible.slice().sort((a,b)=>b.news.timestamp-a.news.timestamp).slice(0,historyLimit).map(function({news:n,match:g}){
+          if (historyGroup==="former" && !g.playerId) return '<article class="tch-review"><strong>'+esc(day(n.timestamp))+'</strong><p>'+esc(cleanNews(n.text).slice(0,400))+'</p></article>';
           return '<article class="tch-review"><strong>'+esc(day(n.timestamp))+'</strong><p>'+esc(cleanNews(n.text)).slice(0,400)+'</p>'+
             '<div class="tch-fieldrow"><select id="tch-news-person-'+esc(n.id)+'"><option value="">Select employee</option>'+c.staff.concat(c.archived||[]).map(function(p){
               return '<option value="'+esc(p.id)+'" '+(String(g.playerId||"")===String(p.id)?"selected":"")+'>'+esc(p.name)+'</option>';
             }).join("")+'</select><input type="number" data-news-units="'+esc(n.id)+'" min="1" max="20" value="'+esc(g.units||1)+'" aria-label="Trains"></div>'+
             '<button class="primary" data-act="assign-news" data-id="'+esc(n.id)+'">Confirm locally</button></article>';
-        }).join(""):'<div class="tch-empty">Every imported record with a recognised recipient has been matched.</div>')+
-        '</section>';
+        }).join(""):'<div class="tch-empty">'+(historyGroup==="former"?'No unmatched records for former staff.':'No training records need checking.')+'</div>')+
+        (visible.length>historyLimit?'<button data-act="more-training-history">Show older records</button>':'')+'</section>';
     } else {
       const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,voidStatus:p.voided?voidedPaymentStatus(c,p):null,restoredAt:p.restoredAt,previousTrains:p.rateCorrection?.from,autoCredited:isAutoCreditedPayment(p),reviewed:p.assumed&&isApprovedLogPayment(p)&&(p.reviewedAt||p.restoredAt),unverified:p.source==="log-auto"&&!p.voided};})
         .concat(c.training.map(function(t){return {id:t.id,ts:t.ts,type:"Training",person:t.playerId,units:t.units,money:null,voided:t.voided,correction:t.correctionReason,previousUnits:t.previousUnits};}))
@@ -3101,7 +3155,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.36.0',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.36.1',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -3152,7 +3206,7 @@
     if(!open)return;
     const pageKey=String(companyId||'none')+':'+(detailView?'detail:'+detailView:
       tab==='employees'?tab+':'+staffView+':'+(selectedEmployee||''):
-      tab==='training'?tab+':'+trainingView+(trainingView==='payments'?':'+paymentReviewGroup:trainingView==='rates'?':'+rateEmployeeId:''):tab==='growth'?tab+':'+growthView:tab);
+      tab==='training'?tab+':'+trainingView+(trainingView==='payments'?':'+paymentReviewGroup:trainingView==='rates'?':'+rateEmployeeId:trainingView==='history'?':'+historyGroup:''):tab==='growth'?tab+':'+growthView:tab);
     const oldMain=root.querySelector?.('.tch-main'),oldFocused=document.activeElement;
     if(companyRenderedPage)companyScrollPositions[companyRenderedPage]={root:root.scrollTop,main:oldMain?.scrollTop||0};
     let savedForm=null;
@@ -3627,7 +3681,12 @@
     if (act==="metric-detail"){detailView=el.dataset.target;draw();return;}
     if (act==="detail-back"){detailView="";draw();return;}
     if (act==="staff-view"){staffView=el.dataset.view;selectedEmployee=null;draw();return;}
-    if (act==="training-view"){trainingView=el.dataset.view;if(trainingView==="payments")paymentReviewGroup="current";draw();return;}
+    if (act==="training-view"){trainingView=el.dataset.view;if(trainingView==="payments")paymentReviewGroup="current";if(trainingView==="history"){historyGroup="current";historyLimit=30;}draw();return;}
+    if (act==="history-group"){
+      if (["current","former"].includes(el.dataset.view)){historyGroup=el.dataset.view;historyLimit=30;draw();}
+      return;
+    }
+    if (act==="more-training-history"){historyLimit+=30;draw();return;}
     if (act==="more-records"){recordViewLimit+=70;draw();return;}
     if (act==="employee-rate") {
       rateEmployeeId=el.dataset.id;tab="training";trainingView="rates";detailView="";draw();return;
@@ -3716,7 +3775,7 @@
       if(target==="refresh"){refresh();return;}
       if(!Object.prototype.hasOwnProperty.call(routes,target))return;
       const route=routes[target];tab=route[0];if(tab==="growth")growthView=route[1];
-      if(tab==="training"){trainingView=route[1];if(trainingView==="payments")paymentReviewGroup="current";}if(tab==="employees")staffView=route[1];detailView="";
+      if(tab==="training"){trainingView=route[1];if(trainingView==="payments")paymentReviewGroup="current";if(trainingView==="history"){historyGroup="current";historyLimit=30;}}if(tab==="employees")staffView=route[1];detailView="";
       draw();return;
     }
     if(act==="pay-scenario"){
@@ -3749,7 +3808,7 @@
     if (act==="set-theme"){data.themeMode=el.dataset.theme;await work(persist);return;}
     if (act==="clear-key"){key="";notify(hasPdaKey()?"Using Torn PDA key.":"No API key supplied by PDA.","good");return;}
     if (act==="jump-review"){tab="training";trainingView="payments";paymentReviewGroup="current";draw();return;}
-    if (act==="jump-history"){tab="training";trainingView="history";draw();return;}
+    if (act==="jump-history"){tab="training";trainingView="history";historyGroup="current";historyLimit=30;draw();return;}
     if (act==="refresh") return refresh();
     if (act==="import-news") return importNews(false);
     if (act==="rescan-news") return importNews(true);

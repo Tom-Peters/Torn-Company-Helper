@@ -112,3 +112,13 @@ test("Archived transfer reviews stay available without a launcher or hub payment
  assert.ok(!app.companyHubActions(c).some(x=>x.id==="pending-payments"||x.id==="decision-training-payments"));
  assert.equal(c.logs.length,1);
 });
+
+test("Former employee history is excluded from Today and Hub review actions",()=>{
+ const {app}=fixture(), c=company(0,0);
+ c.news=[{id:"old",text:"Fitness Instructor FormerWorker has been trained by the director."}];
+ assert.ok(!app.companyActionList(c).some(a=>a.target==="training-history"));
+ assert.ok(!app.companyHubActions(c).some(a=>a.id==="decision-training-history"));
+ c.news.push({id:"open",text:"Training recipient unclear"});
+ const action=app.companyActionList(c).find(a=>a.target==="training-history");
+ assert.match(action.title,/Reconcile 1 training history item/);
+});

@@ -1,3 +1,9 @@
+## 1.36.1 - Former employees in training history
+
+**Trains → History** opens on **To check**. Unmatched news naming a former employee is available under **Former staff** and stays out of the History badge and review reminders. This also covers the role-and-name wording in older Torn news for staff who left before the helper first saw them. An incomplete roster or ambiguous wording keeps an unrecognised recipient in review.
+
+The history filters work on saved news immediately. They keep payments and delivered-train entries intact. A later roster refresh can recognise a returning employee from their Torn ID, name or saved alias.
+
 ## 1.36.0 - Train pricing per employee
 
 Open **Trains → Rates**, choose an employee and save their single-train price, bundle price and bundle size. For a $1m six-train deal, set the bundle price to 1,000,000 and the size to 6. Other employees use their own agreement or the company default of $250,000 for one and $1,000,000 for five. Leave both bundle fields empty for a single price per train.
