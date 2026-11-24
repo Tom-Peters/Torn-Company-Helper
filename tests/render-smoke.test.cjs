@@ -82,6 +82,24 @@ test("Recovery UI can close and leave the launcher available",async()=>{
 });
 test("Non-navigation metric markup has a matching button closure",()=>{
  assert.match(script,/data-act="metric-detail"[\s\S]{0,160}\+inner\+'<\/button>'/);
- assert.match(script,/\/\/ @version\s+1\.35\.0/);
+ assert.match(script,/\/\/ @version\s+1\.35\.1/);
  assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
+});
+test("Records distinguishes replaced credits and exposes older recoverable payments",async()=>{
+ const t=launchFixture(), c=sample(), ts=1600000000;
+ const original={id:"old",sourceId:"log:one",source:"log-auto",playerId:11,trains:1,amount:250000,ts,voided:true,
+   voidReason:"Superseded by explicitly confirmed training purchase"};
+ c.payments=[original,{...original,id:"confirmed",source:"log-confirmed",confirmed:true,voided:false},
+   {...original,id:"recover",sourceId:"log:two",source:"log-confirmed",voidReason:"Voided by director"}];
+ c.training=Array.from({length:70},(_,i)=>({id:"train"+i,playerId:11,units:1,ts:ts+1+i}));
+ t.model.seed(c);t.opener.listeners.click({preventDefault(){}});
+ t.model.tab("training");
+ const click=dataset=>t.root.listeners.click({target:{closest:()=>({dataset})}});
+ await click({act:"training-view",view:"records"});
+ assert.match(t.root.innerHTML,/Show older records/);
+ assert.doesNotMatch(t.root.innerHTML,/data-act="restore-payment"/);
+ await click({act:"more-records"});
+ assert.match(t.root.innerHTML,/Payment · REPLACED/);
+ assert.match(t.root.innerHTML,/data-act="restore-payment" data-id="recover"/);
+ assert.doesNotMatch(t.root.innerHTML,/data-act="restore-payment" data-id="old"/);
 });

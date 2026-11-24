@@ -1,3 +1,9 @@
+## 1.35.1 - Payment records and recovery
+
+Confirming an older imported receipt now updates its existing entry. In **Trains → Records**, an old suggestion with a replacement is labelled **Replaced**. The confirmed entry carries the credit. A voided payment can be restored individually after checking its employee, amount and train count. **Show older records** reaches entries beyond the first 70.
+
+In **Trains → Payments**, **Review & credit old matches** now recognises separate Torn receipts even when the same employee paid the same package price twice on the same day. A matching manual entry without a receipt ID still requires review. Rescanning a voided payment leaves the decision in place.
+
 ## 1.35.0 - Automatic training reconciliation and employee lifecycle
 
 Complete roster refreshes archive missing staff automatically, using the current saved roster even when the older previous-roster cache is absent. Returning Torn player IDs leave the archive and retain their original payments, delivered trains, outstanding balance and advance credit. Current rejoin eligibility still applies. Invalid, duplicate or count-mismatched roster responses preserve existing membership. Staff has an Archived view.

@@ -17,7 +17,7 @@ function company(){
   roles:[],stock:[],snapshots:[],archived:[],payments:[],training:[],news:[],logs:[],
   logTypes:"77",incomingTypesVerified:true,whatIf:{},lossLimit:500000,autoCreditSince:now()-60};
 }
-function fixture(responses){
+function fixture(responses, save=async()=>true){
  const elements=new Map(),calls=[];
  const node=()=>({id:"",style:{},dataset:{},hidden:false,innerHTML:"",listeners:{},
   appendChild(){},addEventListener(k,fn){this.listeners[k]=fn;},setAttribute(){},setPointerCapture(){},
@@ -29,10 +29,10 @@ function fixture(responses){
  const hook='  const style=document.createElement("style");';
  const script=source.replace('const PDA_APP_KEY = "###PDA-APIKEY###";','const PDA_APP_KEY = "AAAAAAAAAAAAAAAA";')
   .replace(hook, '  globalThis.__v13={reconcileRosterV135,aggregates,matchTrainingNews,reconcileTraining,trainPlanV3,autoCreditPurchasesV13,exactPaidTrainingV13,backfillTrainingReceiptsV13,'+
-    'mergeIncomingLogsV13,mergeTrainingNewsV13,supportWageModelV13,compactWagePanelV13,growthMovesV13,'+
+    'mergeIncomingLogsV13,mergeTrainingNewsV13,pendingPaymentLogs,supportWageModelV13,compactWagePanelV13,growthMovesV13,'+
     'homeV13,trainingDeskV127,nativeCompanyDeskHTMLV127,trainingSpotlightV127,rosterBenchV12,rivalRostersPanelV12,seed(c){companyId=String(c.profile.id);data.byCompany[companyId]=c;}};\n'+hook);
  const sandbox={window,document,URL,URLSearchParams,Date,Math,Number,JSON,Set,Map,Blob,console,
-   PDA_storage:{get:async()=>null,set:async()=>true},
+   PDA_storage:{get:async()=>null,set:save},
    PDA_httpGet:async(url)=>{calls.push(url);return {status:200,responseText:JSON.stringify(responses?responses(url):{})};}};
  vm.runInNewContext(script,sandbox,{timeout:1800});
  return {app:sandbox.__v13,calls,elements};
@@ -151,7 +151,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.35\.0/);
+ assert.match(source,/\/\/ @version\s+1\.35\.1/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
@@ -265,4 +265,83 @@ test("An existing unmatched recent transfer is retried after a returning employe
  assert.equal(app.mergeIncomingLogsV13(c,{log:[receipt]}).credited,1);
  assert.equal(app.mergeIncomingLogsV13(c,{log:[receipt]}).credited,0);
  assert.equal(app.aggregates(c).balance[11].owed,5);
+});
+
+test("Historic package recovery distinguishes two real receipts even at the same second",()=>{
+ const {app}=fixture(), c=company(), ts=now()-90000;
+ const imports={log:[log("one",11,1000000,ts),log("two",11,1000000,ts),log("one",11,1000000,ts)]};
+ app.mergeIncomingLogsV13(c,imports);
+ assert.equal(app.backfillTrainingReceiptsV13(c).credited,2);
+ app.mergeIncomingLogsV13(c,imports);
+ assert.equal(app.backfillTrainingReceiptsV13(c).credited,0);
+ assert.equal(app.aggregates(c).balance[11].purchased,10);
+});
+
+function click(root, act, id, extra={}) {
+ return root.listeners.click({target:{closest:()=>({dataset:{act,id,...extra}})}});
+}
+function approvalFields(root,id) {
+ const fields=[["log-person","11"],["log-amount","1000000"],["log-units","5"]];
+ root.querySelectorAll=selector=>selector==="[data-field]" ? fields.map(([field,value])=>({dataset:{id,field},value})) : [];
+}
+function legacyPayment(id){
+ return {id:"old-"+id,source:"log-auto",sourceId:"log:"+id,confirmed:false,reviewRequired:true,
+   playerId:11,trains:5,amount:1000000,ts:now()-100};
+}
+test("Confirm, void and restore a legacy receipt through the ledger, once per decision",async()=>{
+ let failSave=true;
+ const {app,elements}=fixture(undefined,async()=>{if(failSave)throw Error("PDA storage unavailable");});
+ const c=company(), root=elements.get("tch-root"), original=legacyPayment("one");
+ c.payments=[original];
+ c.logs=[{id:"one",timestamp:original.ts,matchStatus:"review"}];
+ app.seed(c);
+ approvalFields(root,"one");
+ await click(root,"approve-log","one");
+ assert.equal(c.payments[0],original);
+ assert.equal(c.logs[0].matchStatus,"review");
+ failSave=false;
+ await click(root,"approve-log","one");
+ await click(root,"approve-log","one");
+ assert.equal(c.payments.length,1);
+ assert.equal(c.payments[0].id,original.id);
+ assert.equal(c.payments[0].source,"log-confirmed");
+ assert.equal(c.payments[0].reviewRequired,false);
+ assert.equal(app.aggregates(c).balance[11].owed,5);
+ await click(root,"void-entry",original.id,{kind:"Payment"});
+ app.mergeIncomingLogsV13(c,{log:[log("one",11,1000000)]});
+ assert.equal(app.pendingPaymentLogs(c).length,0);
+ assert.equal(app.backfillTrainingReceiptsV13(c).credited,0);
+ await click(root,"approve-log","one");
+ assert.equal(c.payments.length,1);
+ assert.equal(app.aggregates(c).balance[11],undefined);
+ failSave=true;
+ await click(root,"restore-payment",original.id);
+ assert.equal(c.payments[0].voided,true);
+ assert.equal(c.logs[0].matchStatus,"voided");
+ failSave=false;
+ await click(root,"restore-payment",original.id);
+ await click(root,"restore-payment",original.id);
+ assert.equal(c.logs[0].matchStatus,"approved");
+ assert.equal(c.payments[0].voidReason,"Voided by director");
+ assert.ok(c.payments[0].restoredAt);
+ assert.equal(app.aggregates(c).balance[11].owed,5);
+});
+test("Historical replacement rows cannot override a live or deliberately voided confirmation",async()=>{
+ const {app,elements}=fixture(), c=company(), root=elements.get("tch-root");
+ const previous={...legacyPayment("two"),voided:true,voidReason:"Superseded by explicitly confirmed training purchase"};
+ const confirmed={...previous,id:"approved-two",voided:false,confirmed:true,source:"log-confirmed",trains:4};
+ c.payments=[previous,confirmed];app.seed(c);
+ await click(root,"restore-payment",previous.id);
+ assert.equal(app.aggregates(c).balance[11].owed,4);
+ await click(root,"void-entry",confirmed.id,{kind:"Payment"});
+ await click(root,"restore-payment",previous.id);
+ assert.equal(app.aggregates(c).balance[11],undefined);
+ await click(root,"restore-payment",confirmed.id);
+ assert.equal(app.aggregates(c).balance[11].owed,4);
+ // With no saved replacement, the director can explicitly verify the original receipt.
+ c.payments=[previous];
+ assert.equal(app.aggregates(c).balance[11],undefined);
+ await click(root,"restore-payment",previous.id);
+ assert.equal(app.aggregates(c).balance[11].owed,5);
+ assert.equal(c.payments[0].source,"log-confirmed");
 });
