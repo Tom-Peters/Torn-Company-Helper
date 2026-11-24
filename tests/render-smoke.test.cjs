@@ -82,7 +82,7 @@ test("Recovery UI can close and leave the launcher available",async()=>{
 });
 test("Non-navigation metric markup has a matching button closure",()=>{
  assert.match(script,/data-act="metric-detail"[\s\S]{0,160}\+inner\+'<\/button>'/);
- assert.match(script,/\/\/ @version\s+1\.35\.2/);
+ assert.match(script,/\/\/ @version\s+1\.36\.0/);
  assert.doesNotMatch(script,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
 test("Records distinguishes replaced credits and exposes older recoverable payments",async()=>{
@@ -130,4 +130,22 @@ test("Payments defaults to actionable receipts, with former staff and other send
  await click({act:"confirm-credited-payment",id:"credited"});
  assert.match(t.root.innerHTML,/Payment · CONFIRMED/);
  assert.doesNotMatch(t.root.innerHTML,/data-act="confirm-credited-payment"/);
+});
+
+test("Existing auto-credited receipts link to that employee's pricing and show the exact correction",async()=>{
+ const t=launchFixture(), c=sample(), ts=1600000000;
+ c.trainRates={"11":{single:250000,bundle:1000000,units:6}};
+ c.payments=[{id:"older",source:"log-package-auto",sourceId:"log:old",ts,playerId:11,amount:1000000,trains:5,assumed:true,confirmed:true}];
+ t.model.seed(c);t.opener.listeners.click({preventDefault(){}});
+ const click=dataset=>t.root.listeners.click({target:{closest:()=>({dataset})}});
+ t.model.tab("training");await click({act:"training-view",view:"records"});
+ assert.match(t.root.innerHTML,/data-act="employee-rate" data-id="11"/);
+ await click({act:"employee-rate",id:"11"});
+ assert.match(t.root.innerHTML,/ExampleEmployee has a personal rate/);
+ assert.match(t.root.innerHTML,/5 recorded/);
+ assert.match(t.root.innerHTML,/Apply 6 trains/);
+ await click({act:"reprice-payment",id:"older",units:"6"});
+ assert.doesNotMatch(t.root.innerHTML,/Apply 6 trains/);
+ await click({act:"training-view",view:"records"});
+ assert.match(t.root.innerHTML,/Train rate correction from 5 trains/);
 });

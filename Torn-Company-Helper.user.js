@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Company-TornStaxx - Director Intelligence
 // @namespace    https://github.com/Tom-Peters/Torn-Company-Helper
-// @version      1.35.2
+// @version      1.36.0
 // @description  Compact company staff strip, conservative wage reviews, training priorities and growth decisions
 // @author       IamEEKY
 // @match        https://www.torn.com/*
@@ -93,7 +93,7 @@
   function hasPdaKey() {return /^[A-Za-z0-9]{16,64}$/.test(PDA_APP_KEY);}
   function activeApiKey(){return key || (hasPdaKey()?PDA_APP_KEY:"");}
   let staffView="desk",trainingView="queue",growthView="performance",advancedSettings=false,selectedEmployee=null,financeFocus="profit",paymentViewLimit=35,recordViewLimit=70;
-  let paymentReviewGroup = "current";
+  let paymentReviewGroup = "current", rateEmployeeId = "";
   let tab = "overview", detailView = "", open = false, busy = false, message = "", severity = "";
   let launcherDragged = false;
   const esc = function (value) {return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});};
@@ -294,10 +294,45 @@
     }).map(function(t){return {id:Number(t.id),title:String(t.title)};}).slice(0,20);
   }
 
-  function priceTrains(amount) {
-    if(!Number.isSafeInteger(amount)||amount<=0)return null;
-    const rem=amount%1000000;
-    return rem%250000===0 ? Math.floor(amount/1000000)*5+rem/250000:null;
+  const defaultTrainRate = {single:250000, bundle:1000000, units:5};
+  const partialPaymentReason = "Partial or non-standard amount: choose the number of trains";
+  function validTrainRate(rate) {
+    const positive=n=>Number.isSafeInteger(n) && n>0;
+    return !!rate && positive(rate.single) && ((rate.bundle===null && rate.units===null) || (positive(rate.bundle) && positive(rate.units)));
+  }
+  function employeeTrainRate(c, playerId) {
+    return c?.trainRates?.[playerId] ?? defaultTrainRate;
+  }
+  function priceTrains(amount, rate=defaultTrainRate) {
+    if (!Number.isSafeInteger(amount) || amount<=0 || !validTrainRate(rate)) return null;
+    if (rate.bundle===null) return amount%rate.single===0 ? amount/rate.single : null;
+    const remainder=amount%rate.bundle;
+    // Apply whole bundles first. An exact payment at the single price also qualifies.
+    const trains=remainder%rate.single===0 ? Math.floor(amount/rate.bundle)*rate.units+remainder/rate.single :
+      amount%rate.single===0 ? amount/rate.single : null;
+    return Number.isSafeInteger(trains) && trains>0 ? trains : null;
+  }
+  function priceReceipt(c, playerId, amount) {
+    const trains=priceTrains(amount,employeeTrainRate(c,playerId));
+    return trains===null ? {status:"review",reason:partialPaymentReason,senderId:playerId,amount} :
+      {status:"matched",playerId,amount,trains};
+  }
+  function receiptSuggestion(c, log) {
+    const g=log?.suggestion;
+    if (!g || (g.status!=="matched" && g.reason!==partialPaymentReason)) return g;
+    if (g.playerId && g.senderId && String(g.playerId)!==String(g.senderId)) {
+      return {status:"review",reason:"Conflicting sender IDs"};
+    }
+    const playerId=Number(g.playerId || g.senderId),amount=Number(g.amount);
+    if (!Number.isSafeInteger(playerId) || playerId<=0 || !Number.isSafeInteger(amount) || amount<=0) {
+      return {status:"review",reason:"Receipt is missing a valid sender or amount."};
+    }
+    return priceReceipt(c,playerId,amount);
+  }
+  function paymentReviewReason(log, quote) {
+    if (/Possible duplicate of a manually recorded purchase/.test(log.matchReason||"")) return log.matchReason;
+    if (quote?.status==="matched" && log.suggestion?.status!=="matched") return "Amount matches the employee rate. Confirm the purpose of this transfer.";
+    return quote?.reason || log.matchReason || log.title || "Confirm the purpose of this transfer";
   }
   function incomingTitle(title) {
     const t=String(title||"").toLowerCase();
@@ -350,9 +385,7 @@
     if(!staff.some(p=>Number(p.id)===sender))return {status:"review",reason:"Sender is outside the saved staff roster",senderId:sender,
       amount:amounts.size===1 ? Array.from(amounts)[0] : null};
     if(amounts.size!==1)return {status:"review",reason:amounts.size>1?"Different payment amounts reported":"Amount not present in log",senderId:sender};
-    const amount=Array.from(amounts)[0],trains=priceTrains(amount);
-    if(trains===null)return {status:"review",reason:"Partial or non-standard amount: choose the number of trains",senderId:sender,amount:amount};
-    return {status:"matched",playerId:sender,amount:amount,trains:trains};
+    return priceReceipt(c,sender,Array.from(amounts)[0]);
   }
   function canonicalTrainingSource(t) {
     if (t.sourceId) return String(t.sourceId).replace(/^company-news:/,"news:");
@@ -550,11 +583,12 @@
       for (const log of logs) {
         log.matchStatus = "review";
         if (/Possible duplicate of a manually recorded purchase/.test(log.matchReason || "")) continue;
-        if (log.suggestion?.status === "matched") {
+        const quote = receiptSuggestion(c,log);
+        if (quote?.status === "matched") {
           log.matchReason = "Sender and amount identified; training purpose unverified.";
           if (group === "current") suggested++;
         } else {
-          log.matchReason = log.suggestion?.reason || "Review the sender, amount and purpose.";
+          log.matchReason = quote?.reason || "Review the sender, amount and purpose.";
         }
       }
     }
@@ -1687,11 +1721,8 @@
 
   // v1.3: explicit, reversible local receipt classification. Never makes a Torn action.
   function exactPaidTrainingV13(c,log) {
-    const g=log&&log.suggestion;
-    if(!log || !g || g.status!=="matched" || !Number.isSafeInteger(Number(g.playerId)) ||
-       !Number.isSafeInteger(Number(g.amount)) || Number(g.amount)<=0)return null;
-    const staff=(c.staff||[]).find(function(p){return String(p.id)===String(g.playerId);});
-    if(!staff || !Number.isSafeInteger(Number(g.trains)) || Number(g.trains)!==priceTrains(Number(g.amount)))return null;
+    const g=receiptSuggestion(c,log);
+    if (!g || g.status!=="matched" || !(c.staff||[]).some(p => String(p.id)===String(g.playerId))) return null;
     if(/refund|gift|donation|repay|loan|borrow/i.test(String(log.title||"")))return null;
     return {playerId:Number(g.playerId),amount:Number(g.amount),trains:Number(g.trains)};
   }
@@ -2413,7 +2444,7 @@
     return label("Training accounts")+
       '<div class="notice">The script automatically matches training history and identifies money-transfer candidates. Imported money is credited only after you confirm its purpose. Anything uncertain stays in review; nothing changes in Torn.</div>'+      (reviewCount?'<div class="notice warn"><strong>'+reviewCount+' incoming payment(s) need checking.</strong> <button data-act="review-payments">Review payments</button></div>':'')+
       (overlaps.length?'<div class="notice warn"><strong>Check for possible old duplicates:</strong> '+esc(overlaps.map(function(id){return a.people[id]||"#"+id;}).join(", "))+'. These employees have both manually entered and historical training records. Review the audit trail to prevent double-counting; not all overlaps are duplicates.</div>':"")+
-      '<div class="card"><h3>Record a payment</h3><div class="row"><select id="tch-pay-person">'+options+'</select><input id="tch-pay-amount" type="number" placeholder="Money received" min="0"><input id="tch-pay-units" type="number" placeholder="Trains" min="0" step="1"><button data-act="add-payment">Confirm payment locally</button></div><p class="muted">Guide: $250,000 = 1, $1,000,000 = 5. Enter the approved number manually, including partial-payment allocations.</p></div>'+
+      '<div class="card"><h3>Record a payment</h3><div class="row"><select id="tch-pay-person">'+options+'</select><input id="tch-pay-amount" type="number" placeholder="Money received" min="0"><input id="tch-pay-units" type="number" placeholder="Trains" min="0" step="1"><button data-act="add-payment">Confirm payment locally</button></div><p class="muted">The employee rate suggests the train count. You can enter the agreed quantity for partial payments.</p></div>'+
       '<div class="card"><h3>Record completed training</h3><div class="row"><select id="tch-train-person">'+options+'</select><input id="tch-train-units" type="number" min="1" step="1" value="1"><button data-act="add-training">Record training locally</button></div></div>'+
       '<div class="scroll card"><h3>Oldest-first queue</h3><table><tr><th>Player</th><th>Purchased</th><th>Given / credited</th><th>Owed</th><th>Credit</th><th>Priority</th></tr>'+
       rows.map(function (entry) {
@@ -2425,15 +2456,15 @@
       '<p class="muted">Only confirmed training purchases affect balances, once per Torn log ID. Matching sender and amount alone cannot prove purpose. Nothing is sent to Torn.</p>'+
       '<div class="row"><span class="pill good">'+c.logs.filter(function(n){return isApprovedLog(c,n.id);}).length+' matched</span><span class="pill warn">'+reviewCount+' to review</span></div>'+
       logRows.slice().sort(function(x,y){return y.timestamp-x.timestamp;}).slice(0,40).map(function(n){
-        const guess=n.suggestion||{},id=esc(n.id),selected=guess.senderId||guess.playerId||"";
+        const guess=receiptSuggestion(c,n)||{},id=esc(n.id),selected=guess.senderId||guess.playerId||"";
         const targetOptions='<option value="">Choose employee</option>'+c.staff.concat(c.archived||[]).map(function(p){
           return '<option value="'+esc(p.id)+'" '+(String(selected)===String(p.id)?"selected":"")+'>'+esc(p.name)+'</option>';
         }).join("");
         return '<div class="card"><div class="row"><strong>'+esc(day(n.timestamp))+'</strong><span class="pill warn">Check payment</span></div>'+
-          '<p>'+esc(n.title)+' · '+esc(guess.reason||n.matchReason||"Review sender and amount")+'</p><div class="row">'+
-          '<label>Employee <select data-field="log-person" data-id="'+id+'">'+targetOptions+'</select></label>'+
-          '<label>Received $ <input data-field="log-amount" data-id="'+id+'" type="number" min="1" value="'+esc(guess.amount||"")+'" placeholder="Amount"></label>'+
-          '<label>Trains <input data-field="log-units" data-id="'+id+'" type="number" min="0" step="1" value="'+esc(guess.trains===undefined?"":guess.trains)+'" placeholder="Allocate"></label></div>'+
+          '<p>'+esc(n.title)+' · '+esc(paymentReviewReason(n,guess))+'</p><div class="row">'+
+          '<label>Employee <select id="tch-log-person-'+id+'" data-field="log-person" data-id="'+id+'">'+targetOptions+'</select></label>'+
+          '<label>Received $ <input id="tch-log-amount-'+id+'" data-field="log-amount" data-id="'+id+'" type="number" min="1" value="'+esc(guess.amount||"")+'" placeholder="Amount"></label>'+
+          '<label>Trains <input id="tch-log-units-'+id+'" data-field="log-units" data-id="'+id+'" type="number" min="0" step="1" value="'+esc(guess.trains===undefined?"":guess.trains)+'" placeholder="Allocate"></label></div>'+
           '<div class="actions"><button data-act="approve-log" data-id="'+id+'" class="primary">Approve allocation</button><button data-act="ignore-log" data-id="'+id+'">Not a training payment</button></div></div>';
       }).join("")+'</div>'+
       '<div class="card"><h3>Prevent duplicate training</h3><p>Imported company-news records can only be counted once per original Torn news ID. Check your old local records for duplicates and retain an audit trail of anything corrected.</p><button data-act="repair-duplicates">Check and repair duplicate imports</button>'+
@@ -2651,7 +2682,7 @@
   function headV2(c) {
     const title=tab==="overview"?"Today":tab==="alerts"?"Alerts":tab==="employees"?"Staff":tab==="training"?"Training":tab==="growth"?"Growth":tab==="stock"?(["service","no-products"].includes(stockModeV117(c))?"Services":"Stock"):tab==="diagnostics"?"Diagnostics":"Settings";
     const date=c && c.lastRefresh?new Date(c.lastRefresh).toLocaleString():"Not synced";
-    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.35.2</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
+    return '<header class="tch-top"><div class="tch-headline"><div class="tch-eyebrow">COMPANY HELPER · v1.36.0</div><strong>'+title+'</strong><div class="tch-timestamp">'+esc(date)+' · Read only</div></div>'+
       '<div class="actions"><button data-act="staxx-find" class="tch-iconbtn" aria-label="Find tools, sections and actions" title="Find in Staxx">⌕</button><button data-act="tab" data-tab="alerts" class="tch-iconbtn" aria-label="View alerts">! '+launcherAlertsV11(c).count+'</button><button data-act="refresh" class="tch-iconbtn" aria-label="Refresh data" '+(busy?"disabled":"")+'>↻</button>'+
       '<button data-act="tab" data-tab="settings" class="tch-iconbtn" aria-label="Settings">⚙</button><button data-act="close" class="tch-iconbtn" aria-label="Close dashboard">×</button></div></header>';
   }
@@ -2865,6 +2896,32 @@
       }).join("")+'</div>';
   }
 
+  function correctablePackageTrains(payment, rate) {
+    if (!isApprovedLogPayment(payment) || !payment.assumed || !payment.sourceId ||
+        !["log-package-auto","log-package-backfill"].includes(payment.source)) return null;
+    const units=priceTrains(Number(payment.amount),rate);
+    return units!==Number(payment.trains) ? units : null;
+  }
+  function trainRatePanel(c) {
+    const staff=c.staff.concat(c.archived||[]);
+    const person=staff.find(p=>String(p.id)===rateEmployeeId);
+    const options=rows=>rows.map(p=>'<option value="'+esc(p.id)+'" '+(p===person?'selected':'')+'>'+esc(p.name)+'</option>').join("");
+    const picker='<label>Employee<select id="tch-rate-person"><option value="">Choose employee</option><optgroup label="Current staff">'+options(c.staff)+'</optgroup><optgroup label="Former staff">'+options(c.archived||[])+'</optgroup></select></label>';
+    const intro='<section class="tch-panel"><h2>Employee train rates</h2><p>Company default: $250,000 for one train or $1,000,000 for five.</p>'+picker;
+    if (!person) return intro+'</section>';
+    const rate=employeeTrainRate(c,person.id);
+    const custom=Object.hasOwn(c.trainRates||{},person.id);
+    const field=(key,label)=>'<label>'+label+'<input id="tch-rate-'+key+'" type="number" min="1" step="1" inputmode="numeric" value="'+esc(rate[key])+'"></label>';
+    const earlier=uniquePaymentEvents(c).filter(p=>String(p.playerId)===rateEmployeeId)
+      .map(p=>({p,units:correctablePackageTrains(p,rate)})).filter(row=>row.units!==null).sort((a,b)=>b.p.ts-a.p.ts);
+    return intro+'<p>'+esc(person.name)+(custom?' has a personal rate.':' uses the company default.')+'</p><div class="tch-fieldrow">'+
+      field("single","Price for one train ($)")+field("bundle","Bundle price ($)")+field("units","Trains per bundle")+'</div><small>For a single price per train, leave both bundle fields empty.</small>'+
+      '<div class="tch-actionrow"><button data-act="save-train-rate" data-id="'+esc(person.id)+'" class="primary">Save rate</button>'+
+      (custom?'<button data-act="reset-train-rate" data-id="'+esc(person.id)+'">Use company default</button>':'')+'</div>'+
+      '<p class="tch-hint">Receipts use whole bundles first, then singles. Saving changes the price used for incoming and uncredited receipts.</p></section>'+
+      (earlier.length?'<section class="tch-panel"><h2>Earlier package credits ('+earlier.length+')</h2><p>Apply the saved rate to individual receipts if the same deal was in place.</p>'+
+        earlier.map(({p,units})=>'<div class="tch-record"><div><strong>'+esc(money(p.amount))+'</strong><small>'+esc(new Date(p.ts*1000).toLocaleString("en-GB",{timeZone:"UTC"}))+' TCT</small></div><div><b>'+esc(p.trains)+' recorded</b><button data-act="reprice-payment" data-id="'+esc(p.id)+'" data-units="'+units+'">Apply '+units+' trains</button></div></div>').join("")+'</section>':'');
+  }
   function trainingV2(c){
     if(!c||!c.profile)return introV2();
     const balances=aggregates(c),people=balances.people;
@@ -2880,6 +2937,7 @@
     const switches=buttonsV2("Training screens",[
       {action:"training-view",id:"queue",name:"Queue",active:trainingView==="queue"},
       {action:"training-view",id:"payments",name:"Payments"+(pending.length?" ("+pending.length+")":""),active:trainingView==="payments"},
+      {action:"training-view",id:"rates",name:"Rates",active:trainingView==="rates"},
       {action:"training-view",id:"history",name:"History"+(reviewNews.length?" ("+reviewNews.length+")":""),active:trainingView==="history"},
       {action:"training-view",id:"records",name:"Records",active:trainingView==="records"}
     ]);
@@ -2911,6 +2969,8 @@
         '<div class="tch-fieldrow"><select id="tch-train-person">'+opts+'</select>'+
         '<input aria-label="Number of trains" id="tch-train-units" type="number" min="1" max="20" value="1">'+
         '<button class="primary" data-act="add-training">Record</button></div></section></details>';
+    } else if(trainingView==="rates"){
+      body=trainRatePanel(c);
     } else if(trainingView==="payments"){
       const visible = groups[paymentReviewGroup];
       const filters = [["current","To review"],["former","Former staff"],["other","Other senders"]];
@@ -2929,17 +2989,17 @@
         '<section class="tch-panel"><h2>Payment review</h2>'+reviewFilters+
         '<p class="tch-hint">'+({current:"Current employees and transfers with an unidentified sender.",former:"Saved for former employees. Open receipts return to the main queue if the employee rejoins.",other:"These senders have no matching employee in your saved roster."})[paymentReviewGroup]+'</p>'+
         (visible.length?visible.slice().sort(function(a,b){return b.timestamp-a.timestamp;}).slice(0,paymentViewLimit).map(function(n){
-          const g=n.suggestion||{},id=esc(n.id),sel=g.senderId||g.playerId||"";
-          return '<article class="tch-review"><strong>'+esc(day(n.timestamp))+' · '+esc(people[sel]||(sel?"Sender #"+sel:"Unidentified sender"))+'</strong><p>'+esc(n.matchReason||g.reason||n.title||"Confirm the purpose of this transfer")+'</p>'+
-            '<label>Employee<select data-field="log-person" data-id="'+id+'"><option value="">Select recipient</option>'+c.staff.concat(c.archived||[]).map(function(p){return '<option value="'+esc(p.id)+'" '+(String(sel)===String(p.id)?"selected":"")+'>'+esc(p.name)+'</option>';}).join("")+'</select></label>'+
-            '<div class="tch-fieldrow"><label>Money received<input data-field="log-amount" data-id="'+id+'" type="number" min="1" value="'+esc(g.amount||"")+'"></label><label>Trains to credit<input data-field="log-units" data-id="'+id+'" type="number" min="0" value="'+esc(g.trains==null?"":g.trains)+'"></label></div>'+
+          const g=receiptSuggestion(c,n)||{},id=esc(n.id),sel=g.senderId||g.playerId||"";
+          return '<article class="tch-review"><strong>'+esc(day(n.timestamp))+' · '+esc(people[sel]||(sel?"Sender #"+sel:"Unidentified sender"))+'</strong><p>'+esc(paymentReviewReason(n,g))+'</p>'+
+            '<label>Employee<select id="tch-log-person-'+id+'" data-field="log-person" data-id="'+id+'"><option value="">Select recipient</option>'+c.staff.concat(c.archived||[]).map(function(p){return '<option value="'+esc(p.id)+'" '+(String(sel)===String(p.id)?"selected":"")+'>'+esc(p.name)+'</option>';}).join("")+'</select></label>'+
+            '<div class="tch-fieldrow"><label>Money received<input id="tch-log-amount-'+id+'" data-field="log-amount" data-id="'+id+'" type="number" min="1" value="'+esc(g.amount||"")+'"></label><label>Trains to credit<input id="tch-log-units-'+id+'" data-field="log-units" data-id="'+id+'" type="number" min="0" value="'+esc(g.trains==null?"":g.trains)+'"></label></div>'+
             '<div class="tch-actionrow"><button class="primary" data-act="approve-log" data-id="'+id+'">Confirm training purchase</button><button data-act="ignore-log" data-id="'+id+'">Not training money</button></div></article>';
         }).join(""):'<div class="tch-empty">No receipts to review in this group.</div>')+
         (visible.length>paymentViewLimit?'<button data-act="more-payments">Show next '+Math.min(35,visible.length-paymentViewLimit)+' transfers</button>':"")+'</section>'+
         '<section class="tch-panel"><h2>Add a manual payment</h2><div class="tch-fieldrow"><select id="tch-pay-person">'+opts+'</select>'+
         '<input id="tch-pay-amount" type="number" min="1" placeholder="$ received" aria-label="Amount received">'+
         '<input id="tch-pay-units" type="number" min="0" placeholder="Trains" aria-label="Trains purchased"></div>'+
-        '<button data-act="add-payment">Save payment locally</button><p class="tch-hint">You choose how to allocate non-standard and partial payments.</p></section>';
+        '<button data-act="add-payment">Save payment locally</button><p class="tch-hint">The selected employee rate fills the train count when the amount matches. You can edit it before saving.</p></section>';
     } else if(trainingView==="history"){
       body='<section class="tch-panel"><h2>Company training history</h2><p>Each Torn news ID can count only once. Matching happens locally after you initiate the import.</p>'+
         (c.newsHistoryWarning?'<p class="tch-hint">'+esc(c.newsHistoryWarning)+'</p>':"")+
@@ -2956,7 +3016,7 @@
         }).join(""):'<div class="tch-empty">Every imported record with a recognised recipient has been matched.</div>')+
         '</section>';
     } else {
-      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,voidStatus:p.voided?voidedPaymentStatus(c,p):null,restoredAt:p.restoredAt,autoCredited:isAutoCreditedPayment(p),reviewed:p.assumed&&isApprovedLogPayment(p)&&(p.reviewedAt||p.restoredAt),unverified:p.source==="log-auto"&&!p.voided};})
+      const logs=c.payments.map(function(p){return {id:p.id,ts:p.ts,type:"Payment",person:p.playerId,units:p.trains,money:p.amount,voided:p.voided,voidStatus:p.voided?voidedPaymentStatus(c,p):null,restoredAt:p.restoredAt,previousTrains:p.rateCorrection?.from,autoCredited:isAutoCreditedPayment(p),reviewed:p.assumed&&isApprovedLogPayment(p)&&(p.reviewedAt||p.restoredAt),unverified:p.source==="log-auto"&&!p.voided};})
         .concat(c.training.map(function(t){return {id:t.id,ts:t.ts,type:"Training",person:t.playerId,units:t.units,money:null,voided:t.voided,correction:t.correctionReason,previousUnits:t.previousUnits};}))
         .sort(function(a,b){return b.ts-a.ts;});
       body='<section class="tch-panel"><h2>Audit records</h2><p>Auto-credited payments already count towards purchased trains. You can confirm the purchase or void a mistaken match.</p>'+
@@ -2967,6 +3027,8 @@
             (e.autoCredited?'<small>Package price matched. These trains already count.</small><button data-act="confirm-credited-payment" data-id="'+esc(e.id)+'">Confirm purchase</button>':"")+
             (e.voidStatus?'<small>'+esc(e.voidStatus.detail)+'</small>':"")+
             (e.restoredAt&&!e.voided?'<small>Restored '+esc(day(e.restoredAt))+'</small>':"")+
+            (e.previousTrains!=null?'<small>Train rate correction from '+esc(e.previousTrains)+' trains.</small>':"")+
+            (e.autoCredited||e.reviewed?'<button data-act="employee-rate" data-id="'+esc(e.person)+'">Employee rate</button>':"")+
             (e.correction?'<small>Automatic count corrected from '+esc(e.previousUnits)+' / '+esc(e.correction)+'</small>':'')+
             (e.voidStatus?.canRestore?'<button data-act="restore-payment" data-id="'+esc(e.id)+'">Restore payment</button>':"")+
             (!e.voided?'<button data-act="void-entry" data-kind="'+e.type+'" data-id="'+esc(e.id)+'">Void</button>':"")+'</div></div>';
@@ -3039,7 +3101,7 @@
 
   function safeCompanyDiagnosticsV111(c){
     const t=Date.parse(c?.lastRefresh||''),age=Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/60000)):null;
-    return {tool:'Company Helper',version:'1.35.2',capturedAt:new Date().toISOString(),
+    return {tool:'Company Helper',version:'1.36.0',capturedAt:new Date().toISOString(),
       pdaStorage:typeof PDA_storage!=='undefined',pdaHttp:typeof PDA_httpGet==='function',
       apiKeyPresent:Boolean(activeApiKey()),companyDataLoaded:Boolean(c?.profile),
       lastRefreshMinutes:age,staffRecords:Array.isArray(c?.staff)?c.staff.length:0,
@@ -3090,7 +3152,7 @@
     if(!open)return;
     const pageKey=String(companyId||'none')+':'+(detailView?'detail:'+detailView:
       tab==='employees'?tab+':'+staffView+':'+(selectedEmployee||''):
-      tab==='training'?tab+':'+trainingView+(trainingView==='payments'?':'+paymentReviewGroup:''):tab==='growth'?tab+':'+growthView:tab);
+      tab==='training'?tab+':'+trainingView+(trainingView==='payments'?':'+paymentReviewGroup:trainingView==='rates'?':'+rateEmployeeId:''):tab==='growth'?tab+':'+growthView:tab);
     const oldMain=root.querySelector?.('.tch-main'),oldFocused=document.activeElement;
     if(companyRenderedPage)companyScrollPositions[companyRenderedPage]={root:root.scrollTop,main:oldMain?.scrollTop||0};
     let savedForm=null;
@@ -3567,6 +3629,43 @@
     if (act==="staff-view"){staffView=el.dataset.view;selectedEmployee=null;draw();return;}
     if (act==="training-view"){trainingView=el.dataset.view;if(trainingView==="payments")paymentReviewGroup="current";draw();return;}
     if (act==="more-records"){recordViewLimit+=70;draw();return;}
+    if (act==="employee-rate") {
+      rateEmployeeId=el.dataset.id;tab="training";trainingView="rates";detailView="";draw();return;
+    }
+    if (act==="save-train-rate" || act==="reset-train-rate") {
+      if (busy) return notify("Sync in progress. Try again when it finishes.");
+      const person=c?.staff.concat(c.archived||[]).find(p=>String(p.id)===el.dataset.id && String(p.id)===rateEmployeeId);
+      if (!person) return notify("Choose an employee first.","bad");
+      const reset=act==="reset-train-rate";
+      const next={...(c.trainRates||{})};
+      if (reset) delete next[person.id];
+      else {
+        const value=key=>{
+          const raw=root.querySelector("#tch-rate-"+key)?.value;
+          return raw==null || raw.trim()==="" ? null : Number(raw);
+        };
+        const rate={single:value("single"),bundle:value("bundle"),units:value("units")};
+        if (!validTrainRate(rate)) return notify("Enter a positive whole single price. Fill both bundle fields with positive whole numbers or leave both empty.","bad");
+        next[person.id]=rate;
+      }
+      return work(async()=>{
+        const previous=c.trainRates;c.trainRates=next;
+        try {await persist();}
+        catch(error){c.trainRates=previous;throw error;}
+        message=person.name+(reset?" now uses the company default.":" now uses the saved train rate.");
+      });
+    }
+    if (act==="reprice-payment") {
+      if (busy) return notify("Sync in progress. Try again when it finishes.");
+      const payment=c && uniquePaymentEvents(c).find(p=>String(p.id)===el.dataset.id && String(p.playerId)===rateEmployeeId);
+      if (!payment) return notify("This payment has already changed.","bad");
+      const units=correctablePackageTrains(payment,employeeTrainRate(c,payment.playerId));
+      if (units===null || units!==Number(el.dataset.units)) return notify("Review the current rate and train count again.");
+      const at=stamp();
+      const updated={...payment,trains:units,reviewedAt:at,rateCorrection:{from:payment.trains,at}};
+      const receipt=c.logs?.find(n=>"log:"+n.id===payment.sourceId);
+      return work(()=>saveLedgerRecord(c.payments,payment,updated,receipt,"approved"));
+    }
     if (act==="payment-review-group"){
       if (["current","former","other"].includes(el.dataset.view)) {
         paymentReviewGroup=el.dataset.view;paymentViewLimit=35;draw();
@@ -3776,7 +3875,8 @@
       if (!c || !c.staff.length) return notify("Load employees first.","bad");
       const payment=act==="add-payment";
       const person=root.querySelector(payment?"#tch-pay-person":"#tch-train-person");
-      const units=Number(root.querySelector(payment?"#tch-pay-units":"#tch-train-units").value);
+      const unitText=root.querySelector(payment?"#tch-pay-units":"#tch-train-units").value;
+      const units=unitText.trim()===""?NaN:Number(unitText);
       const amount=payment?Number(root.querySelector("#tch-pay-amount").value):null;
       if (!Number.isSafeInteger(units) || units<0 || (!payment && units===0) || (payment && (!Number.isSafeInteger(amount) || amount<=0))) return notify("Enter valid whole-number values.","bad");
       if (payment) c.payments.push({id:id(),playerId:Number(person.value),amount:amount,trains:units,ts:stamp(),confirmed:true,source:"manual"});
@@ -3818,6 +3918,17 @@
   });
   root.addEventListener("change",async function (evt) {
     const el=evt.target;
+    if (el.id==="tch-rate-person") {
+      rateEmployeeId=el.value;draw();return;
+    }
+    if (el.id==="tch-pay-person" || el.id==="tch-pay-amount" || ["log-person","log-amount"].includes(el.dataset.field)) {
+      const review=Boolean(el.dataset.field);
+      const fields=review?Array.from(root.querySelectorAll("[data-field]")).filter(f=>f.dataset.id===el.dataset.id):[];
+      const field=key=>review?fields.find(f=>f.dataset.field==="log-"+key):root.querySelector("#tch-pay-"+key);
+      const person=field("person"),amount=field("amount"),units=field("units");
+      if (units) units.value=person?.value?(priceTrains(Number(amount?.value),employeeTrainRate(current(),person.value))??""):"";
+      return;
+    }
     if (el.dataset.change==="sim") {
       const c=current();if (!c) return;
       c.whatIf[el.dataset.id]=el.value;

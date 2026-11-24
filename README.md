@@ -1,3 +1,11 @@
+## 1.36.0 - Train pricing per employee
+
+Open **Trains → Rates**, choose an employee and save their single-train price, bundle price and bundle size. For a $1m six-train deal, set the bundle price to 1,000,000 and the size to 6. Other employees use their own agreement or the company default of $250,000 for one and $1,000,000 for five. Leave both bundle fields empty for a single price per train.
+
+The sender's rate supplies train counts for new receipts, pending reviews, historical backfill and manual payment suggestions. A matching Torn transfer can be auto-credited because its amount fits a deal. Its training purpose is inferred until you confirm it. Rates belong to the company and Torn player ID, including when an employee leaves and returns.
+
+Saving a rate keeps recorded balances intact. **Earlier package credits** shows individual receipts where the new rate produces a different exact count. **Apply** updates the chosen receipt and the owed-trains queue. Manual allocations, voids and delivered trains are preserved.
+
 ## 1.35.2 - Auto-credited payments and former staff
 
 In Trains → Records, **Auto-credited** means the receipt matched a training package and its trains already count. **Confirm purchase** records your confirmation on the same entry and preserves its train count.

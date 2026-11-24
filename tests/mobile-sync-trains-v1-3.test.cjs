@@ -151,7 +151,7 @@ test("Clicking floating launcher triggers API refresh and reads recent news and 
 test("Compact mobile navigation has constrained height and five concise destinations",()=>{
  assert.match(source,/#tch-root \.tch-bottom button\{min-height:38px;height:38px/);
  assert.match(source,/function tabsV2/);
- assert.match(source,/\/\/ @version\s+1\.35\.2/);
+ assert.match(source,/\/\/ @version\s+1\.36\.0/);
  assert.doesNotMatch(source,/[\u2018\u2019]/);
  assert.doesNotMatch(source,/PDA_http(?:Post|Put|Patch|Delete)\s*\(/);
 });
@@ -388,4 +388,84 @@ test("Confirming an auto-credited package records the decision without changing 
  assert.equal(c.payments[0].reviewedAt,reviewed);
  assert.equal(c.payments.length,1);
  assert.equal(app.aggregates(c).balance[11].owed,5);
+});
+
+test("Package rates follow the sender for new receipts, mixed amounts and a rejoin",()=>{
+ const {app}=fixture(), c=company(), full=c.staff.slice();
+ c.trainRates={"11":{single:250000,bundle:1000000,units:6}};
+ const receipts=[log("custom",11,1000000),log("default",12,1000000),log("mixed",11,2250000),log("partial",11,100001)];
+ assert.equal(app.mergeIncomingLogsV13(c,{log:receipts}).trains,24);
+ assert.equal(app.aggregates(c).balance[11].purchased,19);
+ assert.equal(app.aggregates(c).balance[12].purchased,5);
+ assert.equal(app.pendingPaymentLogs(c).length,1);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:receipts}).credited,0);
+ c.profile.employees.hired=2;app.reconcileRosterV135(c,c.profile,full.slice(1));
+ const away=log("away",11,1000000);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[away]}).credited,0);
+ c.profile.employees.hired=3;app.reconcileRosterV135(c,c.profile,full);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[away]}).trains,6);
+});
+
+test("Backfill reprices saved suggestions, including newly exact partials, while preserving ambiguous receipts",()=>{
+ const {app}=fixture(), c=company(), ts=now()-95000;
+ app.mergeIncomingLogsV13(c,{log:[log("old-quote",11,1000000,ts),log("new-match",11,125000,ts),log("old-default",12,1000000,ts)]});
+ c.logs.push({id:"unsafe",timestamp:ts,title:"Money received",suggestion:{status:"review",reason:"Conflicting sender IDs",senderId:11,amount:1000000}},
+   {id:"mixed-ids",timestamp:ts,title:"Money received",suggestion:{status:"matched",senderId:11,playerId:12,amount:1000000,trains:5}});
+ c.trainRates={"11":{single:125000,bundle:1000000,units:9}};
+ assert.equal(app.backfillTrainingReceiptsV13(c).credited,3);
+ assert.equal(app.aggregates(c).balance[11].owed,10);
+ assert.equal(app.aggregates(c).balance[12].owed,5);
+ assert.equal(app.backfillTrainingReceiptsV13(c).credited,0);
+});
+
+test("Rate editor and individual historical correction save atomically and preserve other credits",async()=>{
+ const c=company();let failSave=false;
+ const {app,elements}=fixture(undefined,async()=>{if(failSave)throw Error("Save failed");});
+ app.seed(c);const root=elements.get("tch-root");
+ const rates={single:"250000",bundle:"1000000",units:"6"};
+ root.querySelector=id=>id.startsWith("#tch-rate-")?{value:rates[id.slice(10)]}:null;
+ app.mergeIncomingLogsV13(c,{log:[log("earlier",11,1000000),log("other",12,1000000)]});
+ c.payments.push({id:"manual",source:"manual",playerId:11,ts:now(),confirmed:true,amount:1000000,trains:4});
+ c.training.push({id:"delivered",playerId:11,units:2,ts:now()});
+ const old=c.payments[0];
+ await click(root,"employee-rate","11");
+ failSave=true;await click(root,"save-train-rate","11");assert.equal(c.trainRates,undefined);
+ failSave=false;await click(root,"save-train-rate","11");assert.equal(c.trainRates["11"].units,6);
+ assert.equal(app.aggregates(c).balance[11].owed,7);
+ await click(root,"reprice-payment",old.id,{units:"7"});
+ assert.equal(c.payments[0].trains,5);
+ failSave=true;await click(root,"reprice-payment",old.id,{units:"6"});assert.equal(c.payments[0],old);
+ failSave=false;await click(root,"reprice-payment",old.id,{units:"6"});
+ await click(root,"reprice-payment",old.id,{units:"6"});
+ assert.equal(c.payments[0].sourceId,old.sourceId);assert.equal(c.payments[0].rateCorrection.from,5);
+ assert.equal(c.payments.length,3);assert.equal(c.payments[2].trains,4);
+ assert.equal(app.aggregates(c).balance[11].owed,8);assert.equal(app.aggregates(c).balance[12].owed,5);
+ rates.bundle="";rates.units="";rates.single="125000";
+ await click(root,"save-train-rate","11");
+ assert.equal(c.trainRates["11"].bundle,null);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[log("single-only",11,375000)]}).trains,3);
+ rates.bundle="1000000";await click(root,"save-train-rate","11");assert.equal(c.trainRates["11"].bundle,null);
+ await click(root,"reset-train-rate","11");
+ assert.equal(c.trainRates["11"],undefined);assert.equal(c.payments[0].trains,6);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[log("after-reset",11,2000000)]}).trains,10);
+ assert.equal(app.mergeIncomingLogsV13(c,{log:[log("manual-overlap",11,1000000)]}).credited,0);
+});
+
+test("Manual entry and receipt review suggest the selected person's price and allow explicit allocations",async()=>{
+ const c=company(), {app,elements}=fixture(), root=elements.get("tch-root");
+ c.trainRates={"11":{single:250000,bundle:1000000,units:6}};
+ app.seed(c);
+ const manual={person:{id:"tch-pay-person",value:"11",dataset:{}},amount:{id:"tch-pay-amount",value:"1000000",dataset:{}},units:{value:""}};
+ const fields=["person","amount","units"].map((field,i)=>({dataset:{field:"log-"+field,id:"receipt"},value:["11","1000000",""][i]}));
+ root.querySelector=id=>manual[id.slice("#tch-pay-".length)];
+ root.querySelectorAll=selector=>selector==="[data-field]"?fields:[];
+ await root.listeners.change({target:manual.amount});
+ assert.equal(Number(manual.units.value),6);
+ await root.listeners.change({target:fields[0]});
+ assert.equal(Number(fields[2].value),6);
+ fields[0].value="12";await root.listeners.change({target:fields[0]});
+ assert.equal(Number(fields[2].value),5);
+ manual.amount.value="150000";await root.listeners.change({target:manual.amount});assert.equal(manual.units.value,"");
+ await click(root,"add-payment");assert.equal(c.payments.length,0);
+ manual.units.value="2";await click(root,"add-payment");assert.equal(c.payments[0].trains,2);
 });
